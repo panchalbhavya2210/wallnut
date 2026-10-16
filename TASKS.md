@@ -1,7 +1,7 @@
 # Wallnut — project status & living task list
 
 > **Read this first.** This file is the handoff document for any new session
-> (human or agent). Keep it updated as work lands. Last updated: 2026-10-16 (GitHub Actions CI/CD).
+> (human or agent). Keep it updated as work lands. Last updated: 2026-10-16 (Pass 18 — category detail custom range + MoM month dropdown).
 
 ---
 
@@ -174,7 +174,7 @@ index.ts                   custom entry: registers widget task handler, then exp
 * Accounts: filled net-worth hero (assets/liabilities/spendable), grouped account cards with institution/type, card utilisation bars; **Accounts page and charts both rebuilt after user review**.
 * Keyboard-safe sheets: bottom sheets lift with the soft keyboard (there was no keyboard handling before — popups with inputs were covered by the keyboard on Android).
 * Material: `@expo/ui` Material You wallpaper palette on Android 12+ (no third-party module), stronger tonal filled surfaces, filled net-worth hero, material palette visibly restyles cards/inputs.
-* Transactions: search, tabs, advanced filters, date grouping, swipe actions, multi-select bulk edit.
+* Transactions: Records-style statement (period presets, week groups with subtotals, Σ strip, review badges, relative dates), search, tabs, advanced filters, swipe actions, multi-select bulk edit.
 * Composer: keypad-first, type switch, pickers, splits with balance validation, tags, receipts, "needs review" toggle, edit mode.
 * Transaction detail: splits, tags, attachments, duplicate/delete/review.
 * Accounts: groups, visibility flags, credit-card panel, investment valuation, reconcile + adjustment, archive.
@@ -196,15 +196,27 @@ index.ts                   custom entry: registers widget task handler, then exp
   - **Android home-screen widgets** (`react-native-android-widget` 0.22.1): four providers — Snapshot (2×2 safe-to-spend + today), Balance (4×2 net worth/available/safe), QuickAdd (4×2 expense/income/transfer + Ask Wallnut), Upcoming (4×2 next recurring bills). Config plugin in `app.json`; custom entry `index.ts` registers the task handler then imports `expo-router/entry`; headless task handler; `WidgetDataService` (`widget_snapshots` table, migration 0009) built from the canonical services; debounced refresh on every db-revision/settings change + on app start + Android’s 30-minute `updatePeriodMillis`; deep links (`wallnut://home|quick-entry|calendar|settings/widgets`) via native `OPEN_URI`; light/dark variants following the active accent; Inter bundled for widgets; Settings → Widgets (enabled, show amounts, default widget, launcher pin prompt). Widgets are `home_screen` only — amounts never on the lock screen (enforced at build time, stated honestly in settings).
   - **19 accents** in Appearance (added red, neon pink/purple/green/cyan/orange, lime, teal, sky, gold, orange, coral) and **calmer button feedback** (shallower press, no release overshoot).
 
+* **Pass 17 (Wallet-style Records + per-category month-on-month)**:
+  - **Transactions rebuilt as a Records statement**: header search + overflow menu, period sheet (7D/30D/12W/6M/1Y — the filter sheet still provides custom range), a Σ total strip, statement groups (day/week/month, auto-resolved from the period) with week subtotals, circular category icons with a reviewed badge, name › account › italic note rows with relative dates (Today/Yesterday) and red/green signed amounts. Statement Σ and group subtotals come from SQL (`summarizeTransactions`, `getDailyTransactionTotals`) with the same filters as the list, so paging can never distort them; transfers are excluded from totals unless the Transfers tab is active.
+  - **Per-category month-on-month**: new `/category-trends` page (6M/1Y, this cycle vs previous, grouped bars, per-category sparkline rows, change pills, top movers) with a **month dropdown** — the cycle label is tappable and lists the current cycle plus the 24 before it (a "This cycle" chip resets) so any past month can be compared against the one before it; a MONTH ON MONTH card on category detail, and a **Category Trends dashboard widget** (registry + Spending preset + `DEFAULT_WIDGETS`; auto-placed once after the donut via `dashboard.categoryTrendsPlaced`, mirroring the safe-to-spend pattern). Buckets respect the `monthStartDay` cycle (SQL dates shift back `monthStartDay − 1` days) and refunds net into the month they landed in.
+  - **Demo data fixed** (`seed.service.ts`): randomized amounts were authored in rupees but written into paise fields (100× too small — "Rapido −₹1.50"); all corrected to rupee scale, the current month clamps to today so the ledger has **no future-dated rows**, and the demo economy was rebalanced for the corrected scale (₹60k salary, one monthly ATM withdrawal, card payment tracking actual card charges) so no account drifts absurdly negative.
+  - **Tests**: 159 green (14 new `tests/records.test.ts` cases for grouping/subtotals/month-cycle buckets); `tsc --noEmit` clean.
+
+* **Pass 18 (category detail custom range + MoM month dropdown)**:
+  - **Custom period on category detail**: the period strip gains a **Custom** chip — a From/To `CustomRangeSheet` (quick chips: last 7/30/90 days, this year; defaults to the last 30 days) that overrides the preset until another chip is picked. Every section on the page (spend stats, pace, subcategory split, merchants, trend, transactions) follows the range; the MONTH ON MONTH card keeps its own cycle picker. Same contract as Analytics.
+  - **Month dropdown on the MONTH ON MONTH card**: the cycle caption is now a tappable pill (shared `MonthCyclePicker` — extracted from `/category-trends`, which was refactored to use it) listing the current cycle + the 24 before it in a `PickerSheet`; picking a past cycle re-anchors the card via `getCategoryMonthlyTrends({ anchor })` — number, change ("vs May"), bars and the "Previous · May 2026" row all retarget — with a "This cycle" chip to reset.
+  - **Analytics bug fix**: applying a custom range left `period` untouched, so the range memo kept ignoring `customRange` (header stayed on the preset, nothing changed). `onApply` now sets both.
+
 ### Known open items
 1. **Device palette (Material You wallpaper colours)** — now powered by first-party `@expo/ui`
    (`getMaterialColors`, Android 12+; falls back honestly below that). Needs the Android build
    (works in Expo Go too); web/iOS report it unavailable. The import is guarded to the native
    bridge file only — `@expo/ui` throws if required on web.
-2. Unit tests are in place and green (143 tests: money maths, accounting rules, budget maths,
+2. Unit tests are in place and green (159 tests: money maths, accounting rules, budget maths,
    anchored recurring schedules, investments, duplicate detection, CSV import, date ranges,
    category tree, palette generation, AI privacy/hash/intents/affordability, quick-entry
-   schema/resolution/confirmation, inbox priorities, shared-expense splits/balances/items/settlements).
+   schema/resolution/confirmation, inbox priorities, shared-expense splits/balances/items/settlements,
+   records statement grouping/subtotals/month-cycle buckets).
    DB-level scenario tests against a real SQLite (better-sqlite3) remain a nice-to-have.
 3. Branding assets — **done (Pass 12)**: `scripts/generate-assets.ps1` + `assets/brand-source.png`; regenerate whenever the mark changes.
 4. Recurring editor polish still open: end-date + reminder picker + notes fields
@@ -246,6 +258,9 @@ AI/NL search, PDF/XLSX parsing, SMS ingestion (architecture ready:
 | `expo prebuild --platform android` deleted the release keystore | prebuild clears `android/` | keystore backed up to `%TEMP%\opencode` before prebuild; restore it after (or keep a copy outside `android/`) |
 | `react-native-android-widget` plugin generates no widgets | plugin param `widgets` missing (expo install adds the plugin bare) | keep the full plugin config in `app.json` (widgets + fonts) |
 | Protocol error (Emulation.setDeviceMetricsOverride) in the verify scripts | Chrome 154 rejects viewport emulation from puppeteer-core 25.x | scripts launch with `defaultViewport: null`; the window size defines the viewport (~500×748 in headless — the OS minimum window width) |
+| `/category/<id>` cannot be deep-linked in a verify run | category ids come from `createId` (random per boot) and rows navigate with `router.push`, so ids never appear as hrefs | click a row on `/category-trends` in the same browser session, then screenshot the detail page |
+| Verify script clicks the wrong (hidden) control after navigating | the previous Stack screen stays mounted in the DOM with its own interactive copies; `document.querySelector` returns the hidden one first, and a "fall back to all matches" pill check can also mask the next screen's LoadingBlock | scope probes to the *visible* instance (bounding rect > 0), take the last match, and retry clicks that can race the refetch/LoadingBlock |
+| Demo amounts 100× too small ("Rapido −₹1.50") | seed literals authored in rupees were written straight into paise fields | keep `_00` on intended-rupee literals in `seed.service.ts` (match the `round` step: `10_00` = nearest ₹10) |
 
 ---
 
@@ -416,8 +431,19 @@ reduce-motion setting.
 
 - **Pass 16 — AI quick entry + Android widgets (third brief)**: see §4 for the full list. Key invariants: the model only ever produces a validated `AiFinancialCommand` (never SQL); every write goes through the existing services; ambiguous names become questions with local options; confirmation modes gate execution (high-risk never auto-saves); widgets render from a serialized snapshot built by the canonical services and refresh on every ledger/settings change, on app start, and every 30 minutes from Android; the custom entry keeps `expo-router/entry` as the root component.
 
+- **Pass 17 — Wallet-style Records + per-category month-on-month**:
+  - **Records statement** (`src/app/(app)/transactions.tsx` rewritten to the Wallet brief): header search + overflow menu, "LAST 30 DAYS"-style period strip with a Σ total, statement groups with subtotals (`WEEK 42`…), rows with circular category icons, reviewed badge, name › account › italic note, red/green amounts and relative dates; period sheet (7D/30D/12W/6M/1Y) and a view-options sheet; search, tabs, advanced filters, swipe actions, multi-select bulk edit and pagination all kept. Grouping resolves from the period via `utils/records.ts` (`resolveRecordsGrouping`: day/week/month); the Σ strip and subtotals come from `summarizeTransactions` / `getDailyTransactionTotals` with the same filters as the list (paging-proof) and exclude transfers unless the Transfers tab is active.
+  - **Month-on-month per category**: `/category-trends` page (6M/1Y toggle, total + change card, grouped `BarChart` this-cycle-vs-previous, per-category rows with sparkline and change pill, top movers) with a **month dropdown** — the cycle label opens a `PickerSheet` of the current cycle + the 24 before it; picking a past month re-anchors the whole page (window, previous-cycle card, chart legend "SEP VS AUG") via the service's `anchor` option, and a "This cycle" chip appears to reset; MONTH ON MONTH card on `/category/[id]`, and the `category_monthly` dashboard widget (registry entry, Spending preset, `DEFAULT_WIDGETS`, one-time auto-placement after the donut via `dashboard.categoryTrendsPlaced`). Single source: `getCategoryMonthlyTrends` (`analytics.service.ts`); month buckets shift dates back `monthStartDay − 1` days to respect the user's cycle; refunds net into the month they landed in.
+  - **Demo seed corrected** (`seed.service.ts`): randomized ranges were authored in rupees but written into paise fields (100× slips — "Rapido −₹1.50", "More Retail −₹11.90") — fixed to rupee scale; `dayIn` clamps the current month to today, so no future-dated rows (the old `continue` was dead code); the economy was rebalanced for the corrected scale (salary ₹60k, one monthly ATM withdrawal, card payment estimate ₹12–24k vs actual card charges) so Kotak stays ~₹80k with a realistic credit-card balance instead of a −₹1L bank balance.
+  - **Verification**: 159 tests green (14 new in `tests/records.test.ts`), `tsc` clean, web export rebuilt; screenshots `records.png`, `trends.png`, `category-detail.png`, `home.png` (widget), `widgets.png` (library), plus the month dropdown flow captured in `category-trends-month-picker.png` / `category-trends-september.png` (open → pick September → "This cycle" resets).
+
+- **Pass 18 — custom range on category detail + shared month picker**:
+  - The category page's period strip gains a **Custom** chip wired to `CustomRangeSheet` (`onApply` sets the range and `period='custom'`); the detail page's MONTH ON MONTH card now uses the shared `MonthCyclePicker` (extracted from `/category-trends`, which was refactored onto it) with the "Previous · <month>" row naming the cycle. Side fix: Analytics' `onApply` never set `period='custom'`, so applied ranges were inert — fixed and screenshotted.
+  - Dead code dropped from `category/[id].tsx` (unused `previous`/`change` + `Button`/`Chip` imports).
+  - **Verification**: throwaway puppeteer flow — trends → click Food & Dining → open the *visible* pill → pick June 2026 (`JUNE 2026` + "vs May" + bars ending June) → "This cycle" resets → Custom chip → apply last-30-days (caption "September 2026 17 → October 2026 16 · edit", SPENT ₹13,770 → ₹20,960) → Analytics Custom → apply (header "September 2026 → October 2026", "previous custom period"). Screenshots: `category-detail-june.png`, `category-detail-custom-sheet.png`, `category-detail-custom.png`, `analytics-custom.png`. 159 tests green, `tsc` clean, export rebuilt.
+
 ### Verification commands
-`npm run typecheck` · `npm test` · `npx expo export --platform web` · `node scripts/serve-web.mjs 8081` · `node scripts/verify-web.mjs http://localhost:8081 home 390 844 "Assets"` · `node scripts/verify-web.mjs http://localhost:8081/quick-entry quick-entry 390 844 "Quick Entry"` · `node scripts/verify-web.mjs http://localhost:8081/settings/widgets settings-widgets 390 844 "Widgets enabled"` · `node scripts/capture-screens.mjs http://localhost:8081 390 844` · `node scripts/verify-lock.mjs http://localhost:8081` · `node scripts/verify-shopping.mjs http://localhost:8081` · `node scripts/verify-shared.mjs http://localhost:8081` · `node scripts/verify-trip.mjs http://localhost:8081` · `node scripts/verify-inbox.mjs http://localhost:8081`
+`npm run typecheck` · `npm test` · `npx expo export --platform web` · `node scripts/serve-web.mjs 8081` · `node scripts/verify-web.mjs http://localhost:8081 home 390 844 "Assets"` · `node scripts/verify-web.mjs http://localhost:8081/quick-entry quick-entry 390 844 "Quick Entry"` · `node scripts/verify-web.mjs http://localhost:8081/settings/widgets settings-widgets 390 844 "Widgets enabled"` · `node scripts/capture-screens.mjs http://localhost:8081 390 844` · `node scripts/verify-lock.mjs http://localhost:8081` · `node scripts/verify-shopping.mjs http://localhost:8081` · `node scripts/verify-shared.mjs http://localhost:8081` · `node scripts/verify-trip.mjs http://localhost:8081` · `node scripts/verify-inbox.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/transactions records 390 844 "Records"` · `node scripts/verify-web.mjs http://localhost:8081/category-trends trends 390 844 "MONTH ON MONTH"` · `node scripts/verify-web.mjs http://localhost:8081/settings/dashboard widgets 390 844 "Widgets"`
 
 > Widgets are native: verify them only in a real build (`npx expo prebuild --platform android` then `scripts/build-apk.ps1`), never in Expo Go or the web preview.
 

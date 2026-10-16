@@ -50,6 +50,8 @@ export interface DashboardSettings {
   showInsights: boolean;
   /** One-time marker: the Safe-to-Spend card has been placed after the hero. */
   safeToSpendPlaced: boolean;
+  /** One-time marker: the Category Trends (month-on-month) card has been placed. */
+  categoryTrendsPlaced: boolean;
 }
 
 export interface FinanceSettings {
@@ -67,6 +69,10 @@ export interface TransactionSettings {
   groupByDate: boolean;
   showIcons: boolean;
   smartDate: boolean;
+  /** Period the Records (transactions) screen opens with. */
+  recordsPeriod: PeriodPreset;
+  /** Statement grouping: auto picks day/week/month from the period. */
+  recordsGrouping: 'auto' | 'day' | 'week' | 'month';
   /** Flag imported rows so they land in the review queue. */
   autoReviewImports: boolean;
   /** Flag unusually large expenses for review. */
@@ -184,6 +190,7 @@ export const DEFAULT_SETTINGS: SettingsGroups = {
     defaultAccountId: null,
     showInsights: true,
     safeToSpendPlaced: false,
+    categoryTrendsPlaced: false,
   },
   finance: {
     defaultAccountId: null,
@@ -198,6 +205,8 @@ export const DEFAULT_SETTINGS: SettingsGroups = {
     groupByDate: true,
     showIcons: true,
     smartDate: true,
+    recordsPeriod: '30d',
+    recordsGrouping: 'auto',
     autoReviewImports: true,
     flagLargeExpenses: true,
   },

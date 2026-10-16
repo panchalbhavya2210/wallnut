@@ -603,6 +603,69 @@ export async function countTransactions(filters: TransactionFilters = {}): Promi
   return Number(row?.count ?? 0);
 }
 
+export interface TransactionSummary {
+  count: number;
+  /** Signed sum of matching rows. Transfers are excluded unless asked for. */
+  total: number;
+}
+
+/**
+ * The Σ of the current view. Transfers are money moved, not money in or out, so
+ * they stay out of the total unless the caller explicitly wants them (the
+ * Transfers tab).
+ */
+export async function summarizeTransactions(
+  filters: TransactionFilters = {},
+  options: { transfersInTotal?: boolean } = {},
+): Promise<TransactionSummary> {
+  const sqlite = getSqlite();
+  const { clause, params } = buildWhere(filters);
+  const row = await sqlite.getFirstAsync<{ count: number; total: number }>(
+    `SELECT count(*) AS count,
+            coalesce(sum(CASE WHEN t.is_transfer = 1 AND ? = 0 THEN 0 ELSE t.amount END), 0) AS total
+     FROM transactions t
+     LEFT JOIN categories c ON c.id = t.category_id
+     LEFT JOIN accounts a ON a.id = t.account_id
+     LEFT JOIN accounts ta ON ta.id = t.transfer_account_id
+     ${clause}`,
+    [options.transfersInTotal ? 1 : 0, ...params],
+  );
+  return { count: Number(row?.count ?? 0), total: Number(row?.total ?? 0) };
+}
+
+export interface DailyTransactionTotal {
+  date: string;
+  total: number;
+  count: number;
+}
+
+/**
+ * Per-day totals for the active filters. Small (one row per day), exact, and
+ * independent of list pagination, so statement groups can show true subtotals
+ * even when the visible rows are paged.
+ */
+export async function getDailyTransactionTotals(
+  filters: TransactionFilters = {},
+  options: { transfersInTotal?: boolean } = {},
+): Promise<DailyTransactionTotal[]> {
+  const sqlite = getSqlite();
+  const { clause, params } = buildWhere(filters);
+  const rows = await sqlite.getAllAsync<{ date: string; total: number; count: number }>(
+    `SELECT t.date AS date,
+            coalesce(sum(CASE WHEN t.is_transfer = 1 AND ? = 0 THEN 0 ELSE t.amount END), 0) AS total,
+            count(*) AS count
+     FROM transactions t
+     LEFT JOIN categories c ON c.id = t.category_id
+     LEFT JOIN accounts a ON a.id = t.account_id
+     LEFT JOIN accounts ta ON ta.id = t.transfer_account_id
+     ${clause}
+     GROUP BY t.date
+     ORDER BY t.date DESC`,
+    [options.transfersInTotal ? 1 : 0, ...params],
+  );
+  return rows.map((row) => ({ date: String(row.date), total: Number(row.total), count: Number(row.count) }));
+}
+
 export async function getTransactionDetail(id: string): Promise<TransactionDetail | null> {
   const sqlite = getSqlite();
   const row = await sqlite.getFirstAsync<Record<string, unknown>>(`${LIST_SELECT} WHERE t.id = ?`, [id]);

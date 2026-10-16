@@ -43,3 +43,13 @@ export function formatTransactionCount(count: number): string {
 export function describeDelta(text: string): string {
   return text.replace(/^-/, '−');
 }
+
+/**
+ * Chart-axis label for a category: the first word, capped at nine characters.
+ * "Food & Drinks" → "Food", "Fuel" → "Fuel". Bar charts have one short line per
+ * slot, so the full name lives in the tooltip instead.
+ */
+export function shortCategoryLabel(name: string): string {
+  const first = name.split(/[\s&,/-]+/).filter(Boolean)[0] ?? name;
+  return first.length > 9 ? `${first.slice(0, 8)}…` : first;
+}

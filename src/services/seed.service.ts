@@ -147,14 +147,14 @@ export async function seedDemoData(): Promise<void> {
   const dayIn = (monthsAgo: number, day: number) => {
     const base = monthStart(monthsAgo);
     const last = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
-    return new Date(base.getFullYear(), base.getMonth(), Math.min(day, last));
+    // The current month is clamped to today — the ledger never shows future rows.
+    const safeDay = monthsAgo === 0 ? Math.min(day, now.getDate()) : day;
+    return new Date(base.getFullYear(), base.getMonth(), Math.min(safeDay, last));
   };
 
   for (let m = months - 1; m >= 0; m--) {
-    const isCurrentMonth = m === 0;
-
     /* Salary — 1st, with an occasional bonus month */
-    const salary = 35_000_00 + total(round(rand(-400, 900), 100));
+    const salary = 60_000_00 + total(round(rand(-400_00, 900_00), 100_00));
     draft.push({
       date: toISODate(dayIn(m, 1)),
       account: 'kotak',
@@ -171,7 +171,7 @@ export async function seedDemoData(): Promise<void> {
         date: toISODate(dayIn(m, 18)),
         account: 'kotak',
         category: 'Freelance',
-        amount: round(rand(4_000, 12_000), 100),
+        amount: round(rand(4_000_00, 12_000_00), 100_00),
         type: 'income',
         merchant: 'Upwork',
         description: 'Freelance project payout',
@@ -205,7 +205,7 @@ export async function seedDemoData(): Promise<void> {
       date: toISODate(dayIn(m, 8)),
       account: 'kotak',
       category: 'Electricity',
-      amount: -total(round(rand(1_150, 2_450), 10)),
+      amount: -total(round(rand(1_150_00, 2_450_00), 10_00)),
       type: 'expense',
       merchant: 'BESCOM Electricity',
       at: at(),
@@ -219,7 +219,7 @@ export async function seedDemoData(): Promise<void> {
         date: toISODate(dayIn(m, Math.floor(rand(2, 29)))),
         account: pick(['icici', 'kotak']),
         category: 'Groceries',
-        amount: -total(round(rand(380, 2_850), 10)),
+        amount: -total(round(rand(380_00, 2_850_00), 10_00)),
         type: 'expense',
         merchant,
         at: at(),
@@ -234,7 +234,7 @@ export async function seedDemoData(): Promise<void> {
         date: toISODate(dayIn(m, Math.floor(rand(1, 29)))),
         account: pick(['icici', 'kotak']),
         category: merchant.includes('Coffee') || merchant === 'Starbucks' ? 'Cafes' : 'Delivery',
-        amount: -total(round(rand(160, 1_480), 10)),
+        amount: -total(round(rand(160_00, 1_480_00), 10_00)),
         type: 'expense',
         merchant,
         at: at(),
@@ -248,7 +248,7 @@ export async function seedDemoData(): Promise<void> {
         date: toISODate(dayIn(m, Math.floor(rand(1, 29)))),
         account: 'kotak',
         category: 'Taxi',
-        amount: -total(round(rand(110, 480), 10)),
+        amount: -total(round(rand(110_00, 480_00), 10_00)),
         type: 'expense',
         merchant: pick(['Uber India', 'Rapido', 'Ola Cabs']),
         at: at(),
@@ -259,7 +259,7 @@ export async function seedDemoData(): Promise<void> {
         date: toISODate(dayIn(m, Math.floor(rand(1, 29)))),
         account: 'icici',
         category: 'Fuel',
-        amount: -total(round(rand(900, 2_400), 10)),
+        amount: -total(round(rand(900_00, 2_400_00), 10_00)),
         type: 'expense',
         merchant: pick(['HP Petrol Pump', 'Indian Oil', 'Bharat Petroleum']),
         at: at(),
@@ -276,7 +276,7 @@ export async function seedDemoData(): Promise<void> {
         date: toISODate(dayIn(m, Math.floor(rand(1, 29)))),
         account: 'icici',
         category: merchant === 'Myntra' || merchant === 'AJIO' ? 'Clothing' : big ? 'Electronics' : 'General',
-        amount: -total(round(big ? rand(4_500, 14_000) : rand(420, 3_400), 10)),
+        amount: -total(round(big ? rand(4_500_00, 14_000_00) : rand(420_00, 3_400_00), 10_00)),
         type: 'expense',
         merchant,
         description: canonical,
@@ -290,7 +290,7 @@ export async function seedDemoData(): Promise<void> {
         date: toISODate(dayIn(m, Math.floor(rand(4, 27)))),
         account: pick(['kotak', 'icici']),
         category: 'Movies',
-        amount: -total(round(rand(300, 1_100), 10)),
+        amount: -total(round(rand(300_00, 1_100_00), 10_00)),
         type: 'expense',
         merchant: pick(['PVR INOX', 'BookMyShow']),
         at: at(),
@@ -303,7 +303,7 @@ export async function seedDemoData(): Promise<void> {
         date: toISODate(dayIn(m, Math.floor(rand(3, 26)))),
         account: 'kotak',
         category: 'Medical',
-        amount: -total(round(rand(350, 2_600), 10)),
+        amount: -total(round(rand(350_00, 2_600_00), 10_00)),
         type: 'expense',
         merchant: pick(['Apollo Pharmacy', 'Tata 1mg', 'PharmEasy']),
         at: at(),
@@ -316,7 +316,7 @@ export async function seedDemoData(): Promise<void> {
         date: toISODate(dayIn(m, Math.floor(rand(6, 20)))),
         account: 'icici',
         category: 'Travel',
-        amount: -total(round(rand(3_800, 9_500), 10)),
+        amount: -total(round(rand(3_800_00, 9_500_00), 10_00)),
         type: 'expense',
         merchant: 'MakeMyTrip',
         description: 'Trip booking',
@@ -327,7 +327,7 @@ export async function seedDemoData(): Promise<void> {
         date: toISODate(dayIn(m, Math.floor(rand(6, 24)))),
         account: 'icici',
         category: 'Travel',
-        amount: -total(round(rand(2_400, 6_200), 10)),
+        amount: -total(round(rand(2_400_00, 6_200_00), 10_00)),
         type: 'expense',
         merchant: 'IndiGo',
         tags: ['Trip'],
@@ -341,7 +341,7 @@ export async function seedDemoData(): Promise<void> {
         date: toISODate(dayIn(m, Math.floor(rand(6, 27)))),
         account: 'icici',
         category: 'General',
-        amount: total(round(rand(320, 2_100), 10)),
+        amount: total(round(rand(320_00, 2_100_00), 10_00)),
         type: 'refund',
         merchant: pick(['AMZN Mktp IN', 'Flipkart Internet']),
         description: 'Order return refund',
@@ -349,13 +349,13 @@ export async function seedDemoData(): Promise<void> {
       });
     }
 
-    /* Transfers: ATM withdrawals Kotak → Cash */
-    for (let i = 0; i < 2; i++) {
+    /* Transfers: a monthly ATM withdrawal Kotak → Cash */
+    for (let i = 0; i < 1; i++) {
       draft.push({
         date: toISODate(dayIn(m, Math.floor(rand(2, 28)))),
         account: 'kotak',
         category: null,
-        amount: -round(rand(2_000, 5_000), 500),
+        amount: -round(rand(1_500_00, 3_500_00), 500_00),
         type: 'transfer',
         merchant: 'ATM Withdrawal',
         transferAccount: 'cash',
@@ -378,7 +378,7 @@ export async function seedDemoData(): Promise<void> {
     });
 
     /* Credit card bill payment (transfer, NOT an expense) */
-    const cardSpendEstimate = total(round(rand(14_000, 26_000), 100));
+    const cardSpendEstimate = total(round(rand(12_000_00, 24_000_00), 100_00));
     draft.push({
       date: toISODate(dayIn(m, 26)),
       account: 'kotak',
@@ -392,13 +392,13 @@ export async function seedDemoData(): Promise<void> {
     });
 
     /* Cash spends */
-    const cashSpends = 2 + Math.floor(rnd() * 3);
+    const cashSpends = 3 + Math.floor(rnd() * 3);
     for (let i = 0; i < cashSpends; i++) {
       draft.push({
         date: toISODate(dayIn(m, Math.floor(rand(1, 29)))),
         account: 'cash',
         category: pick(['Restaurants', 'Other', 'Groceries']),
-        amount: -round(rand(60, 900), 10),
+        amount: -round(rand(60_00, 900_00), 10_00),
         type: 'expense',
         merchant: pick(['Corner Store', 'Metro Cash', 'Local Vendor', 'Chai Point']),
         at: at(),
@@ -417,11 +417,6 @@ export async function seedDemoData(): Promise<void> {
         description: 'SMS alert charges',
         at: at(),
       });
-    }
-
-    if (isCurrentMonth) {
-      // Leave room in the current month by keeping later transactions out.
-      continue;
     }
   }
 
@@ -544,7 +539,7 @@ export async function seedDemoData(): Promise<void> {
     day: number;
     autoPost: boolean;
   }[] = [
-    { merchant: 'Kotak Salary Credit', amount: 35_000_00, type: 'income', category: 'Salary', account: 'kotak', frequency: 'monthly', day: 1, autoPost: true },
+    { merchant: 'Kotak Salary Credit', amount: 60_000_00, type: 'income', category: 'Salary', account: 'kotak', frequency: 'monthly', day: 1, autoPost: true },
     { merchant: 'Landlord', amount: 12_000_00, type: 'expense', category: 'Rent', account: 'kotak', frequency: 'monthly', day: 3, autoPost: true },
     { merchant: 'Netflix', amount: 649_00, type: 'expense', category: 'Subscriptions', account: 'kotak', frequency: 'monthly', day: 10, autoPost: true },
     { merchant: 'Spotify', amount: 119_00, type: 'expense', category: 'Subscriptions', account: 'kotak', frequency: 'monthly', day: 15, autoPost: true },
@@ -586,6 +581,7 @@ export const DEFAULT_WIDGETS: { type: string; width: 'full' | 'half'; height: 'c
   { type: 'income_expense', width: 'full', height: 'medium' },
   { type: 'spending_trend', width: 'full', height: 'medium' },
   { type: 'category_breakdown', width: 'full', height: 'medium' },
+  { type: 'category_monthly', width: 'full', height: 'medium' },
   { type: 'budget_progress', width: 'full', height: 'medium' },
   { type: 'recent_transactions', width: 'full', height: 'medium' },
 ];
@@ -649,6 +645,54 @@ export async function ensureSafeToSpendWidget(): Promise<boolean> {
   }
 
   useSettingsStore.getState().update('dashboard', { safeToSpendPlaced: true });
+  return true;
+}
+
+/**
+ * One-time placement of the Category Trends (month-on-month) card: dropped in
+ * right after the Spending Categories donut, or appended when that card is not
+ * on the dashboard. Marked as placed so later arrangements stay untouched.
+ */
+export async function ensureCategoryMonthlyWidget(): Promise<boolean> {
+  const dashboardSettings = useSettingsStore.getState().dashboard;
+  if (dashboardSettings.categoryTrendsPlaced) return false;
+
+  const db = getDb();
+  const existing = await db.select().from(dashboardWidgets).where(eq(dashboardWidgets.type, 'category_monthly')).limit(1);
+
+  if (existing.length > 0) {
+    useSettingsStore.getState().update('dashboard', { categoryTrendsPlaced: true });
+    return false;
+  }
+
+  const all = await db.select().from(dashboardWidgets).orderBy(asc(dashboardWidgets.position));
+  if (all.length === 0) {
+    // A brand-new database gets the default set (which already includes it).
+    useSettingsStore.getState().update('dashboard', { categoryTrendsPlaced: true });
+    return false;
+  }
+
+  const anchor = all.find((widget) => widget.type === 'category_breakdown') ?? all.find((widget) => widget.type === 'spending_trend');
+  const position = anchor ? (anchor.position ?? 0) + 1 : all.reduce((max, widget) => Math.max(max, widget.position), -1) + 1;
+
+  // Make room so the card sits immediately after its anchor.
+  await db
+    .update(dashboardWidgets)
+    .set({ position: sql`${dashboardWidgets.position} + 1` })
+    .where(gt(dashboardWidgets.position, position - 1));
+
+  await db.insert(dashboardWidgets).values({
+    id: createId('wid'),
+    type: 'category_monthly',
+    position,
+    width: 'full',
+    height: 'medium',
+    configuration: '{}',
+    isVisible: true,
+  });
+
+  useSettingsStore.getState().update('dashboard', { categoryTrendsPlaced: true });
+  notifyDbChanged();
   return true;
 }
 

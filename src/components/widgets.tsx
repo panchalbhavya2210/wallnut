@@ -18,10 +18,12 @@ import { useSettingsStore } from '@/stores/settings.store';
 import { getPeriodRange, daysInRange, formatDayMonth, formatMonthYear, previousRange, toISODate, type PeriodPreset } from '@/utils/date';
 import { percentageChange } from '@/utils/money';
 import { formatPercent } from '@/utils/money';
+import { shortCategoryLabel } from '@/utils/format';
 import {
   getAccountBalanceTrend,
   getAccountScopeSummary,
   getCategoryBreakdown,
+  getCategoryMonthlyTrends,
   getDailySpendingStats,
   getLargestExpenses,
   getNetWorthChanges,
@@ -1367,7 +1369,103 @@ const UpcomingPaymentsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   );
 };
 
-/* --------------------------------- Registry -------------------------------- */
+// ------------------- Category trends (month on month) ----------------------
+
+/**
+ * Month-on-month spending per category. Grouped bars compare the current cycle
+ * with the one before it; the list underneath spells out the change, and every
+ * row opens the category's own detail screen.
+ */
+const CategoryMonthlyWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
+  const theme = useTheme();
+  const money = useMoney();
+  const chart = useChartColors();
+  const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
+  const { data, loading } = useQuery(
+    () => getCategoryMonthlyTrends({ months: 6, monthStartDay, accountIds: config.accountIds }),
+    [config.accountIds?.join(','), monthStartDay],
+  );
+
+  if (loading || !data) return <WidgetCard title="CATEGORY TRENDS"><WidgetLoading /></WidgetCard>;
+
+  const current = data.months[data.months.length - 1];
+  const previous = data.months[data.months.length - 2];
+  const rows = data.rows.filter((row) => row.current > 0 || row.previous > 0).slice(0, 5);
+  if (rows.length === 0) {
+    return (
+      <WidgetCard title="CATEGORY TRENDS" actionLabel="Analytics" onAction={() => onNavigate('/analytics')}>
+        <WidgetEmpty message="No spending in the last cycles to compare yet." icon="analytics-outline" />
+      </WidgetCard>
+    );
+  }
+
+  return (
+    <WidgetCard
+      title="CATEGORY TRENDS"
+      subtitle={current && previous ? `${current.fullLabel} vs ${previous.fullLabel}` : 'Month on month'}
+      actionLabel="All"
+      onAction={() => onNavigate('/category-trends')}>
+      <View style={{ marginHorizontal: -6 }}>
+        <BarChart
+          points={rows.map((row) => ({
+            key: row.categoryId ?? row.name,
+            label: shortCategoryLabel(row.name),
+            fullLabel: `${row.name} · ${current?.fullLabel ?? 'This cycle'}`,
+            value: row.current,
+          }))}
+          secondary={rows.map((row) => ({
+            key: `${row.categoryId ?? row.name}-previous`,
+            label: shortCategoryLabel(row.name),
+            fullLabel: `${row.name} · ${previous?.fullLabel ?? 'Previous cycle'}`,
+            value: row.previous,
+          }))}
+          height={150}
+          color={chart.slice(0, theme.colors.accent.base)}
+          secondaryColor={theme.colors.muted}
+          compactLabels
+        />
+      </View>
+
+      <View style={{ gap: 12, marginTop: theme.spacing.md }}>
+        {rows.slice(0, 4).map((row, index) => (
+          <Pressable
+            key={row.categoryId ?? row.name}
+            onPress={() => (row.categoryId ? onNavigate(`/category/${row.categoryId}`) : undefined)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: chart.slice(index, row.color) }} />
+            <AppText variant="caption" numberOfLines={1} style={{ flex: 1 }}>
+              {row.name}
+            </AppText>
+            <AppText variant="numericCaption" tone="secondary">
+              {money.format(row.current, { compact: true })}
+            </AppText>
+            {row.change !== null ? (
+              <Row gap="xs" align="center" style={{ minWidth: 52, justifyContent: 'flex-end' }}>
+                <Ionicons
+                  name={row.change > 0 ? 'arrow-up' : 'arrow-down'}
+                  size={11}
+                  color={row.change > 0 ? theme.colors.negative : theme.colors.positive}
+                />
+                <AppText
+                  variant="caption"
+                  tone={row.change > 0 ? 'negative' : 'positive'}
+                  style={{ fontSize: 11 }}>
+                  {formatPercent(Math.abs(row.change), 0)}
+                </AppText>
+              </Row>
+            ) : (
+              <AppText variant="caption" tone="muted" style={{ fontSize: 11, minWidth: 52, textAlign: 'right' }}>
+                new
+              </AppText>
+            )}
+          </Pressable>
+        ))}
+      </View>
+    </WidgetCard>
+  );
+};
+
+/* ------------------------------- Registry -------------------------------- */
 
 const REGISTRY: Record<string, WidgetDefinition> = {
   net_worth: { type: 'net_worth', title: 'Net Worth', description: 'Your wealth with month-over-month change', icon: 'trending-up-outline', defaultWidth: 'full', defaultHeight: 'tall', Component: NetWorthWidget },
@@ -1379,6 +1477,7 @@ const REGISTRY: Record<string, WidgetDefinition> = {
   spending_pace: { type: 'spending_pace', title: 'Spending Pace', description: 'Daily pace vs previous period', icon: 'speedometer-outline', defaultWidth: 'half', defaultHeight: 'compact', Component: SpendingPaceWidget },
   spending_trend: { type: 'spending_trend', title: 'Spending Trend', description: 'Chart of spending over time', icon: 'analytics-outline', defaultWidth: 'full', defaultHeight: 'medium', Component: SpendingTrendWidget },
   category_breakdown: { type: 'category_breakdown', title: 'Spending Categories', description: 'Donut with category shares', icon: 'pie-chart-outline', defaultWidth: 'full', defaultHeight: 'medium', Component: CategoryBreakdownWidget },
+  category_monthly: { type: 'category_monthly', title: 'Category Trends', description: 'Month-on-month spending per category', icon: 'analytics-outline', defaultWidth: 'full', defaultHeight: 'medium', Component: CategoryMonthlyWidget },
   budget_progress: { type: 'budget_progress', title: 'Budgets', description: 'Progress of your active budgets', icon: 'wallet-outline', defaultWidth: 'full', defaultHeight: 'medium', Component: BudgetProgressWidget },
   recent_transactions: { type: 'recent_transactions', title: 'Recent Transactions', description: 'Your latest activity', icon: 'receipt-outline', defaultWidth: 'full', defaultHeight: 'medium', Component: RecentTransactionsWidget },
   top_merchants: { type: 'top_merchants', title: 'Top Merchants', description: 'Where the money goes', icon: 'storefront-outline', defaultWidth: 'full', defaultHeight: 'medium', Component: TopMerchantsWidget },
@@ -1439,7 +1538,7 @@ export const WIDGET_PRESETS: Record<string, { label: string; description: string
   spending: {
     label: 'Spending',
     description: 'Deep dive into where money goes',
-    widgets: ['spending_total', 'spending_pace', 'category_breakdown', 'top_merchants', 'largest_expenses', 'spending_trend', 'monthly_comparison'],
+    widgets: ['spending_total', 'spending_pace', 'category_breakdown', 'category_monthly', 'top_merchants', 'largest_expenses', 'spending_trend', 'monthly_comparison'],
   },
   budget: {
     label: 'Budget',

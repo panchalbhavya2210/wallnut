@@ -1,18 +1,19 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
 import { Screen, IconName } from '@/components/ui/layout';
 import { AppText, MoneyText } from '@/components/ui/text';
-import { Button, Chip, IconButton } from '@/components/ui/controls';
+import { Button, Chip, IconButton, SegmentedControl } from '@/components/ui/controls';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/feedback';
 import { HeaderMenuButton } from '@/components/HeaderMenuButton';
 import { BottomSheet, DatePickerSheet, PickerSheet } from '@/components/ui/sheets';
 import { SwipeableRow } from '@/components/ui/SwipeableRow';
 import { confirm } from '@/components/ui/confirm';
-import { useQuery, useDebouncedValue } from '@/hooks/useQuery';
+import { CompactPeriodSheet } from '@/components/PeriodPicker';
+import { useQuery, useDebouncedValue, useNow } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useUiStore, toast } from '@/stores/ui.store';
@@ -24,17 +25,28 @@ import {
   bulkUpdateAccount,
   bulkUpdateCategory,
   deleteTransaction,
+  getDailyTransactionTotals,
   listTransactions,
   markReviewed,
+  summarizeTransactions,
   type TransactionFilters,
   type TransactionListItem,
 } from '@/services/transactions.service';
 import { addTagToTransactions } from '@/services/tags.service';
-import { formatDayLabel, fromISODate, toISODate } from '@/utils/date';
+import { fromISODate, getPeriodRange, PERIOD_LABELS, toISODate, type PeriodPreset } from '@/utils/date';
+import {
+  bucketKeyForDate,
+  groupRecords,
+  RECORDS_GROUPING_LABELS,
+  resolveRecordsGrouping,
+  rowDateLabel,
+  type RecordsGrouping,
+} from '@/utils/records';
 
 /**
- * Transactions — the workhorse screen: instant search, tab filters, advanced
- * filters, date grouping, swipe actions, multi-select bulk editing.
+ * Records — the statement view: a period selector with a running total, weekly
+ * (or daily/monthly) groups with their own subtotals, statement-style rows and
+ * the full search/filter/bulk-edit toolkit behind the header.
  */
 
 type TabKey = 'all' | 'expenses' | 'income' | 'transfers';
@@ -44,9 +56,14 @@ const PAGE_SIZE = 60;
 export default function TransactionsScreen() {
   const theme = useTheme();
   const money = useMoney();
-  const groupByDate = useSettingsStore((state) => state.transactions.groupByDate);
+  const now = useNow();
+  const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
   const confirmDeletion = useSettingsStore((state) => state.transactions.confirmDeletion);
   const showIcons = useSettingsStore((state) => state.transactions.showIcons);
+  const statementGroups = useSettingsStore((state) => state.transactions.groupByDate);
+  const recordsPeriod = useSettingsStore((state) => state.transactions.recordsPeriod);
+  const recordsGrouping = useSettingsStore((state) => state.transactions.recordsGrouping);
+  const updateTransactions = useSettingsStore((state) => state.update);
 
   const selectionMode = useUiStore((state) => state.selectionMode);
   const selectedIds = useUiStore((state) => state.selectedIds);
@@ -58,9 +75,16 @@ export default function TransactionsScreen() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 220);
   const [showFilters, setShowFilters] = useState(false);
+  const [showPeriod, setShowPeriod] = useState(false);
+  const [showViewOptions, setShowViewOptions] = useState(false);
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [page, setPage] = useState(1);
   const [searchOpen, setSearchOpen] = useState(false);
+
+  const period = recordsPeriod;
+  const range = useMemo(() => getPeriodRange(period, { monthStartDay }), [period, monthStartDay]);
+  /** A from/to filter from the filter sheet wins over the period preset. */
+  const customRange = Boolean(filters.from || filters.to);
 
   const tabFilters: TransactionFilters = useMemo(() => {
     switch (tab) {
@@ -75,23 +99,35 @@ export default function TransactionsScreen() {
     }
   }, [tab]);
 
-  const effectiveFilters: TransactionFilters = useMemo(
+  /** Everything except paging — the shape the Σ totals and group subtotals use. */
+  const baseFilters: TransactionFilters = useMemo(
     () => ({
       ...tabFilters,
       ...filters,
+      from: customRange ? filters.from : toISODate(range.start),
+      to: customRange ? filters.to : toISODate(range.end),
       search: debouncedSearch || undefined,
-      limit: PAGE_SIZE * page,
-      offset: 0,
-      sort: 'date_desc',
     }),
-    [tabFilters, filters, debouncedSearch, page],
+    [tabFilters, filters, customRange, range.start, range.end, debouncedSearch],
   );
 
-  const query = useQuery(() => listTransactions(effectiveFilters), [
-    JSON.stringify(effectiveFilters),
-  ]);
+  const effectiveFilters: TransactionFilters = useMemo(
+    () => ({ ...baseFilters, limit: PAGE_SIZE * page, offset: 0, sort: 'date_desc' }),
+    [baseFilters, page],
+  );
 
-  const totalCount = useQuery(() => import('@/services/transactions.service').then((m) => m.countTransactions({ ...tabFilters, search: debouncedSearch || undefined })), [JSON.stringify(tabFilters), debouncedSearch]);
+  const query = useQuery(() => listTransactions(effectiveFilters), [JSON.stringify(effectiveFilters)]);
+
+  const transfersInTotal = tab === 'transfers';
+  const summary = useQuery(
+    () => summarizeTransactions(baseFilters, { transfersInTotal }),
+    [JSON.stringify(baseFilters), transfersInTotal],
+  );
+  // Exact per-day totals, so group subtotals stay right even while the list is paged.
+  const daily = useQuery(
+    () => getDailyTransactionTotals(baseFilters, { transfersInTotal }),
+    [JSON.stringify(baseFilters), transfersInTotal],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -101,25 +137,33 @@ export default function TransactionsScreen() {
   );
 
   const rows = query.data ?? [];
-  const hasMore = totalCount.data !== null && rows.length < totalCount.data;
+  const resolvedGrouping = resolveRecordsGrouping(period, recordsGrouping);
 
-  const grouped = useMemo(() => {
-    if (!groupByDate) return [{ key: 'all', label: '', data: rows, total: 0 }];
-    const map = new Map<string, TransactionListItem[]>();
-    for (const row of rows) {
-      const bucket = map.get(row.date) ?? [];
-      bucket.push(row);
-      map.set(row.date, bucket);
+  const bucketTotals = useMemo(() => {
+    const map = new Map<string, { total: number; count: number }>();
+    for (const row of daily.data ?? []) {
+      const key = bucketKeyForDate(row.date, resolvedGrouping);
+      const entry = map.get(key) ?? { total: 0, count: 0 };
+      entry.total += row.total;
+      entry.count += row.count;
+      map.set(key, entry);
     }
-    return Array.from(map.entries()).map(([date, items]) => ({
-      key: date,
-      label: formatDayLabel(fromISODate(date) ?? new Date()),
-      data: items,
-      total: items.reduce((sum, item) => sum + (item.isTransfer ? 0 : item.amount), 0),
-    }));
-  }, [rows, groupByDate]);
+    return map;
+  }, [daily.data, resolvedGrouping]);
+
+  const groups = useMemo(
+    () =>
+      statementGroups
+        ? groupRecords(rows, resolvedGrouping, { now, transfersInTotal }).map((group) => {
+            const exact = bucketTotals.get(group.key);
+            return exact ? { ...group, total: exact.total, count: exact.count } : group;
+          })
+        : [{ key: 'all', grouping: resolvedGrouping, label: '', subtitle: '', rows, total: 0, count: rows.length }],
+    [rows, statementGroups, resolvedGrouping, now, transfersInTotal, bucketTotals],
+  );
 
   const activeFilterCount = countActiveFilters(filters);
+  const periodLabel = customRange ? 'CUSTOM RANGE' : PERIOD_LABELS[period].toUpperCase();
 
   const handleDelete = async (item: TransactionListItem) => {
     if (confirmDeletion) {
@@ -161,23 +205,46 @@ export default function TransactionsScreen() {
           <>
             <HeaderMenuButton />
             <View style={{ flex: 1 }}>
-              <AppText variant="title">Transactions</AppText>
-              {totalCount.data !== null ? (
+              <AppText variant="title">Records</AppText>
+              {summary.data !== null ? (
                 <AppText variant="caption" tone="muted">
-                  {totalCount.data} record{totalCount.data === 1 ? '' : 's'}
+                  {summary.data.count} transaction{summary.data.count === 1 ? '' : 's'}
                 </AppText>
               ) : null}
             </View>
             <IconButton icon="search-outline" onPress={() => setSearchOpen((value) => !value)} accessibilityLabel="Search" />
-            <IconButton
-              icon="options-outline"
-              onPress={() => setShowFilters(true)}
-              accessibilityLabel="Filters"
-              color={activeFilterCount > 0 ? theme.colors.accent.base : undefined}
-            />
+            <IconButton icon="ellipsis-vertical" onPress={() => setShowViewOptions(true)} accessibilityLabel="View options" />
           </>
         )}
       </View>
+
+      {/* Period + running total */}
+      {!selectionMode ? (
+        <Pressable
+          onPress={() => setShowPeriod(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Choose period"
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <AppText variant="label" tone="muted">
+              {periodLabel}
+            </AppText>
+            <Ionicons name="chevron-down" size={13} color={theme.colors.muted} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <AppText variant="caption" tone="muted">
+              Σ
+            </AppText>
+            {summary.data ? (
+              <MoneyText amount={summary.data.total} variant="numericBody" tone={summary.data.total < 0 ? 'negative' : 'positive'} />
+            ) : (
+              <AppText variant="numericBody" tone="muted">
+                —
+              </AppText>
+            )}
+          </View>
+        </Pressable>
+      ) : null}
 
       {/* Search */}
       {!selectionMode && (searchOpen || search.length > 0) ? (
@@ -192,12 +259,15 @@ export default function TransactionsScreen() {
             borderColor: theme.colors.border,
             paddingHorizontal: theme.spacing.md,
             height: 42,
-            marginTop: theme.spacing.md,
+            marginBottom: theme.spacing.sm,
           }}>
           <Ionicons name="search-outline" size={16} color={theme.colors.muted} />
           <TextInput
             value={search}
-            onChangeText={setSearch}
+            onChangeText={(value) => {
+              setSearch(value);
+              setPage(1);
+            }}
             placeholder="Search merchant, notes, category, tag…"
             placeholderTextColor={theme.colors.muted}
             autoFocus
@@ -213,7 +283,7 @@ export default function TransactionsScreen() {
 
       {/* Tabs */}
       {!selectionMode ? (
-        <View style={{ flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.md, marginBottom: theme.spacing.sm }}>
+        <View style={{ flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.sm }}>
           {([
             { key: 'all', label: 'All' },
             { key: 'expenses', label: 'Expenses' },
@@ -267,7 +337,7 @@ export default function TransactionsScreen() {
         />
       ) : (
         <FlatList
-          data={grouped}
+          data={groups}
           keyExtractor={(item) => item.key}
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: 140 }}
@@ -275,7 +345,7 @@ export default function TransactionsScreen() {
           refreshControl={<RefreshControl refreshing={false} onRefresh={query.refresh} tintColor={theme.colors.muted} />}
           onEndReachedThreshold={0.4}
           onEndReached={() => {
-            if (hasMore && !query.loading) setPage((value) => value + 1);
+            if (hasMore(summary.data?.count, rows.length) && !query.loading) setPage((value) => value + 1);
           }}
           renderItem={({ item: group }) => (
             <View>
@@ -284,23 +354,39 @@ export default function TransactionsScreen() {
                   style={{
                     flexDirection: 'row',
                     justifyContent: 'space-between',
-                    alignItems: 'center',
+                    alignItems: 'flex-end',
                     paddingVertical: theme.spacing.md,
                     backgroundColor: theme.colors.background,
                   }}>
-                  <AppText variant="label" tone="muted">
-                    {group.label.toUpperCase()}
-                  </AppText>
-                  <AppText variant="numericCaption" tone="muted">
-                    {group.total !== 0 ? money.format(group.total, { sign: 'always' }) : ''}
-                  </AppText>
+                  <View style={{ gap: 1 }}>
+                    <AppText variant="label" tone="secondary">
+                      {group.label}
+                    </AppText>
+                    {group.subtitle ? (
+                      <AppText variant="caption" tone="muted" style={{ fontSize: 11 }}>
+                        {group.subtitle}
+                      </AppText>
+                    ) : null}
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <AppText variant="caption" tone="muted">
+                      Σ
+                    </AppText>
+                    <MoneyText
+                      amount={group.total}
+                      variant="numericCaption"
+                      tone={group.total < 0 ? 'negative' : group.total > 0 ? 'positive' : 'muted'}
+                    />
+                  </View>
                 </View>
               ) : null}
-              {group.data.map((row) => (
+              {group.rows.map((row) => (
                 <TransactionRow
                   key={row.id}
                   row={row}
+                  now={now}
                   showIcon={showIcons}
+                  showDate={resolvedGrouping !== 'day'}
                   selectionMode={selectionMode}
                   selected={selectedIds.includes(row.id)}
                   onPress={() => {
@@ -347,15 +433,55 @@ export default function TransactionsScreen() {
           setPage(1);
         }}
       />
+
+      <CompactPeriodSheet
+        visible={showPeriod}
+        onClose={() => setShowPeriod(false)}
+        value={period}
+        onChange={(next: PeriodPreset) => {
+          updateTransactions('transactions', { recordsPeriod: next });
+          setPage(1);
+        }}
+        monthStartDay={monthStartDay}
+        grouping={recordsGrouping}
+        onGroupingChange={(next: RecordsGrouping) => updateTransactions('transactions', { recordsGrouping: next })}
+      />
+
+      <ViewOptionsSheet
+        visible={showViewOptions}
+        onClose={() => setShowViewOptions(false)}
+        grouping={recordsGrouping}
+        onGroupingChange={(next: RecordsGrouping) => updateTransactions('transactions', { recordsGrouping: next })}
+        resolved={resolvedGrouping}
+        statementGroups={statementGroups}
+        onStatementGroupsChange={(next: boolean) => updateTransactions('transactions', { groupByDate: next })}
+        showIcons={showIcons}
+        onShowIconsChange={(next: boolean) => updateTransactions('transactions', { showIcons: next })}
+        filterCount={activeFilterCount}
+        onOpenFilters={() => {
+          setShowViewOptions(false);
+          setShowFilters(true);
+        }}
+        onClearFilters={() => {
+          setFilters({});
+          setPage(1);
+        }}
+      />
     </Screen>
   );
+}
+
+function hasMore(total: number | undefined, loaded: number): boolean {
+  return total !== undefined && loaded < total;
 }
 
 /* ------------------------------- Row -------------------------------------- */
 
 function TransactionRow({
   row,
+  now,
   showIcon,
+  showDate,
   selectionMode,
   selected,
   onPress,
@@ -365,7 +491,9 @@ function TransactionRow({
   onReviewed,
 }: {
   row: TransactionListItem;
+  now: Date;
   showIcon: boolean;
+  showDate: boolean;
   selectionMode: boolean;
   selected: boolean;
   onPress: () => void;
@@ -377,12 +505,14 @@ function TransactionRow({
   const theme = useTheme();
   const icon = (row.categoryIcon as IconName) ?? (row.isTransfer ? 'swap-horizontal-outline' : 'pricetag-outline');
   const color = row.isTransfer ? theme.colors.accent.base : (row.categoryColor ?? theme.colors.muted);
-  const subtitleParts = row.isTransfer
+  const title = row.merchant || row.description || row.categoryName || 'Transaction';
+  const note = row.notes && row.notes !== title ? row.notes : null;
+  const metaParts = row.isTransfer
     ? [`${row.accountName} → ${row.transferAccountName ?? '?'}`]
-    : [row.categoryName ?? 'Uncategorised', row.accountName];
-  if (row.isRecurring) subtitleParts.push('Recurring');
-  if (row.splitCount > 0) subtitleParts.push(`${row.splitCount} splits`);
-  if (!row.isReviewed) subtitleParts.push('Needs review');
+    : [row.categoryName && row.categoryName !== title ? row.categoryName : null, row.accountName];
+  if (row.isRecurring) metaParts.push('Recurring');
+  if (row.splitCount > 0) metaParts.push(`${row.splitCount} splits`);
+  if (!row.isReviewed) metaParts.push('Needs review');
 
   return (
     <SwipeableRow
@@ -415,29 +545,161 @@ function TransactionRow({
           />
         ) : null}
         {showIcon ? (
-          <View
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: theme.radius.md,
-              backgroundColor: `${color}22`,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-            <Ionicons name={icon} size={18} color={color} />
+          <View style={{ width: 42, height: 42 }}>
+            <View
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: theme.radius.md,
+                backgroundColor: `${color}26`,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+              <Ionicons name={icon} size={19} color={color} />
+            </View>
+            <Pressable
+              onPress={onReviewed}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={row.isReviewed ? 'Mark unreviewed' : 'Mark reviewed'}
+              style={{
+                position: 'absolute',
+                right: -3,
+                bottom: -3,
+                width: 16,
+                height: 16,
+                borderRadius: 8,
+                backgroundColor: theme.colors.surface,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+              <Ionicons
+                name={row.isReviewed ? 'checkmark-circle' : 'ellipse-outline'}
+                size={15}
+                color={row.isReviewed ? theme.colors.positive : theme.colors.warning}
+              />
+            </Pressable>
           </View>
         ) : null}
         <View style={{ flex: 1, gap: 2 }}>
           <AppText variant="bodyMedium" numberOfLines={1}>
-            {row.merchant || row.description || row.categoryName || 'Transaction'}
+            {title}
           </AppText>
           <AppText variant="caption" tone="muted" numberOfLines={1}>
-            {subtitleParts.filter(Boolean).join(' · ')}
+            {metaParts.filter(Boolean).join(' · ')}
           </AppText>
+          {note ? (
+            <AppText variant="caption" tone="secondary" numberOfLines={1} style={{ fontStyle: 'italic' }}>
+              “{note}”
+            </AppText>
+          ) : null}
         </View>
-        <MoneyText amount={row.amount} variant="numericBody" tone={row.isTransfer ? 'neutral' : 'auto'} />
+        <View style={{ alignItems: 'flex-end', gap: 2 }}>
+          <MoneyText amount={row.amount} variant="numericBody" tone={row.isTransfer ? 'neutral' : 'auto'} />
+          {showDate ? (
+            <AppText variant="caption" tone="muted" style={{ fontSize: 11 }}>
+              {rowDateLabel(row.date, now)}
+            </AppText>
+          ) : null}
+        </View>
       </Pressable>
     </SwipeableRow>
+  );
+}
+
+/* --------------------------- View options sheet ---------------------------- */
+
+function ViewOptionsSheet({
+  visible,
+  onClose,
+  grouping,
+  onGroupingChange,
+  resolved,
+  statementGroups,
+  onStatementGroupsChange,
+  showIcons,
+  onShowIconsChange,
+  filterCount,
+  onOpenFilters,
+  onClearFilters,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  grouping: RecordsGrouping;
+  onGroupingChange: (grouping: RecordsGrouping) => void;
+  resolved: 'day' | 'week' | 'month';
+  statementGroups: boolean;
+  onStatementGroupsChange: (value: boolean) => void;
+  showIcons: boolean;
+  onShowIconsChange: (value: boolean) => void;
+  filterCount: number;
+  onOpenFilters: () => void;
+  onClearFilters: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <BottomSheet visible={visible} onClose={onClose} title="View options">
+      <View style={{ gap: theme.spacing.lg }}>
+        <View style={{ gap: theme.spacing.sm }}>
+          <AppText variant="captionMedium" tone="secondary">
+            Group by
+          </AppText>
+          <SegmentedControl
+            options={(['auto', 'day', 'week', 'month'] as RecordsGrouping[]).map((option) => ({
+              value: option,
+              label: RECORDS_GROUPING_LABELS[option],
+            }))}
+            value={grouping}
+            onChange={onGroupingChange}
+          />
+          <AppText variant="caption" tone="muted">
+            {grouping === 'auto'
+              ? `Automatic — currently grouped by ${resolved}.`
+              : `Showing ${resolved} groups.`}
+          </AppText>
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <AppText variant="bodySmall">Statement groups</AppText>
+            <AppText variant="caption" tone="muted">
+              Subtotal headers for each day, week or month.
+            </AppText>
+          </View>
+          <Switch
+            value={statementGroups}
+            onValueChange={onStatementGroupsChange}
+            trackColor={{ false: theme.colors.inputBackground, true: `${theme.colors.accent.base}88` }}
+            thumbColor={statementGroups ? theme.colors.accent.base : theme.colors.muted}
+          />
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <AppText variant="bodySmall">Category icons</AppText>
+            <AppText variant="caption" tone="muted">
+              Colour-coded icons with a review tick.
+            </AppText>
+          </View>
+          <Switch
+            value={showIcons}
+            onValueChange={onShowIconsChange}
+            trackColor={{ false: theme.colors.inputBackground, true: `${theme.colors.accent.base}88` }}
+            thumbColor={showIcons ? theme.colors.accent.base : theme.colors.muted}
+          />
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
+          <Button
+            label={filterCount > 0 ? `Filters · ${filterCount}` : 'Filters'}
+            variant="secondary"
+            onPress={onOpenFilters}
+            style={{ flex: 1 }}
+          />
+          {filterCount > 0 ? <Button label="Clear" variant="ghost" onPress={onClearFilters} /> : null}
+        </View>
+      </View>
+    </BottomSheet>
   );
 }
 

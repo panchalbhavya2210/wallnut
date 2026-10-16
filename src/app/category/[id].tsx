@@ -6,27 +6,30 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/theme/theme';
 import { Card, IconName, KeyValueRow, Row, ScrollScreen, ScreenHeader, SectionHeader } from '@/components/ui/layout';
 import { AppText, MoneyText } from '@/components/ui/text';
-import { Button, Chip, ProgressBar } from '@/components/ui/controls';
-import { DonutChart, LineChart } from '@/components/charts';
+import { ProgressBar } from '@/components/ui/controls';
+import { BarChart, DonutChart, LineChart } from '@/components/charts';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/feedback';
-import { PeriodChips } from '@/components/PeriodPicker';
+import { CustomRangeSheet, PeriodChips } from '@/components/PeriodPicker';
 import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
 import { useSettingsStore } from '@/stores/settings.store';
 import {
   getCategoryBreakdown,
+  getCategoryMonthlyTrends,
   getCategoryStats,
   getTopMerchants,
   getTrend,
 } from '@/services/analytics.service';
 import { listTransactions } from '@/services/transactions.service';
 import { getCategory } from '@/services/categories.service';
-import { formatDayMonth, getPeriodRange, previousRange, toISODate, type PeriodPreset } from '@/utils/date';
-import { formatPercent, percentageChange } from '@/utils/money';
+import { addMonths, formatDayMonth, formatMonthYear, getPeriodRange, toISODate, type DateRange, type PeriodPreset } from '@/utils/date';
+import { MonthCyclePicker } from '@/components/MonthCyclePicker';
+import { formatPercent } from '@/utils/money';
 
 /**
- * Category detail — spend, pace, subcategory split, merchant mix, trend and the
- * transactions behind the number. Every parent rolls up its children.
+ * Category detail — spend, pace, month-on-month history, subcategory split,
+ * merchant mix, trend and the transactions behind the number. Every parent
+ * rolls up its children.
  */
 export default function CategoryDetailScreen() {
   const theme = useTheme();
@@ -34,21 +37,38 @@ export default function CategoryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
   const [period, setPeriod] = useState<PeriodPreset>('thisMonth');
+  const [customRange, setCustomRange] = useState<DateRange | null>(null);
+  const [customOpen, setCustomOpen] = useState(false);
+  // 0 = the current cycle; >0 anchors the month-on-month card on a past cycle.
+  const [cycleOffset, setCycleOffset] = useState(0);
 
-  const range = useMemo(() => getPeriodRange(period, { monthStartDay }), [period, monthStartDay]);
+  // A custom From/To range (from the "Custom" chip) overrides the preset until
+  // another chip is picked — same contract as Analytics. The month-on-month
+  // card keeps its own cycle picker and is unaffected.
+  const range = useMemo(
+    () => (period === 'custom' && customRange ? customRange : getPeriodRange(period, { monthStartDay })),
+    [period, customRange, monthStartDay],
+  );
+
+  const anchor = useMemo(
+    () => (cycleOffset === 0 ? undefined : addMonths(new Date(), -cycleOffset)),
+    [cycleOffset],
+  );
 
   const query = useQuery(async () => {
     if (!id) return null;
-    const [category, breakdown, stats, merchants, trend, transactions] = await Promise.all([
+    const [category, breakdown, stats, merchants, trend, transactions, monthly] = await Promise.all([
       getCategory(id),
       getCategoryBreakdown({ range, categoryIds: [id] }),
       getCategoryStats({ range, categoryIds: [id] }),
       getTopMerchants({ range, categoryIds: [id] }, 6),
       getTrend({ range, categoryIds: [id] }, undefined, ['expense', 'refund']),
       listTransactions({ categoryIds: [id], from: undefined, limit: 40, includeRefunds: true, sort: 'date_desc' }),
+      // Month-on-month history is deliberately wider than the selected period.
+      getCategoryMonthlyTrends({ months: 12, monthStartDay, categoryIds: [id], anchor }),
     ]);
-    return { category, breakdown, stats, merchants, trend, transactions };
-  }, [id, range.start.getTime(), range.end.getTime()]);
+    return { category, breakdown, stats, merchants, trend, transactions, monthly };
+  }, [id, range.start.getTime(), range.end.getTime(), monthStartDay, cycleOffset]);
 
   if (query.loading) return <ScrollScreen><LoadingBlock label="Loading category…" /></ScrollScreen>;
   if (query.error || !query.data?.category) {
@@ -60,9 +80,11 @@ export default function CategoryDetailScreen() {
     );
   }
 
-  const { category, breakdown, stats, merchants, trend, transactions } = query.data;
-  const previous = previousRange(range);
-  const change = percentageChange(stats.total, stats.total - (breakdown.rows[0]?.previousTotal ?? 0) || 0);
+  const { category, breakdown, stats, merchants, trend, transactions, monthly } = query.data;
+
+  const monthlyRow = monthly.rows[0] ?? null;
+  const currentCycle = monthly.months[monthly.months.length - 1] ?? null;
+  const previousCycle = monthly.months[monthly.months.length - 2] ?? null;
 
   const periodTransactions = transactions.filter((row) => row.date >= toISODate(range.start) && row.date <= toISODate(range.end));
 
@@ -80,10 +102,25 @@ export default function CategoryDetailScreen() {
 
       <PeriodChips
         value={period}
-        onChange={setPeriod}
-        options={['7d', '30d', '3m', '6m', '1y', 'thisMonth', 'lastMonth']}
+        onChange={(next) => {
+          if (next === 'custom') {
+            setCustomOpen(true);
+            return;
+          }
+          setPeriod(next);
+        }}
+        options={['7d', '30d', '3m', '6m', '1y', 'thisMonth', 'lastMonth', 'custom']}
         style={{ marginBottom: theme.spacing.lg }}
       />
+      {period === 'custom' && customRange ? (
+        <Pressable
+          onPress={() => setCustomOpen(true)}
+          style={{ marginTop: -theme.spacing.sm, marginBottom: theme.spacing.md, alignSelf: 'flex-start' }}>
+          <AppText variant="captionMedium" tone="accent">
+            {formatMonthYear(customRange.start)} {customRange.start.getDate()} → {formatMonthYear(customRange.end)} {customRange.end.getDate()} · edit
+          </AppText>
+        </Pressable>
+      ) : null}
 
       <View style={{ gap: theme.spacing.lg }}>
         <Card>
@@ -116,6 +153,62 @@ export default function CategoryDetailScreen() {
             />
           </View>
         </Card>
+
+        {monthlyRow && monthlyRow.total > 0 ? (
+          <Card>
+            <SectionHeader
+              title="MONTH ON MONTH"
+              actionLabel="All categories"
+              onAction={() => router.push('/category-trends' as never)}
+            />
+            <MonthCyclePicker
+              monthStartDay={monthStartDay}
+              value={cycleOffset}
+              onChange={setCycleOffset}
+              label={currentCycle?.fullLabel ?? 'This cycle'}
+            />
+            <Row justify="space-between" align="flex-end" style={{ marginTop: theme.spacing.sm }}>
+              <AppText variant="numericLarge">{money.format(monthlyRow.current)}</AppText>
+              {monthlyRow.change !== null ? (
+                <Row gap="xs" align="center">
+                  <Ionicons
+                    name={monthlyRow.change > 0 ? 'arrow-up' : 'arrow-down'}
+                    size={12}
+                    color={monthlyRow.change > 0 ? theme.colors.negative : theme.colors.positive}
+                  />
+                  <AppText variant="captionMedium" tone={monthlyRow.change > 0 ? 'negative' : 'positive'}>
+                    {formatPercent(Math.abs(monthlyRow.change), 0)} vs {previousCycle?.label ?? 'last cycle'}
+                  </AppText>
+                </Row>
+              ) : (
+                <AppText variant="caption" tone="muted">
+                  no previous cycle
+                </AppText>
+              )}
+            </Row>
+            <View style={{ marginTop: theme.spacing.md, marginHorizontal: -8 }}>
+              <BarChart
+                points={monthly.months.map((bucket, index) => ({
+                  key: bucket.key,
+                  label: bucket.label,
+                  fullLabel: bucket.fullLabel,
+                  value: monthlyRow.totals[index] ?? 0,
+                }))}
+                height={132}
+                color={category.color}
+                compactLabels
+              />
+            </View>
+            <View style={{ marginTop: theme.spacing.sm }}>
+              <KeyValueRow
+                label={previousCycle ? `Previous · ${previousCycle.fullLabel}` : 'Previous cycle'}
+                value={money.format(monthlyRow.previous)}
+              />
+              <KeyValueRow label="Average per month" value={money.format(monthlyRow.average)} />
+              <KeyValueRow label="Transactions (12M)" value={String(monthlyRow.count)} />
+            </View>
+          </Card>
+        ) : null}
 
         {breakdown.rows[0]?.children.length ? (
           <Card>
@@ -239,6 +332,16 @@ export default function CategoryDetailScreen() {
           )}
         </View>
       </View>
+
+      <CustomRangeSheet
+        visible={customOpen}
+        onClose={() => setCustomOpen(false)}
+        value={customRange}
+        onApply={(next) => {
+          setCustomRange(next);
+          setPeriod('custom');
+        }}
+      />
     </ScrollScreen>
   );
 }

@@ -5,11 +5,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/theme/theme';
 import { AppText } from './ui/text';
 import { BottomSheet, DatePickerSheet } from './ui/sheets';
-import { Button, Chip } from './ui/controls';
+import { Button, Chip, SegmentedControl } from './ui/controls';
 import { Row } from './ui/layout';
 import {
   PERIOD_LABELS,
   eachDayInRange,
+  formatDayMonth,
   formatMonthYear,
   getPeriodRange,
   subDays,
@@ -17,6 +18,11 @@ import {
   type DateRange,
   type PeriodPreset,
 } from '@/utils/date';
+import {
+  RECORDS_GROUPING_LABELS,
+  resolveRecordsGrouping,
+  type RecordsGrouping,
+} from '@/utils/records';
 
 /** Period presets offered across the app (widgets, analytics, reports). */
 export const PERIOD_OPTIONS: PeriodPreset[] = ['7d', '30d', '3m', '6m', '1y', 'thisMonth', 'lastMonth', 'thisYear', 'all'];
@@ -65,6 +71,8 @@ export function shortPeriodLabel(preset: PeriodPreset): string {
       return '7D';
     case '30d':
       return '30D';
+    case '12w':
+      return '12W';
     case '3m':
       return '3M';
     case '6m':
@@ -165,11 +173,113 @@ export function PeriodSheet({
   );
 }
 
+/** The five thumb-sized presets the Records screen shows first. */
+export const RECORDS_PERIOD_OPTIONS: PeriodPreset[] = ['7d', '30d', '12w', '6m', '1y'];
+/** Everything else the statement view can be asked for. */
+export const RECORDS_EXTRA_PERIODS: PeriodPreset[] = ['3m', 'thisMonth', 'lastMonth', 'thisYear', 'all'];
+
+/**
+ * Statement-style period sheet: a segmented control for the common windows plus
+ * chips for the rest, a live range preview, and the grouping switch. Used by the
+ * Records (transactions) screen.
+ */
+export function CompactPeriodSheet({
+  visible,
+  onClose,
+  value,
+  onChange,
+  monthStartDay,
+  grouping,
+  onGroupingChange,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  value: PeriodPreset;
+  onChange: (preset: PeriodPreset) => void;
+  monthStartDay: number;
+  grouping: RecordsGrouping;
+  onGroupingChange: (grouping: RecordsGrouping) => void;
+}) {
+  const theme = useTheme();
+  const segmentedValue = RECORDS_PERIOD_OPTIONS.includes(value) ? value : RECORDS_EXTRA_PERIODS.includes(value) ? value : '30d';
+  const range = useMemo(() => getPeriodRange(value, { monthStartDay }), [value, monthStartDay]);
+  const days = useMemo(() => eachDayInRange(range).length, [range]);
+
+  return (
+    <BottomSheet visible={visible} onClose={onClose} title="Records">
+      <View style={{ gap: theme.spacing.lg }}>
+        <SegmentedControl
+          options={RECORDS_PERIOD_OPTIONS.map((preset) => ({ value: preset, label: shortPeriodLabel(preset) }))}
+          value={segmentedValue}
+          onChange={(preset) => {
+            onChange(preset);
+            onClose();
+          }}
+        />
+
+        <View style={{ flexDirection: 'row', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
+          {RECORDS_EXTRA_PERIODS.map((preset) => (
+            <Chip
+              key={preset}
+              label={shortPeriodLabel(preset)}
+              selected={value === preset}
+              onPress={() => {
+                onChange(preset);
+                onClose();
+              }}
+            />
+          ))}
+        </View>
+
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingVertical: theme.spacing.md,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderColor: theme.colors.border,
+          }}>
+          <View style={{ gap: 2 }}>
+            <AppText variant="captionMedium" tone="secondary">
+              {PERIOD_LABELS[value]}
+            </AppText>
+            <AppText variant="caption" tone="muted">
+              {formatDayMonth(range.start)} – {formatDayMonth(range.end)} · {days} day{days === 1 ? '' : 's'}
+            </AppText>
+          </View>
+          <AppText variant="caption" tone="muted">
+            {groupingLabel(resolveRecordsGrouping(value, grouping))}
+          </AppText>
+        </View>
+
+        <View style={{ gap: theme.spacing.sm }}>
+          <AppText variant="captionMedium" tone="secondary">
+            Group by
+          </AppText>
+          <SegmentedControl
+            options={(['auto', 'day', 'week', 'month'] as RecordsGrouping[]).map((option) => ({
+              value: option,
+              label: RECORDS_GROUPING_LABELS[option],
+            }))}
+            value={grouping}
+            onChange={onGroupingChange}
+          />
+        </View>
+      </View>
+    </BottomSheet>
+  );
+}
+
+function groupingLabel(grouping: 'day' | 'week' | 'month'): string {
+  return grouping === 'day' ? 'Grouped by day' : grouping === 'week' ? 'Grouped by week' : 'Grouped by month';
+}
+
 /**
  * From/To range picker. Analytics and reports treat the result as the active
  * period until another preset is chosen, so every chart follows one range.
- */
-export function CustomRangeSheet({
+ */export function CustomRangeSheet({
   visible,
   onClose,
   value,
