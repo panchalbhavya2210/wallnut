@@ -39,3 +39,10 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## Project context (read first)
+
+- **Read `TASKS.md` before doing anything.** It carries the architecture map, current status, verification commands and the hard-won gotchas (Metro worker chunking, expo-sqlite web sync bridge, COOP/COEP headers, migration bookkeeping). Keep it updated as work lands — it is the handoff document between sessions.
+- Verify UI changes with `node scripts/verify-web.mjs <url> <name> <width> <height> "<waitForText>"` — headless Chrome that writes `screenshots/<name>.png`, dumps the DOM to `.expo/verify/`, and prints console errors plus the app's own `[boot]` timing logs.
+- Serve the web build with `node scripts/serve-web.mjs 8081` (isolation headers are required by expo-sqlite); never override Metro's middleware or Babel transformer — migrations are inlined by `scripts/build-migrations.mjs` instead.
+

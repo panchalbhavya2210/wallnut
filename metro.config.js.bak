@@ -1,0 +1,25 @@
+// Wallnut — Metro configuration
+// - supports .wasm assets (expo-sqlite on web runs on wa-sqlite compiled to wasm)
+// - sets COOP/COEP headers so the browser can use SharedArrayBuffer (required for
+//   persistent SQLite on web; without them expo-sqlite falls back to memory).
+// The default Babel transformer is deliberately left untouched: overriding it
+// breaks expo-sqlite's web worker chunking.
+const { getDefaultConfig } = require('expo/metro-config');
+
+/** @type {import('expo/metro-config').MetroConfig} */
+const config = getDefaultConfig(__dirname);
+
+config.resolver.assetExts.push('wasm');
+
+config.server = {
+  ...config.server,
+  enhanceMiddleware: (middleware) => {
+    return (req, res, next) => {
+      res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+      return middleware(req, res, next);
+    };
+  },
+};
+
+module.exports = config;
