@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
@@ -11,9 +11,11 @@ import type { IconName } from './layout';
 /**
  * Swipeable list row: swipe right → primary action (edit / approve),
  * swipe left past the threshold → destructive action (delete).
- * Long-press is handled by the child (multi-select).
+ *
+ * Long-press belongs to the child row (multi-select) — it must NOT be wired
+ * through here too: two competing long-press recognizers (gesture-handler +
+ * the row's own Pressable) made long-press flaky and double-fired on Android.
  */
-
 export interface SwipeAction {
   icon: IconName;
   label: string;
@@ -22,12 +24,13 @@ export interface SwipeAction {
   onTrigger: () => void;
 }
 
+const ACTION_WIDTH = 88;
+
 export function SwipeableRow({
   children,
   leftAction,
   rightAction,
   enabled = true,
-  onLongPress,
 }: {
   children: React.ReactNode;
   /** Revealed when swiping right. */
@@ -35,43 +38,53 @@ export function SwipeableRow({
   /** Revealed when swiping left (usually delete). */
   rightAction?: SwipeAction;
   enabled?: boolean;
-  onLongPress?: () => void;
 }) {
   const theme = useTheme();
   const translateX = useSharedValue(0);
   const startX = useSharedValue(0);
-  const ACTION_WIDTH = 88;
+
+  // Actions are inline props; refs keep the gesture object stable so a list of
+  // rows does not rebuild a Pan recognizer on every render.
+  const actionsRef = useRef({ leftAction, rightAction });
+  useEffect(() => {
+    actionsRef.current = { leftAction, rightAction };
+  });
 
   const trigger = useCallback(
-    (action: SwipeAction) => {
+    (direction: 'left' | 'right') => {
       translateX.value = withTiming(0, { duration: theme.motion.fast });
-      action.onTrigger();
+      const action = direction === 'left' ? actionsRef.current.leftAction : actionsRef.current.rightAction;
+      action?.onTrigger();
     },
     [translateX, theme.motion.fast],
   );
 
-  const pan = Gesture.Pan()
-    .enabled(enabled)
-    .activeOffsetX([-14, 14])
-    .failOffsetY([-12, 12])
-    .onBegin(() => {
-      startX.value = translateX.value;
-    })
-    .onUpdate((event) => {
-      const next = startX.value + event.translationX;
-      const max = ACTION_WIDTH * 1.15;
-      translateX.value = Math.max(-max, Math.min(max, next));
-    })
-    .onEnd((event) => {
-      const offset = event.translationX;
-      if (offset > ACTION_WIDTH * 0.7 && leftAction) {
-        runOnJS(trigger)(leftAction);
-      } else if (offset < -ACTION_WIDTH * 0.7 && rightAction) {
-        runOnJS(trigger)(rightAction);
-      } else {
-        translateX.value = withSpring(0, { damping: 24, stiffness: 260 });
-      }
-    });
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(enabled)
+        .activeOffsetX([-14, 14])
+        .failOffsetY([-12, 12])
+        .onBegin(() => {
+          startX.value = translateX.value;
+        })
+        .onUpdate((event) => {
+          const next = startX.value + event.translationX;
+          const max = ACTION_WIDTH * 1.15;
+          translateX.value = Math.max(-max, Math.min(max, next));
+        })
+        .onEnd((event) => {
+          const offset = event.translationX;
+          if (offset > ACTION_WIDTH * 0.7 && actionsRef.current.leftAction) {
+            runOnJS(trigger)('left');
+          } else if (offset < -ACTION_WIDTH * 0.7 && actionsRef.current.rightAction) {
+            runOnJS(trigger)('right');
+          } else {
+            translateX.value = withSpring(0, { damping: 24, stiffness: 260 });
+          }
+        }),
+    [enabled, translateX, startX, trigger],
+  );
 
   const rowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.value }] }));
 
@@ -106,19 +119,8 @@ export function SwipeableRow({
         </View>
       ) : null}
       <GestureDetector gesture={pan}>
-        <Animated.View style={[{ backgroundColor: theme.colors.background }, rowStyle]}>
-          <LongPressable onLongPress={onLongPress}>{children}</LongPressable>
-        </Animated.View>
+        <Animated.View style={[{ backgroundColor: theme.colors.background }, rowStyle]}>{children}</Animated.View>
       </GestureDetector>
     </View>
-  );
-}
-
-function LongPressable({ children, onLongPress }: { children: React.ReactNode; onLongPress?: () => void }) {
-  if (!onLongPress) return <>{children}</>;
-  return (
-    <GestureDetector gesture={Gesture.LongPress().minDuration(320).onStart(() => runOnJS(onLongPress)())}>
-      <View>{children}</View>
-    </GestureDetector>
   );
 }

@@ -11,46 +11,57 @@ export interface QueryResult<T> {
 
 /**
  * Runs an async database query and re-runs it whenever the database revision
- * changes (any write anywhere in the app bumps it), when deps change, or on
- * manual refresh. The database stays the source of truth — screens never hold
+ * changes (any write anywhere in the app), when deps change, or on manual
+ * refresh. The database stays the source of truth — screens never hold
  * copies of the ledger.
+ *
+ * Stale-while-revalidate: once a query has data, a re-run never flips
+ * `loading` back on. Screens keep rendering the previous result (no loading
+ * flicker, no layout jump) until the fresh rows arrive, which is what makes a
+ * write feel instant instead of rebuilding every card on screen.
  */
 export function useQuery<T>(fn: () => Promise<T>, deps: unknown[] = []): QueryResult<T> {
   const revision = useDbStore((state) => state.revision);
-  const [state, setState] = useState<{ data: T | null; loading: boolean; error: Error | null }>({
+  const [state, setState] = useState<{ data: T | null; error: Error | null; resolved: boolean }>({
     data: null,
-    loading: true,
     error: null,
+    resolved: false,
   });
   const [manual, setManual] = useState(0);
+  const requestRef = useRef(0);
 
   const fnRef = useRef(fn);
-  fnRef.current = fn;
+  // Keep the latest callback without touching a ref during render.
+  useEffect(() => {
+    fnRef.current = fn;
+  });
 
   useEffect(() => {
-    let cancelled = false;
-    setState((previous) => ({ ...previous, loading: true, error: null }));
+    const request = ++requestRef.current;
     fnRef
       .current()
       .then((data) => {
-        if (!cancelled) setState({ data, loading: false, error: null });
+        if (requestRef.current === request) setState({ data, error: null, resolved: true });
       })
       .catch((error: unknown) => {
-        if (!cancelled) {
-          const normalised = error instanceof Error ? error : new Error(String(error));
-          // Surfaced for debugging; the UI shows friendly messages.
-          console.warn('[query] failed:', normalised.message);
-          setState({ data: null, loading: false, error: normalised });
-        }
+        if (requestRef.current !== request) return;
+        const normalised = error instanceof Error ? error : new Error(String(error));
+        // Surfaced for debugging; the UI shows friendly messages.
+        console.warn('[query] failed:', normalised.message);
+        setState((previous) => ({ data: previous.data, error: normalised, resolved: true }));
       });
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision, manual, ...deps]);
 
   const refresh = useCallback(() => setManual((value) => value + 1), []);
-  return { ...state, refresh };
+  // Loading is derived: only the first, not-yet-resolved pass shows it. A
+  // re-run keeps the previous data on screen (and `null` is a real result).
+  return {
+    data: state.data,
+    loading: !state.resolved && state.error === null,
+    error: state.error,
+    refresh,
+  };
 }
 
 /** Debounces a rapidly-changing value (search inputs). */

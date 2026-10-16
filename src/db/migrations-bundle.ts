@@ -75,6 +75,13 @@ export const migrationJournal = {
       "when": 1791388990284,
       "tag": "0009_dashing_madame_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792151535043,
+      "tag": "0010_nervous_rockslide",
+      "breakpoints": true
     }
   ]
 } as const;
@@ -101,6 +108,8 @@ export const migrationSql: Record<string, string> = {
   'm0008': "CREATE TABLE `shared_expense_items` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`expense_id` text NOT NULL,\n\t`name` text NOT NULL,\n\t`amount` integer NOT NULL,\n\t`sort_order` integer DEFAULT 0 NOT NULL\n);\n--> statement-breakpoint\nCREATE INDEX `shared_expense_items_expense_idx` ON `shared_expense_items` (`expense_id`);--> statement-breakpoint\n-- Backfill: every existing shared expense becomes a single-item record.\nINSERT INTO `shared_expense_items` (\"id\", \"expense_id\", \"name\", \"amount\", \"sort_order\")\nSELECT 'shi_' || lower(hex(randomblob(9))), \"id\", \"title\", \"amount\", 0 FROM `shared_expenses`;",
   // 0009_dashing_madame_hydra
   'm0009': "CREATE TABLE `widget_snapshots` (\n\t`key` text PRIMARY KEY NOT NULL,\n\t`json` text NOT NULL,\n\t`updated_at` integer NOT NULL\n);\n",
+  // 0010_nervous_rockslide
+  'm0010': "CREATE TABLE `import_batches` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`source` text NOT NULL,\n\t`file_name` text,\n\t`account_id` text NOT NULL,\n\t`default_category_id` text,\n\t`status` text DEFAULT 'staged' NOT NULL,\n\t`total_rows` integer DEFAULT 0 NOT NULL,\n\t`confirmed_rows` integer DEFAULT 0 NOT NULL,\n\t`skipped_rows` integer DEFAULT 0 NOT NULL,\n\t`duplicate_rows` integer DEFAULT 0 NOT NULL,\n\t`invalid_rows` integer DEFAULT 0 NOT NULL,\n\t`created_at` integer NOT NULL,\n\t`updated_at` integer NOT NULL,\n\t`committed_at` integer\n);\n--> statement-breakpoint\nCREATE INDEX `import_batches_status_idx` ON `import_batches` (`status`);--> statement-breakpoint\nCREATE TABLE `import_drafts` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`batch_id` text NOT NULL,\n\t`source_row` integer NOT NULL,\n\t`date` text,\n\t`amount` integer,\n\t`type` text DEFAULT 'expense' NOT NULL,\n\t`merchant` text,\n\t`description` text,\n\t`raw_description` text,\n\t`account_id` text,\n\t`category_id` text,\n\t`category_source` text,\n\t`suggested_category_id` text,\n\t`suggested_rule_name` text,\n\t`reference` text,\n\t`notes` text,\n\t`fingerprint` text,\n\t`duplicate_of` text,\n\t`errors` text DEFAULT '[]' NOT NULL,\n\t`status` text DEFAULT 'pending' NOT NULL,\n\t`transaction_id` text,\n\t`created_at` integer NOT NULL,\n\t`updated_at` integer NOT NULL\n);\n--> statement-breakpoint\nCREATE INDEX `import_drafts_batch_idx` ON `import_drafts` (`batch_id`);--> statement-breakpoint\nCREATE INDEX `import_drafts_status_idx` ON `import_drafts` (`status`);--> statement-breakpoint\nALTER TABLE `rules` ADD `mode` text DEFAULT 'apply' NOT NULL;--> statement-breakpoint\nALTER TABLE `transactions` ADD `capture_source` text DEFAULT 'manual' NOT NULL;--> statement-breakpoint\nALTER TABLE `transactions` ADD `import_batch_id` text;--> statement-breakpoint\nCREATE INDEX `transactions_import_batch_idx` ON `transactions` (`import_batch_id`);",
 };
 
 export default { journal: migrationJournal, migrations: migrationSql };

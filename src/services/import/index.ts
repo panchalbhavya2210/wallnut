@@ -11,6 +11,7 @@ import { toISODate } from '@/utils/date';
 import {
   applyImportRules,
   buildFingerprints,
+  captureSourceFor,
   enrichDrafts,
   normalizeRecords,
   toTransactionRows,
@@ -20,6 +21,7 @@ import {
   type ImportPreview,
   type ImportRuleContext,
   type ImportSource,
+  type ImportSourceId,
   type PreviewItem,
   type RawRecord,
 } from './pipeline';
@@ -59,11 +61,15 @@ export interface ImportContext {
   mapping: ImportMapping;
   accountId: string;
   defaultCategoryId?: string | null;
+  /** Origin of the file — recorded on written rows. Defaults to CSV. */
+  source?: ImportSourceId;
 }
+
+export { captureSourceFor } from './pipeline';
 
 /** Loads the local rule context once per import (rules + aliases + review pref). */
 async function loadRuleContext(accountId: string): Promise<ImportRuleContext> {
-  const [rules, aliases] = await Promise.all([loadEnabledRules(), listMerchantAliases()]);
+  const [rules, aliases] = await Promise.all([loadEnabledRules('all'), listMerchantAliases()]);
   const autoReview = useSettingsStore.getState().transactions.autoReviewImports;
   return { accountId, rules, aliases, autoReview };
 }
@@ -165,6 +171,8 @@ export async function commitImport(
       accountId: context.accountId,
       categoryIdByName,
       defaultCategoryId: context.defaultCategoryId ?? null,
+      captureSource: captureSourceFor(context.source),
+      importBatchId: null,
     },
   );
 

@@ -1,4 +1,5 @@
 import { listInboxDismissals } from '@/services/dismissals.service';
+import { listStagedImportBatches } from '@/services/import/staging.service';
 import {
   createRecurringFromCandidate,
   detectRecurringCandidates,
@@ -42,7 +43,7 @@ export async function addRecurringFromInbox(candidate: RecurringCandidate): Prom
 }
 
 export async function getInbox(): Promise<InboxItem[]> {
-  const [review, candidates, upcoming, goals, balances, sharedExpenses, dismissals] = await Promise.all([
+  const [review, candidates, upcoming, goals, balances, sharedExpenses, dismissals, stagedImports] = await Promise.all([
     getReviewQueue(120),
     detectRecurringCandidates(),
     getUpcoming(60),
@@ -50,10 +51,29 @@ export async function getInbox(): Promise<InboxItem[]> {
     getSharedBalances(),
     listSharedExpenses(),
     listInboxDismissals(),
+    listStagedImportBatches(),
   ]);
 
   const today = new Date();
   const items: InboxItem[] = [];
+
+  /* ------------------------- Staged statement imports ------------------------- */
+  for (const batch of stagedImports) {
+    const label = batch.fileName || `${batch.source.toUpperCase()} statement`;
+    items.push({
+      id: `import_review:${batch.id}`,
+      kind: 'import_review',
+      priority: 'action',
+      title: `Review ${label}`,
+      detail: `${batch.pending} of ${batch.totalRows} row${batch.totalRows === 1 ? '' : 's'} waiting · nothing is in your ledger yet`,
+      amount: null,
+      date: toISODate(new Date(batch.createdAt)),
+      icon: 'cloud-upload-outline',
+      href: `/import/${batch.id}`,
+      refKey: batch.id,
+      actions: ['open', 'dismiss'],
+    });
+  }
 
   /* ------------------------- Transactions (review queue) ------------------------ */
   for (const entry of review) {

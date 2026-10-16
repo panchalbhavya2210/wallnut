@@ -39,6 +39,8 @@ export interface RuleInput {
   conditions: import('@/utils/rules').RuleCondition[];
   actions: import('@/utils/rules').RuleAction[];
   isEnabled?: boolean;
+  /** 'apply' writes silently; 'suggest' only proposes (merchant memory). */
+  mode?: 'apply' | 'suggest';
 }
 
 /* ------------------------------- CRUD ------------------------------------- */
@@ -61,6 +63,7 @@ export async function createRule(input: RuleInput): Promise<Rule> {
     name: input.name.trim(),
     isEnabled: input.isEnabled ?? true,
     matchType: input.matchType ?? 'all',
+    mode: input.mode ?? 'apply',
     conditions: JSON.stringify(input.conditions),
     actions: JSON.stringify(input.actions),
     sortOrder: existing.length,
@@ -83,6 +86,7 @@ export async function updateRule(id: string, patch: Partial<RuleInput> & { sortO
       name: patch.name?.trim() ?? current.name,
       isEnabled: patch.isEnabled ?? current.isEnabled,
       matchType: patch.matchType ?? current.matchType,
+      mode: patch.mode ?? current.mode,
       conditions: patch.conditions ? JSON.stringify(patch.conditions) : current.conditions,
       actions: patch.actions ? JSON.stringify(patch.actions) : current.actions,
       sortOrder: patch.sortOrder ?? current.sortOrder,
@@ -98,9 +102,16 @@ export async function deleteRule(id: string): Promise<void> {
   notifyDbChanged();
 }
 
-export async function loadEnabledRules(): Promise<Rule[]> {
+/**
+ * Enabled rules, filtered by behaviour. 'apply' is the default: anything that
+ * writes silently (manual entry, edits, imports) must never run a *suggest*
+ * rule — suggestions only surface in the import review screen.
+ */
+export async function loadEnabledRules(mode: 'apply' | 'suggest' | 'all' = 'apply'): Promise<Rule[]> {
   const all = await listRules();
-  return all.filter((rule) => rule.isEnabled);
+  const enabled = all.filter((rule) => rule.isEnabled);
+  if (mode === 'all') return enabled;
+  return enabled.filter((rule) => (rule.mode === 'suggest' ? 'suggest' : 'apply') === mode);
 }
 
 /** Bulk delete helper used by the rules screen. */

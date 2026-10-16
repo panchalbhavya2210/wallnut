@@ -51,6 +51,8 @@ export interface DashboardSettings {
   safeToSpendPlaced: boolean;
   /** One-time marker: the Category Trends (month-on-month) card has been placed. */
   categoryTrendsPlaced: boolean;
+  /** One-time marker: the Quick Actions row has been placed. */
+  quickActionsPlaced: boolean;
 }
 
 export interface FinanceSettings {
@@ -190,6 +192,7 @@ export const DEFAULT_SETTINGS: SettingsGroups = {
     showInsights: true,
     safeToSpendPlaced: false,
     categoryTrendsPlaced: false,
+    quickActionsPlaced: false,
   },
   finance: {
     defaultAccountId: null,

@@ -5,6 +5,7 @@ import { useNavigation } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
 import { useSettingsStore } from '@/stores/settings.store';
+import { toast } from '@/stores/ui.store';
 
 /**
  * The menu button: fixed at the top-right of every primary screen, it opens the
@@ -32,7 +33,14 @@ export function HeaderMenuButton({ size = 20, compact }: { size?: number; compac
   return (
     <Pressable
       onPress={open}
-      onLongPress={() => updateSettings('security', { hideAmounts: !hideAmounts })}
+      onLongPress={() => {
+        // Privacy mode lives on this button because the eye used to clutter the
+        // hero. The toast makes the gesture discoverable (and never a mystery).
+        const next = !hideAmounts;
+        updateSettings('security', { hideAmounts: next });
+        toast.show(next ? 'Amounts hidden — long-press again to show' : 'Amounts visible again');
+      }}
+      delayLongPress={280}
       hitSlop={6}
       accessibilityRole="button"
       accessibilityLabel={hideAmounts ? 'Open menu. Amounts are hidden' : 'Open menu'}

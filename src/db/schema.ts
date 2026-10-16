@@ -151,6 +151,14 @@ export const transactions = sqliteTable(
     installmentId: text('installment_id'),
     fingerprint: text('fingerprint'),
     isReviewed: integer('is_reviewed', { mode: 'boolean' }).notNull().default(false),
+    /** Where the row came from: manual | csv | json | ofx | pdf | sms | notification | widget | ai. */
+    captureSource: text('capture_source', {
+      enum: ['manual', 'csv', 'json', 'ofx', 'pdf', 'sms', 'notification', 'widget', 'ai'],
+    })
+      .notNull()
+      .default('manual'),
+    /** Import batch that produced this row (null for manual entry). */
+    importBatchId: text('import_batch_id'),
     createdAt: integer('created_at', { mode: 'number' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
   },
@@ -162,6 +170,83 @@ export const transactions = sqliteTable(
     index('transactions_merchant_idx').on(table.merchant),
     index('transactions_fingerprint_idx').on(table.fingerprint),
     index('transactions_transfer_account_idx').on(table.transferAccountId),
+    index('transactions_import_batch_idx').on(table.importBatchId),
+  ],
+);
+
+/* --------------------------- Statement import staging ----------------------- */
+
+/**
+ * Statement imports never write to the ledger directly. A file first becomes a
+ * batch of staged drafts; the user reviews them and confirms what belongs in
+ * the ledger. Drafts are the only place raw statement text lives, and deleting
+ * a batch (abandon) removes it completely.
+ */
+export const importBatches = sqliteTable(
+  'import_batches',
+  {
+    id: text('id').primaryKey(),
+    source: text('source', { enum: ['csv', 'json', 'ofx', 'pdf', 'sms', 'xlsx'] }).notNull(),
+    fileName: text('file_name'),
+    /** Destination account; individual drafts may override. */
+    accountId: text('account_id').notNull(),
+    defaultCategoryId: text('default_category_id'),
+    status: text('status', { enum: ['staged', 'committed', 'abandoned'] }).notNull().default('staged'),
+    totalRows: integer('total_rows', { mode: 'number' }).notNull().default(0),
+    confirmedRows: integer('confirmed_rows', { mode: 'number' }).notNull().default(0),
+    skippedRows: integer('skipped_rows', { mode: 'number' }).notNull().default(0),
+    duplicateRows: integer('duplicate_rows', { mode: 'number' }).notNull().default(0),
+    invalidRows: integer('invalid_rows', { mode: 'number' }).notNull().default(0),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+    committedAt: integer('committed_at', { mode: 'number' }),
+  },
+  (table) => [index('import_batches_status_idx').on(table.status)],
+);
+
+export const importDrafts = sqliteTable(
+  'import_drafts',
+  {
+    id: text('id').primaryKey(),
+    batchId: text('batch_id').notNull(),
+    sourceRow: integer('source_row', { mode: 'number' }).notNull(),
+    date: text('date'),
+    /** Signed integer minor units exactly as the statement showed them. */
+    amount: integer('amount', { mode: 'number' }),
+    type: text('type', {
+      enum: ['expense', 'income', 'transfer', 'refund', 'adjustment'],
+    })
+      .notNull()
+      .default('expense'),
+    merchant: text('merchant'),
+    description: text('description'),
+    /** The statement's raw text, kept for the review card. */
+    rawDescription: text('raw_description'),
+    /** Destination account (batch default unless a rule rerouted the row). */
+    accountId: text('account_id'),
+    /** The category that will be written; chosen or applied by rules. */
+    categoryId: text('category_id'),
+    categorySource: text('category_source', { enum: ['rule', 'statement', 'manual', 'suggestion'] }),
+    /** Suggest-mode rule output: shown and preselected, never applied silently. */
+    suggestedCategoryId: text('suggested_category_id'),
+    suggestedRuleName: text('suggested_rule_name'),
+    reference: text('reference'),
+    notes: text('notes'),
+    fingerprint: text('fingerprint'),
+    /** Fingerprint match: 'existing' or "row N" within the same file. */
+    duplicateOf: text('duplicate_of'),
+    /** Validation errors (JSON array of strings); invalid rows stay reviewable. */
+    errors: text('errors').notNull().default('[]'),
+    status: text('status', { enum: ['pending', 'confirmed', 'skipped'] })
+      .notNull()
+      .default('pending'),
+    transactionId: text('transaction_id'),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+  },
+  (table) => [
+    index('import_drafts_batch_idx').on(table.batchId),
+    index('import_drafts_status_idx').on(table.status),
   ],
 );
 
@@ -329,6 +414,12 @@ export const rules = sqliteTable(
     isEnabled: integer('is_enabled', { mode: 'boolean' }).notNull().default(true),
     /** 'all' = AND, 'any' = OR. */
     matchType: text('match_type', { enum: ['all', 'any'] }).notNull().default('all'),
+    /**
+     * 'apply' writes the action silently (classic rules). 'suggest' only
+     * preselected-and-explains in imports (merchant memory): learned rules start
+     * as suggestions and the user opts in to auto-apply per rule.
+     */
+    mode: text('mode', { enum: ['apply', 'suggest'] }).notNull().default('apply'),
     conditions: text('conditions').notNull().default('[]'),
     actions: text('actions').notNull().default('[]'),
     sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
@@ -794,6 +885,8 @@ export type Category = typeof categories.$inferSelect;
 export type NewCategory = typeof categories.$inferInsert;
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
+export type ImportBatch = typeof importBatches.$inferSelect;
+export type ImportDraft = typeof importDrafts.$inferSelect;
 export type TransactionSplit = typeof transactionSplits.$inferSelect;
 export type Budget = typeof budgets.$inferSelect;
 export type NewBudget = typeof budgets.$inferInsert;

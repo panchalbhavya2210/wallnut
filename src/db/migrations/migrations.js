@@ -11,6 +11,7 @@ import m0006 from './0006_fat_redwing.sql';
 import m0007 from './0007_colorful_vin_gonzales.sql';
 import m0008 from './0008_fine_jackal.sql';
 import m0009 from './0009_dashing_madame_hydra.sql';
+import m0010 from './0010_nervous_rockslide.sql';
 
   export default {
     journal,
@@ -24,7 +25,8 @@ m0005,
 m0006,
 m0007,
 m0008,
-m0009
+m0009,
+m0010
     }
   }
   

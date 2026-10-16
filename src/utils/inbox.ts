@@ -25,7 +25,7 @@ export const INBOX_PRIORITY_LABELS: Record<InboxPriority, string> = {
   info: 'Information',
 };
 
-export type InboxKind = 'transaction' | 'recurring_candidate' | 'upcoming' | 'goal_complete' | 'shared_balance';
+export type InboxKind = 'transaction' | 'recurring_candidate' | 'upcoming' | 'goal_complete' | 'shared_balance' | 'import_review';
 
 export type InboxActionKind =
   | 'open_transaction'

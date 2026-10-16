@@ -185,7 +185,7 @@ export interface LineChartProps {
   onDark?: boolean;
 }
 
-export function LineChart({
+export const LineChart = React.memo(function LineChart({
   points,
   height = 170,
   color,
@@ -407,7 +407,7 @@ export function LineChart({
       </View>
     </Animated.View>
   );
-}
+});
 
 /* -------------------------------- Bar chart -------------------------------- */
 
@@ -422,7 +422,7 @@ export interface BarChartProps {
   compactLabels?: boolean;
 }
 
-export function BarChart({
+export const BarChart = React.memo(function BarChart({
   points,
   secondary,
   height = 160,
@@ -434,6 +434,7 @@ export function BarChart({
 }: BarChartProps) {
   const theme = useTheme();
   const money = useMoney();
+  const gradientId = useId().replace(/[^a-zA-Z0-9]/g, '');
   const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const selectedRef = useRef<number | null>(null);
@@ -493,6 +494,16 @@ export function BarChart({
           <GestureDetector gesture={gesture} touchAction="pan-y">
             <View style={{ width, height }}>
               <Svg width={width} height={height}>
+                <Defs>
+                  <LinearGradient id={`bar-p-${gradientId}`} x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={primary} stopOpacity="1" />
+                    <Stop offset="1" stopColor={primary} stopOpacity="0.55" />
+                  </LinearGradient>
+                  <LinearGradient id={`bar-s-${gradientId}`} x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={secondaryFill} stopOpacity="0.95" />
+                    <Stop offset="1" stopColor={secondaryFill} stopOpacity="0.45" />
+                  </LinearGradient>
+                </Defs>
                 {[0, 0.5, 1].map((ratio) => {
                   const y = padding.top + innerHeight * ratio;
                   return (
@@ -523,8 +534,8 @@ export function BarChart({
                         width={barWidth}
                         height={primaryHeight}
                         rx={Math.min(5, barWidth / 2)}
-                        fill={primary}
-                        opacity={dim ? 0.45 : isSelected ? 1 : 0.92}
+                        fill={`url(#bar-p-${gradientId})`}
+                        opacity={dim ? 0.45 : isSelected ? 1 : 0.94}
                       />
                       {secondary ? (
                         <Rect
@@ -533,8 +544,8 @@ export function BarChart({
                           width={barWidth}
                           height={secondaryHeight}
                           rx={Math.min(5, barWidth / 2)}
-                          fill={secondaryFill}
-                          opacity={dim ? 0.4 : 0.88}
+                          fill={`url(#bar-s-${gradientId})`}
+                          opacity={dim ? 0.4 : 0.9}
                         />
                       ) : null}
                       {index % labelStep === 0 || index === points.length - 1 ? (
@@ -570,7 +581,7 @@ export function BarChart({
       </View>
     </Animated.View>
   );
-}
+});
 
 /* -------------------------------- Donut chart ------------------------------ */
 
@@ -581,7 +592,7 @@ export interface DonutSlice {
   color: string;
 }
 
-export function DonutChart({
+export const DonutChart = React.memo(function DonutChart({
   slices,
   size = 168,
   thickness = 22,
@@ -618,6 +629,9 @@ export function DonutChart({
             ? slices.map((slice) => {
                 const fraction = Math.max(0, slice.value) / total;
                 const dash = fraction * circumference;
+                // A small gap plus round caps reads as separate "petals" even
+                // when two slices are adjacent; tiny slices still render a cap.
+                const gap = Math.min(6, dash * 0.35);
                 const element = (
                   <Circle
                     key={slice.id}
@@ -626,9 +640,9 @@ export function DonutChart({
                     r={radius}
                     stroke={slice.color}
                     strokeWidth={thickness}
-                    strokeDasharray={`${Math.max(0, dash - 2.5)} ${circumference}`}
+                    strokeDasharray={`${Math.max(0.5, dash - gap)} ${circumference}`}
                     strokeDashoffset={-offset}
-                    strokeLinecap="butt"
+                    strokeLinecap="round"
                     fill="none"
                     onPress={onSlicePress ? () => onSlicePress(slice) : undefined}
                   />
@@ -649,11 +663,11 @@ export function DonutChart({
       </View>
     </View>
   );
-}
+});
 
 /* --------------------------------- Sparkline -------------------------------- */
 
-export function Sparkline({
+export const Sparkline = React.memo(function Sparkline({
   values,
   width = 96,
   height = 30,
@@ -681,7 +695,7 @@ export function Sparkline({
       <Path d={buildSmoothPath(coords)} fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeLinecap="round" />
     </Svg>
   );
-}
+});
 
 /* ------------------------------ Flow bars ----------------------------------- */
 
@@ -697,7 +711,7 @@ export interface FlowItem {
  * A stable, readable alternative to a Sankey diagram: one source total
  * distributing into proportional bars with connecting rails.
  */
-export function FlowBars({
+export const FlowBars = React.memo(function FlowBars({
   totalLabel,
   totalValue,
   items,
@@ -759,4 +773,4 @@ export function FlowBars({
       </View>
     </View>
   );
-}
+});
