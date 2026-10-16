@@ -1,7 +1,7 @@
 # Wallnut — project status & living task list
 
 > **Read this first.** This file is the handoff document for any new session
-> (human or agent). Keep it updated as work lands. Last updated: this session.
+> (human or agent). Keep it updated as work lands. Last updated: 2026-10-16 (GitHub Actions CI/CD).
 
 ---
 
@@ -475,3 +475,36 @@ Notes:
 - Gradle JVM memory raised to 4096m for the New Architecture release build
 - Network note: adoptium.net is throttled here (~65 KB/s); use the Azul CDN or Google's dl.google.com (both >1 MB/s)
 - **Latest APK: `wallnut-2026-10-07.apk` (74.5 MB, Pass 16: AI quick entry + Android widgets)** — warm build 4 m 13 s; package `com.wallnut.app`, versionCode 1, signed with the existing keystore so `adb install -r` updates in place and keeps app data (migration 0009 `widget_snapshots` applies on first launch). Verified with `aapt2`: 4 widget receivers + `home_screen` category + 30-minute updates + `wallnut://` scheme + Inter widget fonts. Note: `expo prebuild` clears `android/` — back up `android/app/wallnut-release.keystore` first and restore it before building.
+
+---
+
+## 10. CI/CD (GitHub Actions)
+
+Branches: `main` is the release line, `development` is where work happens.
+Merging `development` into `main` is what ships.
+
+- **`.github/workflows/android-release.yml`** — builds the signed release APK and
+  publishes it as a **GitHub Release** (tag `v<version>-b<run>`, APK
+  `wallnut-<version>-b<run>.apk`). It runs **only when `main` changes** — i.e. when
+  `development` is merged into `main` — plus manual `workflow_dispatch` runs
+  (manual runs upload the APK as a workflow artifact without creating a release).
+- **Versioning per build**: `versionCode` = workflow run number (unique, strictly
+  increasing), `versionName` = `<app.json version>+b<run>` (e.g. `1.0.0+b42`).
+  Implemented by `scripts/ci/set-version.mjs`, which runs before `expo prebuild`.
+- **Signing**: CI uses the same release keystore as local builds, so
+  `adb install -r` updates the installed app in place. Repo secrets
+  (Settings → Secrets and variables → Actions): `WALLNUT_KEYSTORE_BASE64`
+  (base64 of `android/app/wallnut-release.keystore`), `WALLNUT_STORE_PASSWORD`,
+  `WALLNUT_KEY_ALIAS`, `WALLNUT_KEY_PASSWORD`. `scripts/ci/setup-signing.mjs`
+  decodes the keystore, adds the `WALLNUT_*` properties + the 4096 m heap to
+  `gradle.properties` and patches `app/build.gradle` exactly like
+  `scripts/build-apk.ps1` does locally. To recreate the base64 value:
+  `[Convert]::ToBase64String([IO.File]::ReadAllBytes('android/app/wallnut-release.keystore'))`.
+- **`.github/workflows/ci.yml`** — typecheck + unit tests on every push to
+  `development` and on PRs into `main`. Lint is deliberately not gated (the
+  react-hooks v6 rules flag many pre-existing patterns — see open items).
+- The runner reproduces the local toolchain: JDK 17 (Temurin), Android platform
+  36, build-tools 36.0.0, NDK 27.1.12297006, cmake 3.22.1 — the versions pinned
+  by `node_modules/react-native/gradle/libs.versions.toml`.
+- Built APK files are gitignored (`*.apk`) — release assets live on the
+  Releases page, not in the repo.
