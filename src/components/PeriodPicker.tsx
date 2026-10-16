@@ -399,6 +399,101 @@ function groupingLabel(grouping: 'day' | 'week' | 'month'): string {
   );
 }
 
+/**
+ * The inline period control used on hero cards and screen toolbars: a pill that
+ * names the active period and opens a sheet of presets. Mirrors the reference
+ * apps' "This month ⌄" affordance.
+ */
+export function PeriodPill({
+  value,
+  onChange,
+  onRequestOpen,
+  options = ['7d', '30d', 'thisMonth', 'lastMonth', '3m', '1y'],
+  monthStartDay = 1,
+  appearance = 'surface',
+}: {
+  value: PeriodPreset;
+  /** Called by the built-in preset sheet. Unused when `onRequestOpen` is set. */
+  onChange?: (preset: PeriodPreset) => void;
+  /**
+   * Delegate opening to the parent (screens with a richer sheet, like the
+   * statement view's preset + grouping control).
+   */
+  onRequestOpen?: () => void;
+  options?: PeriodPreset[];
+  monthStartDay?: number;
+  /** `onDark` renders for a dark hero card. */
+  appearance?: 'surface' | 'onDark';
+}) {
+  const theme = useTheme();
+  const [open, setOpen] = useState(false);
+  const onDark = appearance === 'onDark';
+  return (
+    <>
+      <Pressable
+        onPress={() => (onRequestOpen ? onRequestOpen() : setOpen(true))}
+        accessibilityRole="button"
+        accessibilityLabel={`Period: ${PERIOD_LABELS[value]}`}
+        style={({ pressed }) => ({
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 5,
+          paddingHorizontal: theme.spacing.md,
+          height: 30,
+          borderRadius: theme.radius.full,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: onDark ? 'rgba(255, 255, 255, 0.35)' : theme.colors.border,
+          backgroundColor: onDark ? 'rgba(255, 255, 255, 0.14)' : theme.colors.surface,
+          opacity: pressed ? 0.75 : 1,
+        })}>
+        <AppText variant="captionMedium" style={onDark ? { color: '#FFFFFF' } : undefined}>
+          {PERIOD_LABELS[value]}
+        </AppText>
+        <Ionicons name="chevron-down" size={12} color={onDark ? 'rgba(255, 255, 255, 0.9)' : theme.colors.muted} />
+      </Pressable>
+
+      <BottomSheet visible={open} onClose={() => setOpen(false)} title="Period">
+        <View style={{ gap: theme.spacing.xs }}>
+          {options.map((option) => {
+            const range = getPeriodRange(option, { monthStartDay });
+            const selected = option === value;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => {
+                  onChange?.(option);
+                  setOpen(false);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={PERIOD_LABELS[option]}
+                accessibilityState={{ selected }}
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingVertical: theme.spacing.md,
+                  paddingHorizontal: theme.spacing.sm,
+                  borderRadius: theme.radius.md,
+                  backgroundColor: pressed || selected ? theme.colors.pressed : 'transparent',
+                })}>
+                <View style={{ gap: 2 }}>
+                  <AppText variant="bodyMedium" tone={selected ? 'accent' : 'primary'}>
+                    {PERIOD_LABELS[option]}
+                  </AppText>
+                  <AppText variant="caption" tone="muted">
+                    {formatDayMonth(range.start)} – {formatDayMonth(range.end)}
+                  </AppText>
+                </View>
+                {selected ? <Ionicons name="checkmark" size={18} color={theme.colors.accent.base} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      </BottomSheet>
+    </>
+  );
+}
+
 /** Header used inside widget cards: title, optional subtitle, actions. */export function WidgetHeader({
   title,
   subtitle,

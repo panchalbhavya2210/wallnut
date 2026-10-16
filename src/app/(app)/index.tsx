@@ -4,16 +4,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, type ErrorBoundaryProps } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
-import { ScrollScreen, Row, SectionHeader } from '@/components/ui/layout';
+import { HeaderScrollScreen, ScrollScreen, Row } from '@/components/ui/layout';
 import { AppText } from '@/components/ui/text';
-import { IconButton } from '@/components/ui/controls';
-import { HeaderMenuButton } from '@/components/HeaderMenuButton';
+import { AppHeader, TopTabs } from '@/components/AppHeader';
 import { AccountScopeRow } from '@/components/AccountScope';
 import { AiInsightCard } from '@/components/AiInsightCard';
 import { WidgetBoundary } from '@/components/WidgetBoundary';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/feedback';
 import { renderWidget } from '@/components/widgets';
-import { PeriodChips } from '@/components/PeriodPicker';
 import { useQuery, useNow } from '@/hooks/useQuery';
 import { useUiStore } from '@/stores/ui.store';
 import { useSettingsStore } from '@/stores/settings.store';
@@ -24,19 +22,19 @@ import type { DashboardWidget } from '@/db/schema';
 import { getReviewQueue } from '@/services/review.service';
 
 /**
- * Home — the financial command centre. Widgets are stored in the database and
- * rendered in their configured order; each widget owns its own filters.
+ * Home — the financial command centre.
+ *
+ * Three levels, in order: financial status (balance hero + quick actions),
+ * spending overview (cash flow, categories) and recent activity. The sections
+ * are the configurable dashboard widgets, so the default layout behaves like a
+ * production finance app while power users can still rearrange everything.
  */
 export default function HomeScreen() {
   const theme = useTheme();
   const now = useNow();
   const userName = useSettingsStore((state) => state.general.userName);
   const density = useSettingsStore((state) => state.dashboard.density);
-  const defaultPeriod = useSettingsStore((state) => state.dashboard.defaultPeriod);
-  const updateDashboard = useSettingsStore((state) => state.update);
   const scopeAccountId = useUiStore((state) => state.accountScopeId);
-  const hideAmounts = useSettingsStore((state) => state.security.hideAmounts);
-  const updateSettings = useSettingsStore((state) => state.update);
   const [, setRefreshing] = React.useState(false);
 
   const widgets = useQuery(async () => {
@@ -74,19 +72,35 @@ export default function HomeScreen() {
   if (widgets.error) {
     return (
       <ScrollScreen>
-        <Header
-          greeting={greeting}
-          date={now}
-          hidden={hideAmounts}
-          onTogglePrivacy={() => updateSettings('security', { hideAmounts: !hideAmounts })}
-        />
+        <AppHeader brand />
         <ErrorBlock message={widgets.error.message} onRetry={widgets.refresh} />
       </ScrollScreen>
     );
   }
 
   return (
-    <ScrollScreen
+    <HeaderScrollScreen
+      header={
+        <>
+          <AppHeader
+            brand
+            reviewCount={widgets.data?.reviewCount ?? 0}
+            onSearch={() => router.push('/transactions?search=1' as never)}
+          />
+          <TopTabs
+            tabs={[
+              { value: 'overview', label: 'Overview' },
+              { value: 'accounts', label: 'Accounts' },
+              { value: 'insights', label: 'Insights' },
+            ]}
+            value="overview"
+            onChange={(value) => {
+              if (value === 'accounts') router.push('/accounts' as never);
+              else if (value === 'insights') router.push('/analytics' as never);
+            }}
+          />
+        </>
+      }
       refreshControl={
         <RefreshControl
           refreshing={false}
@@ -98,18 +112,15 @@ export default function HomeScreen() {
           tintColor={theme.colors.muted}
         />
       }>
-      <Header
-        greeting={greeting}
-        date={now}
-        reviewCount={widgets.data?.reviewCount ?? 0}
-        onReview={() => navigate('/review')}
-        hidden={hideAmounts}
-        onTogglePrivacy={() => updateSettings('security', { hideAmounts: !hideAmounts })}
-      />
+      <AppText variant="bodySmall" tone="muted" style={{ marginTop: theme.spacing.sm }}>
+        {greeting}
+        {userName ? `, ${userName}` : ''} · {now.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}
+      </AppText>
 
       {widgets.loading && !widgets.data ? (
         <LoadingBlock label="Opening your ledger…" />
-      ) : widgets.data?.isEmpty ? (        <View style={{ marginTop: theme.spacing.xl }}>
+      ) : widgets.data?.isEmpty ? (
+        <View style={{ marginTop: theme.spacing.xl }}>
           <EmptyState
             icon="wallet-outline"
             title="Welcome to Wallnut"
@@ -135,21 +146,11 @@ export default function HomeScreen() {
           </View>
         </View>
       ) : (
-        <View style={{ gap: density === 'compact' ? theme.spacing.lg : theme.spacing.xxl, marginTop: theme.spacing.sm }}>
-          <View style={{ marginTop: theme.spacing.lg }}>
-            <WidgetBoundary>
-              <AccountScopeRow />
-            </WidgetBoundary>
-          </View>
-          <PeriodChips
-            value={defaultPeriod}
-            onChange={(period) => updateDashboard('dashboard', { defaultPeriod: period })}
-            options={['7d', '30d', 'thisMonth', 'lastMonth', '3m', '1y']}
-            compact
-          />
+        <View style={{ gap: density === 'compact' ? theme.spacing.lg : theme.spacing.xl, marginTop: theme.spacing.lg }}>
           <WidgetBoundary>
-            <AiInsightCard />
+            <AccountScopeRow />
           </WidgetBoundary>
+
           {packWidgets(widgets.data?.widgets ?? []).map((row, index) => (
             <View key={`row-${index}`} style={{ flexDirection: 'row', gap: theme.spacing.md, alignItems: 'flex-start' }}>
               {row.map((widget) => (
@@ -159,16 +160,34 @@ export default function HomeScreen() {
               ))}
             </View>
           ))}
-          <View style={{ marginTop: theme.spacing.sm }}>
-            <SectionHeader
-              title="Dashboard"
-              actionLabel="Customize"
-              onAction={() => navigate('/settings/dashboard')}
-            />
-          </View>
+
+          <WidgetBoundary>
+            <AiInsightCard />
+          </WidgetBoundary>
+
+          <Pressable
+            onPress={() => navigate('/settings/dashboard')}
+            accessibilityRole="button"
+            accessibilityLabel="Customise dashboard"
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: theme.spacing.sm,
+              paddingVertical: theme.spacing.md,
+              borderRadius: theme.radius.full,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: theme.colors.border,
+              backgroundColor: pressed ? theme.colors.pressed : 'transparent',
+            })}>
+            <Ionicons name="options-outline" size={16} color={theme.colors.textSecondary} />
+            <AppText variant="bodySmall" tone="secondary">
+              Customise dashboard
+            </AppText>
+          </Pressable>
         </View>
       )}
-    </ScrollScreen>
+    </HeaderScrollScreen>
   );
 }
 
@@ -192,46 +211,6 @@ function packWidgets(widgets: DashboardWidget[]): DashboardWidget[][] {
   }
   if (pending) rows.push([pending]);
   return rows;
-}
-
-function Header({
-  greeting,
-  date,
-  reviewCount,
-  onReview,
-  hidden,
-  onTogglePrivacy,
-}: {
-  greeting: string;
-  date: Date;
-  reviewCount?: number;
-  onReview?: () => void;
-  hidden?: boolean;
-  onTogglePrivacy?: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingTop: theme.spacing.md }}>
-      <HeaderMenuButton size={24} />
-      <View style={{ flex: 1, gap: 2 }}>
-        <AppText variant="caption" tone="muted">
-          {date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
-        </AppText>
-        <AppText variant="title">{greeting}</AppText>
-      </View>
-      {onTogglePrivacy ? (
-        <IconButton
-          icon={hidden ? 'eye-off-outline' : 'eye-outline'}
-          onPress={onTogglePrivacy}
-          accessibilityLabel={hidden ? 'Show amounts' : 'Hide amounts'}
-          color={hidden ? theme.colors.accent.base : undefined}
-        />
-      ) : null}
-      {reviewCount && reviewCount > 0 ? (
-        <IconButton icon="checkmark-done-outline" onPress={onReview} accessibilityLabel={`${reviewCount} to review`} />
-      ) : null}
-    </View>
-  );
 }
 
 function getGreeting(date: Date): string {

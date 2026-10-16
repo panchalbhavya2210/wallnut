@@ -1,6 +1,6 @@
 import { getDb, getSqlite } from '@/db/client';
 import { USER_DATA_DELETE_ORDER } from '@/db/tables';
-import { accounts, dashboardWidgets, tags, transactionTags, transactions, users } from '@/db/schema';
+import { accounts, dashboardWidgets, tags, transactionTags, users } from '@/db/schema';
 import { asc, eq, gt, sql } from 'drizzle-orm';
 import { listAccounts, recalculateAllBalances } from '@/services/accounts.service';
 import { listCategories, seedDefaultCategories } from '@/services/categories.service';
@@ -573,21 +573,31 @@ function total(paise: number): number {
 }
 
 /**
- * Default dashboard — deliberately small. Six well-spaced widgets read better
- * than twelve crowded ones; everything else is one tap away in the editor.
+ * Default dashboard — the three levels every finance app converges on:
+ * status (balance + quick actions), spending overview (cash flow + categories)
+ * and recent activity. Everything else is one tap away in the editor.
  */
 export const DEFAULT_WIDGETS: { type: string; width: 'full' | 'half'; height: 'compact' | 'medium' | 'tall' }[] = [
   { type: 'net_worth', width: 'full', height: 'tall' },
+  { type: 'quick_actions', width: 'full', height: 'compact' },
   { type: 'income_expense', width: 'full', height: 'medium' },
-  { type: 'spending_trend', width: 'full', height: 'medium' },
   { type: 'category_breakdown', width: 'full', height: 'medium' },
-  { type: 'category_monthly', width: 'full', height: 'medium' },
-  { type: 'budget_progress', width: 'full', height: 'medium' },
   { type: 'recent_transactions', width: 'full', height: 'medium' },
 ];
 
-/** The pre-“breathing room” default layout, used for a one-time tidy-up. */
+/** The pre-“finance polish” default layout, used for a one-time tidy-up. */
 const LEGACY_DEFAULT_WIDGET_TYPES = [
+  'net_worth',
+  'income_expense',
+  'spending_trend',
+  'category_breakdown',
+  'category_monthly',
+  'budget_progress',
+  'recent_transactions',
+];
+
+/** The very first default layout, also upgraded by the same tidy-up. */
+const LEGACY_V1_DEFAULT_WIDGET_TYPES = [
   'net_worth',
   'income_expense',
   'spending_total',
@@ -703,11 +713,10 @@ export async function migrateDashboardLayout(): Promise<boolean> {
     .from(dashboardWidgets)
     .orderBy(asc(dashboardWidgets.position));
   const types = rows.filter((row) => row.isVisible).map((row) => row.type);
-  const isLegacyDefault =
-    types.length === LEGACY_DEFAULT_WIDGET_TYPES.length &&
-    types.every((type, index) => type === LEGACY_DEFAULT_WIDGET_TYPES[index]);
+  const matches = (expected: string[]) =>
+    types.length === expected.length && types.every((type, index) => type === expected[index]);
 
-  if (!isLegacyDefault) return false;
+  if (!matches(LEGACY_DEFAULT_WIDGET_TYPES) && !matches(LEGACY_V1_DEFAULT_WIDGET_TYPES)) return false;
 
   await db.delete(dashboardWidgets);
   let position = 0;

@@ -8,6 +8,7 @@
  */
 
 export type AccentName =
+  | 'botanical'
   | 'magenta'
   | 'indigo'
   | 'violet'
@@ -77,64 +78,66 @@ export interface ThemeColors {
 }
 
 export const darkColors: ThemeColors = {
-  // Deep violet-tinted charcoal — alive, not dead gray. Surfaces step up in
-  // luminance so filled cards read as Material containers rather than holes.
-  background: '#0A0A13',
-  surface: '#14141F',
-  surfaceElevated: '#1C1C2B',
-  surfaceTranslucent: 'rgba(20, 20, 31, 0.98)',
-  border: '#2B2B3F',
-  borderStrong: '#3D3D57',
+  // Deep botanical charcoal — a green-tinted canvas so the brand colour reads
+  // as the app's own, not as a painting on top of a neutral shell. Surfaces
+  // step up in luminance so filled cards read as Material containers.
+  background: '#0B120F',
+  surface: '#131C17',
+  surfaceElevated: '#1A251E',
+  surfaceTranslucent: 'rgba(19, 28, 23, 0.98)',
+  border: '#253129',
+  borderStrong: '#35453B',
 
-  text: '#F7F5FB',
-  textSecondary: '#A9A6BD',
-  muted: '#726E8A',
-  textInverse: '#0C0A14',
+  text: '#F4F8F5',
+  textSecondary: '#A8B5AC',
+  muted: '#74827A',
+  textInverse: '#0A120D',
 
-  positive: '#3DDC97',
-  positiveSoft: 'rgba(61, 220, 151, 0.15)',
-  negative: '#FF5C7A',
-  negativeSoft: 'rgba(255, 92, 122, 0.15)',
-  warning: '#FFB547',
-  warningSoft: 'rgba(255, 181, 71, 0.15)',
-  neutralSoft: 'rgba(169, 166, 189, 0.12)',
+  positive: '#34D399',
+  positiveSoft: 'rgba(52, 211, 153, 0.15)',
+  negative: '#FF6B6B',
+  negativeSoft: 'rgba(255, 107, 107, 0.15)',
+  warning: '#F0B34B',
+  warningSoft: 'rgba(240, 179, 75, 0.15)',
+  neutralSoft: 'rgba(168, 181, 172, 0.12)',
   onNegative: '#FFFFFF',
 
   ripple: 'rgba(255, 255, 255, 0.10)',
-  chartGrid: 'rgba(43, 43, 63, 0.9)',
-  overlay: 'rgba(5, 4, 12, 0.66)',
-  inputBackground: '#0F0F1A',
+  chartGrid: 'rgba(37, 49, 41, 0.9)',
+  overlay: 'rgba(3, 6, 4, 0.66)',
+  inputBackground: '#0F1712',
   pressed: 'rgba(255, 255, 255, 0.05)',
 };
 
 export const lightColors: ThemeColors = {
-  // Off-white with a violet cast so the light theme belongs to the same family.
-  background: '#F7F5FB',
+  // Soft neutral gray-green canvas with white surfaces — the finance-app
+  // convention (Copilot/Monarch/YNAB): the data is the colour, not the chrome.
+  background: '#F5F7F5',
   surface: '#FFFFFF',
   surfaceElevated: '#FFFFFF',
-  surfaceTranslucent: 'rgba(255, 255, 255, 0.98)',
-  border: '#E7E3F0',
-  borderStrong: '#D4CFE2',
+  surfaceTranslucent: 'rgba(255, 255, 255, 0.97)',
+  border: '#E7ECE8',
+  borderStrong: '#D3DBD5',
 
-  text: '#161223',
-  textSecondary: '#5E5875',
-  muted: '#8B86A0',
+  text: '#18231D',
+  textSecondary: '#46554C',
+  muted: '#68736C',
   textInverse: '#FFFFFF',
 
-  positive: '#0E9F6E',
-  positiveSoft: 'rgba(14, 159, 110, 0.10)',
-  negative: '#D93843',
-  negativeSoft: 'rgba(217, 56, 67, 0.10)',
+  positive: '#0F8A4F',
+  positiveSoft: 'rgba(15, 138, 79, 0.10)',
+  negative: '#D6453D',
+  negativeSoft: 'rgba(214, 69, 61, 0.10)',
   warning: '#B7740E',
   warningSoft: 'rgba(183, 116, 14, 0.12)',
-  neutralSoft: 'rgba(94, 88, 117, 0.10)',
+  neutralSoft: 'rgba(104, 115, 108, 0.10)',
   onNegative: '#FFFFFF',
 
-  ripple: 'rgba(22, 18, 35, 0.08)',
-  chartGrid: 'rgba(231, 227, 240, 0.9)',
-  overlay: 'rgba(22, 18, 35, 0.40)',
-  inputBackground: '#F1EEF7',
-  pressed: 'rgba(22, 18, 35, 0.04)',
+  ripple: 'rgba(24, 35, 29, 0.08)',
+  chartGrid: '#E9EEEB',
+  overlay: 'rgba(24, 35, 29, 0.40)',
+  inputBackground: '#F1F4F2',
+  pressed: 'rgba(24, 35, 29, 0.04)',
 };
 
 /**
@@ -143,6 +146,11 @@ export const lightColors: ThemeColors = {
  * (income stays green, expense stays red).
  */
 export const accents: Record<AccentName, { label: string; dark: AccentTokens; light: AccentTokens }> = {
+  botanical: {
+    label: 'Botanical',
+    dark: { base: '#5FC98A', soft: 'rgba(95, 201, 138, 0.16)', on: '#04150C' },
+    light: { base: '#245C3E', soft: 'rgba(36, 92, 62, 0.10)', on: '#FFFFFF' },
+  },
   magenta: {
     label: 'Magenta',
     dark: { base: '#FF3D8B', soft: 'rgba(255, 61, 139, 0.16)', on: '#1C0512' },

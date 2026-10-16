@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 
-import { addDays, formatDayLabel, fromISODate, startOfMonth, startOfWeek, toDate, type PeriodPreset } from '@/utils/date';
+import { addDays, formatDayLabel, fromISODate, startOfMonth, startOfWeek, type PeriodPreset } from '@/utils/date';
 
 /**
  * Records view maths (pure, unit-tested).
@@ -87,14 +87,15 @@ function monthKey(date: Date): string {
 
 function groupLabel(grouping: ResolvedGrouping, bucketStart: Date, now: Date): { label: string; subtitle: string } {
   if (grouping === 'day') {
-    return { label: formatDayLabel(bucketStart, now).toUpperCase(), subtitle: '' };
+    // "Today" · "Yesterday" · "10 Oct" — statement headers, not shouting labels.
+    return { label: formatDayLabel(bucketStart, now), subtitle: '' };
   }
   if (grouping === 'week') {
     const weekEnd = addDays(bucketStart, 6);
     const startLabel = format(bucketStart, bucketStart.getMonth() === weekEnd.getMonth() ? 'd' : 'd MMM');
-    return { label: `WEEK ${format(bucketStart, 'II')}`, subtitle: `${startLabel} – ${format(weekEnd, 'd MMM')}` };
+    return { label: `Week ${format(bucketStart, 'II')}`, subtitle: `${startLabel} – ${format(weekEnd, 'd MMM')}` };
   }
-  return { label: format(bucketStart, 'MMMM yyyy').toUpperCase(), subtitle: '' };
+  return { label: format(bucketStart, 'MMMM yyyy'), subtitle: '' };
 }
 
 /**
@@ -146,6 +147,12 @@ export function rowDateLabel(date: string, now = new Date()): string {
   return parsed.getFullYear() === now.getFullYear()
     ? format(parsed, 'd MMM')
     : format(parsed, 'd MMM yyyy');
+}
+
+/** Clock time for a ledger row ("9:12 AM"). */
+export function rowTimeLabel(date: string): string {
+  const parsed = fromISODate(date);
+  return parsed ? format(parsed, 'h:mm a') : '';
 }
 
 function sameDay(a: Date, b: Date): boolean {

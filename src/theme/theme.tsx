@@ -3,9 +3,9 @@ import { useColorScheme } from 'react-native';
 import * as Font from 'expo-font';
 import { useShallow } from 'zustand/react/shallow';
 
-import { accents, darkColors, lightColors, type AccentName, type AccentTokens, type ThemeColors } from './colors';
+import { accents, type AccentName, type AccentTokens, type ThemeColors } from './colors';
 import { DEFAULT_FONT_ID, fontFamiliesFor, fontModulesFor } from './fonts';
-import { accentGradient, buildChartTokens, buildThemeColors, type ChartTokens, type PaletteChoice } from './palette';
+import { accentGradient, buildChartTokens, buildThemeColors, heroGradient, type ChartTokens, type PaletteChoice } from './palette';
 import { radius } from './radius';
 import { shadow, type ShadowLevel } from './shadows';
 import { spacing } from './spacing';
@@ -19,8 +19,10 @@ export interface Theme {
   mode: 'light' | 'dark';
   colors: ThemeColors & { accent: AccentTokens };
   chart: ChartTokens;
-  /** Two-stop brand gradient for hero surfaces and the floating add button. */
+  /** Two-stop brand gradient for action surfaces (floating add button). */
   gradient: [string, string];
+  /** Deeper two-stop gradient for hero cards that carry white type. */
+  heroGradient: [string, string];
   spacing: typeof spacing;
   radius: typeof radius;
   typography: typeof typography;
@@ -95,6 +97,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       colors,
       chart: buildChartTokens(mode, resolvedAccent, (palette as PaletteChoice) ?? 'wallnut', deviceSeed),
       gradient: accentGradient(colors.accent.base, mode),
+      heroGradient: heroGradient(colors.accent.base, mode),
       spacing,
       radius,
       typography: buildTypography(fontFamiliesFor(loadedFontId), fontScale === 'default' ? 1 : fontScale === 'large' ? 1.08 : 1.16),

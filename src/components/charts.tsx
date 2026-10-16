@@ -181,6 +181,8 @@ export interface LineChartProps {
   onPointPress?: (point: Point, index: number) => void;
   style?: StyleProp<ViewStyle>;
   yTicks?: number;
+  /** Renders grid, labels and markers for a dark hero surface. */
+  onDark?: boolean;
 }
 
 export function LineChart({
@@ -194,6 +196,7 @@ export function LineChart({
   onPointPress,
   style,
   yTicks = 3,
+  onDark,
 }: LineChartProps) {
   const theme = useTheme();
   const money = useMoney();
@@ -248,6 +251,10 @@ export function LineChart({
   const average = points.length > 0 ? points.reduce((sum, point) => sum + point.value, 0) / points.length : 0;
   const averageY = yFor(average);
   const strokeColor = color ?? theme.chart.series[0] ?? theme.colors.accent.base;
+  const gridColor = onDark ? 'rgba(255, 255, 255, 0.16)' : theme.colors.chartGrid;
+  const labelColor = onDark ? 'rgba(255, 255, 255, 0.75)' : theme.colors.muted;
+  const averageColor = onDark ? 'rgba(255, 255, 255, 0.5)' : theme.chart.average;
+  const cursorColor = onDark ? 'rgba(255, 255, 255, 0.45)' : theme.colors.borderStrong;
   const last = coords[coords.length - 1];
 
   const handleSelect = React.useCallback((index: number) => {
@@ -298,7 +305,7 @@ export function LineChart({
                       y1={y}
                       x2={width - padding.right}
                       y2={y}
-                      stroke={theme.colors.chartGrid}
+                      stroke={gridColor}
                       strokeWidth={StyleSheet.hairlineWidth}
                       strokeDasharray={index === yTicks ? undefined : '3 5'}
                     />
@@ -316,7 +323,7 @@ export function LineChart({
                   <Path
                     d={buildSmoothPath(comparisonCoords)}
                     fill="none"
-                    stroke={theme.colors.muted}
+                    stroke={onDark ? 'rgba(255, 255, 255, 0.55)' : theme.colors.muted}
                     strokeWidth={1.4}
                     strokeDasharray="4 4"
                     opacity={0.7}
@@ -331,7 +338,7 @@ export function LineChart({
                     y1={averageY}
                     x2={width - padding.right}
                     y2={averageY}
-                    stroke={theme.chart.average}
+                    stroke={averageColor}
                     strokeWidth={1}
                     strokeDasharray="5 4"
                     opacity={0.8}
@@ -352,7 +359,7 @@ export function LineChart({
                       y1={padding.top}
                       x2={selectedCoord.x}
                       y2={padding.top + innerHeight}
-                      stroke={theme.colors.borderStrong}
+                      stroke={cursorColor}
                       strokeWidth={1}
                     />
                     <Circle cx={selectedCoord.x} cy={selectedCoord.y} r={9} fill={`${strokeColor}22`} />
@@ -360,7 +367,7 @@ export function LineChart({
                       cx={selectedCoord.x}
                       cy={selectedCoord.y}
                       r={4.5}
-                      fill={theme.colors.surfaceElevated}
+                      fill={onDark ? '#12241A' : theme.colors.surfaceElevated}
                       stroke={strokeColor}
                       strokeWidth={2.5}
                     />
@@ -373,7 +380,7 @@ export function LineChart({
                       key={`label-${point.key}`}
                       x={coords[index]?.x ?? 0}
                       y={height - 6}
-                      fill={theme.colors.muted}
+                      fill={labelColor}
                       fontSize={10}
                       textAnchor={index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle'}>
                       {point.label}
@@ -381,7 +388,7 @@ export function LineChart({
                   ) : null,
                 )}
 
-                <SvgText x={width - padding.right} y={padding.top - 6} fill={theme.colors.muted} fontSize={10} textAnchor="end">
+                <SvgText x={width - padding.right} y={padding.top - 6} fill={labelColor} fontSize={10} textAnchor="end">
                   {money.format(scale.max, { compact: true })}
                 </SvgText>
               </Svg>

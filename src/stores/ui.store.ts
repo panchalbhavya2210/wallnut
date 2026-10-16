@@ -2,11 +2,29 @@ import { create } from 'zustand';
 
 export interface ToastMessage {
   id: number;
+  /** The message body. Renders as the muted detail line when `title` is set. */
   text: string;
+  /** Optional heading — makes "what happened" instant to read. */
+  title?: string;
   tone: 'neutral' | 'positive' | 'negative';
   actionLabel?: string;
   onAction?: () => void;
+  /** Auto-dismiss delay in ms (the toast shows a countdown for it). */
+  durationMs: number;
 }
+
+/** Per-call tweaks for the toast helpers. */
+export interface ToastOptions {
+  /** Heading line; `text` then renders as the muted detail beneath it. */
+  title?: string;
+  durationMs?: number;
+}
+
+const TOAST_BASE_MS = 3400;
+/** Undo/action toasts linger — you need time to actually hit Undo. */
+const TOAST_ACTION_MS = 6500;
+/** Errors you should be able to finish reading. */
+const TOAST_ERROR_MS = 5200;
 
 interface UiState {
   toasts: ToastMessage[];
@@ -32,7 +50,7 @@ interface UiState {
   setDashboardEditing: (editing: boolean) => void;
   setChartScrubbing: (scrubbing: boolean) => void;
   setAccountScope: (accountId: string | null) => void;
-  showToast: (toast: Omit<ToastMessage, 'id'>) => void;
+  showToast: (toast: Omit<ToastMessage, 'id' | 'durationMs'> & { durationMs?: number }) => void;
   dismissToast: (id: number) => void;
 }
 
@@ -66,25 +84,27 @@ export const useUiStore = create<UiState>((set, get) => ({
 
   showToast: (toast) => {
     const id = ++toastId;
-    set((state) => ({ toasts: [...state.toasts.slice(-2), { ...toast, id }] }));
-    if (!toast.onAction) {
-      setTimeout(() => get().dismissToast(id), 3200);
-    }
+    const durationMs =
+      toast.durationMs ??
+      (toast.onAction ? TOAST_ACTION_MS : toast.tone === 'negative' ? TOAST_ERROR_MS : TOAST_BASE_MS);
+    set((state) => ({ toasts: [...state.toasts.slice(-2), { ...toast, id, durationMs }] }));
+    // Undo toasts auto-dismiss too — they used to sit there until tapped.
+    setTimeout(() => get().dismissToast(id), durationMs);
   },
   dismissToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
 }));
 
 export const toast = {
-  show(text: string, tone: ToastMessage['tone'] = 'neutral') {
-    useUiStore.getState().showToast({ text, tone });
+  show(text: string, tone: ToastMessage['tone'] = 'neutral', options: ToastOptions = {}) {
+    useUiStore.getState().showToast({ text, tone, ...options });
   },
-  undo(text: string, onAction: () => void) {
-    useUiStore.getState().showToast({ text, tone: 'neutral', actionLabel: 'Undo', onAction });
+  undo(text: string, onAction: () => void, options: ToastOptions = {}) {
+    useUiStore.getState().showToast({ text, tone: 'neutral', actionLabel: 'Undo', onAction, ...options });
   },
-  error(text: string) {
-    useUiStore.getState().showToast({ text, tone: 'negative' });
+  error(text: string, options: ToastOptions = {}) {
+    useUiStore.getState().showToast({ text, tone: 'negative', ...options });
   },
-  success(text: string) {
-    useUiStore.getState().showToast({ text, tone: 'positive' });
+  success(text: string, options: ToastOptions = {}) {
+    useUiStore.getState().showToast({ text, tone: 'positive', ...options });
   },
 };

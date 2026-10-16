@@ -63,7 +63,7 @@ describe('groupRecords', () => {
   it('groups by ISO week with statement labels and subtotals', () => {
     const groups = groupRecords(rows, 'week', { now });
     expect(groups.map((group) => group.key)).toEqual(['2026-W42', '2026-W41']);
-    expect(groups[0]!.label).toBe('WEEK 42');
+    expect(groups[0]!.label).toBe('Week 42');
     expect(groups[0]!.subtitle).toBe('12 – 18 Oct');
     // Income + expense in week 42, transfers stay out of the subtotal.
     expect(groups[0]!.total).toBe(-110000 - 18500 + 500000);
@@ -79,15 +79,15 @@ describe('groupRecords', () => {
 
   it('labels day groups with the smart date name', () => {
     const groups = groupRecords(rows, 'day', { now });
-    expect(groups[0]!.label).toBe('TODAY');
-    expect(groups[1]!.label).toBe('WED, 14 OCT');
-    expect(groups[2]!.label).toBe('THU, 8 OCT');
+    expect(groups[0]!.label).toBe('Today');
+    expect(groups[1]!.label).toBe('Wed, 14 Oct');
+    expect(groups[2]!.label).toBe('Thu, 8 Oct');
   });
 
   it('labels month groups with the month and year', () => {
     const groups = groupRecords(rows, 'month', { now });
     expect(groups).toHaveLength(1);
-    expect(groups[0]!.label).toBe('OCTOBER 2026');
+    expect(groups[0]!.label).toBe('October 2026');
     expect(groups[0]!.total).toBe(-110000 - 18500 + 500000 - 81000);
   });
 

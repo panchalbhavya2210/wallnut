@@ -1,7 +1,7 @@
 import { getAiSettings } from '@/ai/client';
 
 import { buildQuickEntryPromptContext, getRecentMerchantNames, loadQuickEntryLocalData, type QuickEntryLocalData } from './context';
-import { executeQuickEntry, type ExecutionResult } from './execute';
+import { executeQuickEntry, executeQuickEntryBatch, type ExecutionResult, type QuickEntryBatchOutcome } from './execute';
 import { getFinancialCommandParser } from './provider';
 import {
   answerCommand,
@@ -141,12 +141,89 @@ export async function confirmQuickEntry(analysis: QuickEntryAnalysis): Promise<E
   return executeQuickEntry(analysis.resolved, analysis.local);
 }
 
+/* ------------------------------- Batch intake ------------------------------ */
+
+/** One verification row: a full analysis the user can still edit locally. */
+export interface QuickEntryBatchItem {
+  id: string;
+  analysis: QuickEntryAnalysis;
+}
+
+export interface QuickEntryBatchAnalysis {
+  local: QuickEntryLocalData;
+  items: QuickEntryBatchItem[];
+  /** Fragments the parser refused to batch — they need the single-entry flow. */
+  excluded: string[];
+  cached: boolean;
+}
+
+/**
+ * Bulk quick entry: one message in, a reviewed list of commands out. Nothing
+ * is written here — the verification screen edits each row (all local, no
+ * second model call) and only "Save all" reaches the financial services.
+ */
+export async function analyzeQuickEntryBatch(
+  input: string,
+  options: { typeHint?: 'expense' | 'income' | 'transfer' } = {},
+): Promise<AiResult<QuickEntryBatchAnalysis>> {
+  const ai = getAiSettings();
+  if (!ai.quickEntry) return { ok: false, error: { code: 'disabled', message: '' } };
+
+  const local = await loadQuickEntryLocalData();
+  const recentMerchants = ai.shareContext ? await getRecentMerchantNames() : [];
+  const context = buildQuickEntryPromptContext(local, {
+    shareContext: ai.shareContext,
+    recentMerchants,
+  });
+
+  const parser = getFinancialCommandParser();
+  const result = await parser.parseFinancialCommands(input, context);
+  if (!result.ok) return result;
+
+  const items: QuickEntryBatchItem[] = result.data.commands.map((command, index) => ({
+    id: `cmd-${index}`,
+    analysis: recompute(applyTypeHint(command, options.typeHint), local, result.cached),
+  }));
+  return {
+    ok: true,
+    data: { local, items, excluded: result.data.excluded, cached: result.cached },
+    cached: result.cached,
+  };
+}
+
+/** Edits one verification row locally (date, category, account, amount, name). */
+export function patchBatchItem(
+  batch: QuickEntryBatchAnalysis,
+  itemId: string,
+  patch: Partial<AiFinancialCommand>,
+): QuickEntryBatchAnalysis {
+  return {
+    ...batch,
+    items: batch.items.map((item) =>
+      item.id === itemId ? { ...item, analysis: applyCommandPatch(item.analysis, patch) } : item,
+    ),
+  };
+}
+
+export function removeBatchItem(batch: QuickEntryBatchAnalysis, itemId: string): QuickEntryBatchAnalysis {
+  return { ...batch, items: batch.items.filter((item) => item.id !== itemId) };
+}
+
+/** Saves every reviewed row through the existing services, in order. */
+export async function confirmQuickEntryBatch(batch: QuickEntryBatchAnalysis): Promise<QuickEntryBatchOutcome> {
+  return executeQuickEntryBatch(
+    batch.items.map((item) => ({ id: item.id, resolved: item.analysis.resolved })),
+    batch.local,
+  );
+}
+
 export type {
   AiFinancialCommand,
   AiMissingField,
   ConfirmationDecision,
   ExecutionResult,
   QuestionAnswer,
+  QuickEntryBatchOutcome,
   QuickEntryQuestion,
   ResolvedQuickEntry,
 };

@@ -3,19 +3,19 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useTheme } from '@/theme/theme';
-import { mixHex } from '@/theme/palette';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppText, MoneyText } from './ui/text';
-import { Card, IconName, Row, SectionHeader } from './ui/layout';
+import { Card, IconName, Row } from './ui/layout';
 import { ProgressBar } from './ui/controls';
 import { EmptyState, LoadingBlock } from './ui/feedback';
-import { FlowBars, LineChart, BarChart, DonutChart, Sparkline } from './charts';
+import { FlowBars, LineChart, BarChart } from './charts';
 import { AnimatedMoney, Gauge } from './Gauge';
+import { PeriodPill } from './PeriodPicker';
 import { useChartColors } from '@/hooks/useChartColors';
 import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
 import { useSettingsStore } from '@/stores/settings.store';
-import { getPeriodRange, daysInRange, formatDayMonth, formatMonthYear, previousRange, toISODate, type PeriodPreset } from '@/utils/date';
+import { getPeriodRange, daysInRange, formatDayMonth, previousRange, type PeriodPreset } from '@/utils/date';
 import { percentageChange } from '@/utils/money';
 import { formatPercent } from '@/utils/money';
 import { shortCategoryLabel } from '@/utils/format';
@@ -87,46 +87,57 @@ export function WidgetCard({
   children,
   onPress,
   bare,
+  right,
 }: {
-  title: string;
+  title?: string;
   subtitle?: string;
   actionLabel?: string;
   onAction?: () => void;
   children: React.ReactNode;
   onPress?: () => void;
-  /** Gradient hero variant used for the net-worth card. */
+  /** Gradient hero variant used for the balance card. */
   bare?: boolean;
+  /** Extra header content (period pill, toggles). */
+  right?: React.ReactNode;
 }) {
   const theme = useTheme();
-  const onGradient = Boolean(bare) && theme.mode === 'dark';
-  const header = (
+  const header = title ? (
     <View
       style={{
         flexDirection: 'row',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         justifyContent: 'space-between',
         marginBottom: theme.spacing.md,
         gap: theme.spacing.sm,
       }}>
       <View style={{ flex: 1, gap: 2 }}>
-        <AppText variant="label" style={onGradient ? { color: 'rgba(255, 255, 255, 0.85)' } : undefined}>
+        <AppText variant={bare ? 'bodyMedium' : 'titleSmall'} style={bare ? { color: 'rgba(255, 255, 255, 0.92)' } : undefined}>
           {title}
         </AppText>
         {subtitle ? (
-          <AppText variant="caption" tone={onGradient ? undefined : 'secondary'} style={onGradient ? { color: 'rgba(255, 255, 255, 0.72)' } : undefined}>
+          <AppText variant="caption" tone={bare ? undefined : 'muted'} style={bare ? { color: 'rgba(255, 255, 255, 0.72)' } : undefined}>
             {subtitle}
           </AppText>
         ) : null}
       </View>
+      {right}
       {actionLabel && onAction ? (
         <Pressable onPress={onAction} hitSlop={10}>
-          <AppText variant="captionMedium" tone={onGradient ? undefined : 'accent'} style={onGradient ? { color: '#FFFFFF' } : undefined}>
+          <AppText
+            variant="bodySmall"
+            tone={bare ? undefined : 'accent'}
+            style={[
+              bare ? { color: '#FFFFFF' } : undefined,
+              { fontFamily: theme.typography.captionMedium.fontFamily },
+            ]}>
             {actionLabel}
           </AppText>
         </Pressable>
       ) : null}
     </View>
-  );
+  ) : right ? (
+    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: theme.spacing.sm }}>{right}</View>
+  ) : null;
 
   const body = (
     <Pressable onPress={onPress} disabled={!onPress}>
@@ -135,22 +146,17 @@ export function WidgetCard({
   );
 
   if (bare) {
-    // Deep tonal gradient hero: the accent is mixed into the canvas rather
-    // than flooded raw, so white text stays crisp and the accent line pops.
-    const gradientColors =
-      theme.mode === 'dark'
-        ? ([mixHex(theme.gradient[0], theme.colors.background, 0.4), mixHex(theme.gradient[1], theme.colors.background, 0.26)] as const)
-        : ([`${theme.gradient[0]}2E`, `${theme.gradient[1]}1F`] as const);
+    // Deep botanical hero: white type on a dark tonal gradient, with the
+    // chart's own white line so the card reads as one surface.
     return (
       <LinearGradient
-        colors={gradientColors}
+        colors={[theme.heroGradient[0], theme.heroGradient[1]]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{
           padding: theme.spacing.lg,
-          borderRadius: theme.radius.xxl,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: theme.mode === 'dark' ? `${theme.gradient[0]}66` : theme.colors.border,
+          borderRadius: theme.radius.xl,
+          overflow: 'hidden',
         }}>
         {header}
         {body}
@@ -199,119 +205,132 @@ const NetWorthWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
   const theme = useTheme();
   const money = useMoney();
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
+  const defaultPeriod = useSettingsStore((state) => state.dashboard.defaultPeriod);
+  const updateSettings = useSettingsStore((state) => state.update);
+  const hideAmounts = useSettingsStore((state) => state.security.hideAmounts);
   const scopeAccountId = config.accountIds?.[0] ?? null;
+  const period: PeriodPreset = config.period ?? defaultPeriod;
+  const range = React.useMemo(() => getPeriodRange(period, { monthStartDay }), [period, monthStartDay]);
+  const granularity: 'day' | 'week' | 'month' = React.useMemo(() => {
+    const days = daysInRange(range);
+    return days <= 45 ? 'day' : days <= 200 ? 'week' : 'month';
+  }, [range]);
+
   const { data, loading } = useQuery(async () => {
     if (scopeAccountId) {
       const [scope, trend] = await Promise.all([
         getAccountScopeSummary(scopeAccountId, monthStartDay),
-        getAccountBalanceTrend(scopeAccountId, getPeriodRange('6m', { monthStartDay }), 'month'),
+        getAccountBalanceTrend(scopeAccountId, range, granularity),
       ]);
-      return { summary: null, changes: null, scope, trend };
+      return { summary: null, scope, trend };
     }
-    const [summary, changes, trend] = await Promise.all([
-      getNetWorthSummary(),
-      getNetWorthChanges(monthStartDay),
-      getNetWorthTrend(getPeriodRange('6m', { monthStartDay }), 'month'),
-    ]);
-    return { summary, changes, scope: null, trend };
-  }, [monthStartDay, scopeAccountId]);
+    const [summary, trend] = await Promise.all([getNetWorthSummary(), getNetWorthTrend(range, granularity)]);
+    return { summary, scope: null, trend };
+  }, [monthStartDay, scopeAccountId, range.start.getTime(), range.end.getTime(), granularity]);
 
-  if (loading || !data) return <WidgetCard title="NET WORTH"><WidgetLoading /></WidgetCard>;
+  const periodControl = (
+    <PeriodPill
+      value={period}
+      appearance="onDark"
+      monthStartDay={monthStartDay}
+      onChange={(next) => updateSettings('dashboard', { defaultPeriod: next })}
+    />
+  );
 
-  if (data.scope) {
-    const { scope } = data;
-    const change = scope.changeThisMonth;
-    const base = scope.balance - change;
-    const changePercent = base !== 0 ? (change / Math.abs(base)) * 100 : null;
+  if (loading || !data) {
     return (
-      <WidgetCard
-        bare
-        title={scope.account?.name?.toUpperCase() ?? 'ACCOUNT BALANCE'}
-        subtitle="Account balance"
-        onPress={() => scope.account && onNavigate(`/account/${scope.account.id}`)}>
-        <View style={{ gap: 6 }}>
-          <AnimatedMoney amount={scope.balance} variant="numericLarge" tone="neutral" />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <Ionicons name={change >= 0 ? 'trending-up-outline' : 'trending-down-outline'} size={14} color={theme.colors.muted} />
-            <MoneyText amount={change} variant="numericCaption" tone="positive-negative" showSign absolute={false} />
-            {changePercent !== null ? (
-              <AppText variant="caption" tone={changePercent >= 0 ? 'positive' : 'negative'}>
-                {changePercent >= 0 ? '+' : '−'}
-                {formatPercent(Math.abs(changePercent), 1)}
-              </AppText>
-            ) : null}
-            <AppText variant="caption" tone="muted">
-              this month
-            </AppText>
-          </View>
-          <View style={{ marginTop: 10, marginHorizontal: -8 }}>
-            <LineChart
-              points={scope.trend.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.value }))}
-              height={150}
-              showArea
-              baseline="auto"
-            />
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-            <AppText variant="caption" tone="muted">
-              {scope.account?.type?.replace('_', ' ') ?? 'Account'}
-            </AppText>
-            <AppText variant="caption" tone="muted">
-              Tap for details
-            </AppText>
-          </View>
-        </View>
+      <WidgetCard bare title="Total balance" right={periodControl}>
+        <WidgetLoading />
       </WidgetCard>
     );
   }
 
-  const { summary, changes, trend } = data;
-  if (!summary || !changes) return null;
-  const heroBase = summary.netWorth - changes.changeThisMonth;
-  const heroPercent = heroBase !== 0 ? (changes.changeThisMonth / Math.abs(heroBase)) * 100 : null;
+  const scoped = data.scope;
+  const balance = scoped ? scoped.balance : (data.summary?.netWorth ?? 0);
+  const trend = data.trend;
+  const opening = trend[0]?.value ?? balance;
+  const change = balance - opening;
+  const changePercent = opening !== 0 ? (change / Math.abs(opening)) * 100 : null;
+  const trendLabel =
+    period === 'thisMonth' || period === 'lastMonth' ? 'vs last month' : period === 'thisYear' ? 'this year' : `vs ${trend[0]?.label ?? 'period start'}`;
 
   return (
-    <WidgetCard bare title="NET WORTH" onPress={() => onNavigate('/accounts')}>
-      <View style={{ gap: 6 }}>
-        <AnimatedMoney amount={summary.netWorth} variant="numericLarge" tone="neutral" />
+    <WidgetCard
+      bare
+      title={scoped ? (scoped.account?.name ?? 'Account') : 'Total balance'}
+      right={periodControl}
+      onPress={() => onNavigate(scoped?.account ? `/account/${scoped.account.id}` : '/accounts')}>
+      <View style={{ gap: theme.spacing.sm }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
+          <AnimatedMoney amount={balance} variant="numericLarge" tone="neutral" style={{ color: '#FFFFFF' }} />
+          <Pressable
+            onPress={() => updateSettings('security', { hideAmounts: !hideAmounts })}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={hideAmounts ? 'Show amounts' : 'Hide amounts'}
+            style={{ marginTop: 6 }}>
+            <Ionicons
+              name={hideAmounts ? 'eye-off-outline' : 'eye-outline'}
+              size={19}
+              color="rgba(255, 255, 255, 0.85)"
+            />
+          </Pressable>
+        </View>
+
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <Ionicons
-            name={changes.changeThisMonth >= 0 ? 'trending-up-outline' : 'trending-down-outline'}
-            size={14}
-            color={undefined}
-          />
-          <MoneyText
-            amount={changes.changeThisMonth}
-            variant="numericCaption"
-            tone="positive-negative"
-            showSign
-            absolute={false}
-          />
-          {heroPercent !== null ? (
-            <AppText variant="caption" tone={heroPercent >= 0 ? 'positive' : 'negative'}>
-              {heroPercent >= 0 ? '+' : '−'}
-              {formatPercent(Math.abs(heroPercent), 1)}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 3,
+              paddingHorizontal: 8,
+              height: 22,
+              borderRadius: theme.radius.full,
+              backgroundColor: 'rgba(255, 255, 255, 0.18)',
+            }}>
+            <Ionicons name={change >= 0 ? 'arrow-up' : 'arrow-down'} size={11} color="#FFFFFF" />
+            <AppText variant="numericCaption" style={{ color: '#FFFFFF' }}>
+              {changePercent !== null ? `${Math.abs(changePercent).toFixed(1)}%` : money.format(Math.abs(change), { compact: true })}
             </AppText>
+          </View>
+          <AppText variant="caption" style={{ color: 'rgba(255, 255, 255, 0.85)' }}>
+            {trendLabel}
+          </AppText>
+        </View>
+
+        <View style={{ marginTop: theme.spacing.xs, marginHorizontal: -6 }}>
+          {trend.length > 1 ? (
+            <LineChart
+              points={trend.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.value }))}
+              height={scoped ? 140 : 150}
+              showArea
+              baseline="auto"
+              color="#EAFBF0"
+              onDark
+            />
           ) : null}
-          <AppText variant="caption" tone="muted">
-            this month
-          </AppText>
         </View>
-        <View style={{ marginTop: 10, marginHorizontal: -8 }}>
-          <LineChart
-            points={trend.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.value }))}
-            height={150}
-            showArea
-            baseline="auto"
-          />
-        </View>
+
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-          <AppText variant="caption" tone="muted">
-            Assets {money.format(summary.assetsTotal, { compact: true })}
-          </AppText>
-          <AppText variant="caption" tone="muted">
-            Liabilities {money.format(Math.abs(summary.liabilitiesTotal), { compact: true })}
-          </AppText>
+          {scoped ? (
+            <>
+              <AppText variant="caption" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                {scoped.account?.type?.replace('_', ' ') ?? 'Account'}
+              </AppText>
+              <AppText variant="caption" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                Tap for details
+              </AppText>
+            </>
+          ) : (
+            <>
+              <AppText variant="caption" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                Assets {money.format(data.summary?.assetsTotal ?? 0, { compact: true })}
+              </AppText>
+              <AppText variant="caption" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                Liabilities {money.format(Math.abs(data.summary?.liabilitiesTotal ?? 0), { compact: true })}
+              </AppText>
+            </>
+          )}
         </View>
       </View>
     </WidgetCard>
@@ -322,7 +341,7 @@ const SafeToSpendWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   const money = useMoney();
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
   const { data, loading } = useQuery(() => getSafeToSpend(monthStartDay), [monthStartDay]);
-  if (loading || !data) return <WidgetCard title="SAFE TO SPEND"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Safe to spend"><WidgetLoading /></WidgetCard>;
 
   const rows = [
     { label: 'Available cash', amount: data.available, negative: false },
@@ -333,7 +352,7 @@ const SafeToSpendWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
 
   return (
     <WidgetCard
-      title="SAFE TO SPEND"
+      title="Safe to spend"
       subtitle={
         data.nextIncomeDate && data.nextIncomeLabel
           ? `Until ${data.nextIncomeLabel} · ${formatDayMonth(new Date(data.nextIncomeDate))}`
@@ -366,13 +385,13 @@ const SafeToSpendWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
 const TotalBalanceWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {  const money = useMoney();
   const scopeAccountId = config.accountIds?.[0] ?? null;
   const { data, loading } = useQuery(() => getNetWorthSummary(config.accountIds), [config.accountIds?.join(',')]);
-  if (loading || !data) return <WidgetCard title="TOTAL BALANCE"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Total balance"><WidgetLoading /></WidgetCard>;
   const liquid = data.accounts
     .filter((account) => account.includeInTotalBalance && isSpendable(account.type))
     .reduce((sum, account) => sum + account.currentBalance, 0);
   const count = data.accounts.filter((account) => account.includeInTotalBalance).length;
   return (
-    <WidgetCard title="TOTAL BALANCE" actionLabel="Accounts" onAction={() => onNavigate('/accounts')} onPress={() => onNavigate('/accounts')}>
+    <WidgetCard title="Total balance" actionLabel="Accounts" onAction={() => onNavigate('/accounts')} onPress={() => onNavigate('/accounts')}>
       <AppText variant="numericMedium">{money.format(liquid)}</AppText>
       <AppText variant="caption" tone="muted" style={{ marginTop: 4 }}>
         {scopeAccountId ? 'This account' : `Across ${count} account${count === 1 ? '' : 's'}`}
@@ -381,75 +400,227 @@ const TotalBalanceWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => { 
   );
 };
 
+const QuickActionsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
+  const theme = useTheme();
+  const actions: { label: string; icon: IconName; href: string; filled?: boolean }[] = [
+    { label: 'Add expense', icon: 'add', href: '/transaction/new?type=expense', filled: true },
+    { label: 'Add income', icon: 'arrow-down', href: '/transaction/new?type=income' },
+    { label: 'Transfer', icon: 'swap-horizontal', href: '/transaction/new?type=transfer' },
+    { label: 'Budgets', icon: 'stats-chart', href: '/budgets' },
+  ];
+  return (
+    <Card style={{ paddingVertical: theme.spacing.lg }}>
+      <View style={{ flexDirection: 'row' }}>
+        {actions.map((action) => (
+          <Pressable
+            key={action.label}
+            onPress={() => onNavigate(action.href)}
+            accessibilityRole="button"
+            accessibilityLabel={action.label}
+            style={({ pressed }) => ({ flex: 1, alignItems: 'center', gap: theme.spacing.sm, opacity: pressed ? 0.7 : 1 })}>
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 24,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: action.filled ? theme.colors.accent.base : theme.colors.accent.soft,
+              }}>
+              <Ionicons
+                name={action.icon}
+                size={22}
+                color={action.filled ? theme.colors.accent.on : theme.colors.accent.base}
+              />
+            </View>
+            <AppText variant="caption" tone="secondary">
+              {action.label}
+            </AppText>
+          </Pressable>
+        ))}
+      </View>
+    </Card>
+  );
+};
+
 const IncomeExpenseWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
   const theme = useTheme();
-  const money = useMoney();
   const range = useRange(config);
   const { data, loading } = useQuery(
-    () => getPeriodSummary({ range, accountIds: config.accountIds }),
+    async () => {
+      const [summary, trend] = await Promise.all([
+        getPeriodSummary({ range, accountIds: config.accountIds }),
+        getTrend({ range, accountIds: config.accountIds }),
+      ]);
+      return { summary, trend };
+    },
     [range.start.getTime(), range.end.getTime(), config.accountIds?.join(',')],
   );
-  if (loading || !data) return <WidgetCard title="CASH FLOW"><WidgetLoading /></WidgetCard>;
-  const { totals } = data;
+  if (loading || !data) {
+    return (
+      <WidgetCard title="Cash flow">
+        <WidgetLoading />
+      </WidgetCard>
+    );
+  }
+  const { totals, previous } = data.summary;
 
   if (totals.income === 0 && totals.expenses === 0) {
     return (
-      <WidgetCard title="CASH FLOW">
+      <WidgetCard title="Cash flow">
         <WidgetEmpty message="No income or spending recorded in this period." icon="swap-vertical-outline" />
       </WidgetCard>
     );
   }
 
-  const max = Math.max(totals.income, totals.netExpense, 1);
+  const incomeSeries = data.trend.points.map((point) => point.income);
+  const expenseSeries = data.trend.points.map((point) => point.expense);
+  const incomeChange = percentageChange(totals.income, previous.income);
+  const expenseChange = percentageChange(totals.netExpense, previous.netExpense);
 
   return (
-    <WidgetCard title="CASH FLOW" onPress={() => onNavigate('/reports/cashflow')}>
-      <View style={{ gap: 14 }}>
-        <View style={{ gap: 7 }}>
-          <Row justify="space-between">
-            <AppText variant="bodySmall" tone="secondary">
-              Income
-            </AppText>
-            <MoneyText amount={totals.income} variant="numericSmall" tone="positive-negative" />
-          </Row>
-          <ProgressBar progress={(totals.income / max) * 100} height={8} color={theme.colors.positive} />
+    <WidgetCard title="Cash flow" onPress={() => onNavigate('/reports/cashflow')}>
+      <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
+        <FlowTile
+          label="Income"
+          amount={totals.income}
+          tone="positive"
+          icon="arrow-down"
+          change={incomeChange}
+          series={incomeSeries}
+        />
+        <FlowTile
+          label="Expenses"
+          amount={-totals.netExpense}
+          tone="negative"
+          icon="arrow-up"
+          change={expenseChange}
+          changeInverts
+          series={expenseSeries}
+        />
+      </View>
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          marginTop: theme.spacing.md,
+          paddingTop: theme.spacing.md,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: theme.colors.border,
+        }}>
+        <AppText variant="caption" tone="muted">
+          Saved
+        </AppText>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
+          <MoneyText amount={totals.savings} variant="numericCaption" tone="positive-negative" showSign />
+          <AppText variant="caption" tone="muted">
+            {formatPercent(totals.savingsRate, 0)} of income
+          </AppText>
         </View>
-        <View style={{ gap: 7 }}>
-          <Row justify="space-between">
-            <AppText variant="bodySmall" tone="secondary">
-              Expenses
-            </AppText>
-            <MoneyText amount={-totals.netExpense} variant="numericSmall" tone="positive-negative" />
-          </Row>
-          <ProgressBar progress={(totals.netExpense / max) * 100} height={8} color={theme.colors.negative} />
-        </View>
-        <Row gap="lg" style={{ marginTop: 2 }}>
-          <View style={{ flex: 1 }}>
-            <AppText variant="caption" tone="muted">
-              Saved
-            </AppText>
-            <MoneyText amount={totals.savings} variant="numericSmall" tone="positive-negative" showSign />
-          </View>
-          <View style={{ flex: 1 }}>
-            <AppText variant="caption" tone="muted">
-              Savings rate
-            </AppText>
-            <AppText variant="numericSmall">{money.format(totals.savings, { compact: true })} · {formatPercent(totals.savingsRate, 0)}</AppText>
-          </View>
-        </Row>
       </View>
     </WidgetCard>
   );
 };
 
+/** One half of the cash-flow card: label, amount, change pill and a mini chart. */
+function FlowTile({
+  label,
+  amount,
+  tone,
+  icon,
+  change,
+  changeInverts,
+  series,
+}: {
+  label: string;
+  amount: number;
+  tone: 'positive' | 'negative';
+  icon: IconName;
+  change: number | null;
+  changeInverts?: boolean;
+  series: number[];
+}) {
+  const theme = useTheme();
+  const color = tone === 'positive' ? theme.colors.positive : theme.colors.negative;
+  // More spending is not "good", so the expense pill flips its colour.
+  const improving = change === null ? null : changeInverts ? change <= 0 : change >= 0;
+  const changeTone = improving === null ? 'muted' : improving ? 'positive' : 'negative';
+
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: 0,
+        gap: theme.spacing.sm,
+        padding: theme.spacing.md,
+        borderRadius: theme.radius.lg,
+        backgroundColor: tone === 'positive' ? theme.colors.positiveSoft : theme.colors.negativeSoft,
+      }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 14,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: color,
+          }}>
+          <Ionicons name={icon} size={15} color="#FFFFFF" />
+        </View>
+        <AppText variant="caption" tone="secondary">
+          {label}
+        </AppText>
+      </View>
+      <MoneyText amount={amount} variant="numericSmall" tone="neutral" absolute showSign={false} numberOfLines={1} />
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 6 }}>
+        {change !== null ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+            <Ionicons name={change >= 0 ? 'arrow-up' : 'arrow-down'} size={11} color={improving ? theme.colors.positive : theme.colors.negative} />
+            <AppText variant="caption" tone={changeTone} style={{ fontSize: 11 }}>
+              {formatPercent(Math.abs(change), 1)}
+            </AppText>
+          </View>
+        ) : (
+          <AppText variant="caption" tone="muted" style={{ fontSize: 11 }}>
+            new
+          </AppText>
+        )}
+        <MiniBars values={series} color={`${color}88`} />
+      </View>
+    </View>
+  );
+}
+
+/** Tiny bar series for the cash-flow tiles (spending/income shape at a glance). */
+function MiniBars({ values, color, height = 26 }: { values: number[]; color: string; height?: number }) {
+  const max = Math.max(1, ...values.map((value) => Math.abs(value)));
+  const visible = values.slice(-12);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, height, flexShrink: 1 }}>
+      {visible.map((value, index) => (
+        <View
+          key={index}
+          style={{
+            width: 3,
+            borderRadius: 1.5,
+            height: Math.max(2, (Math.abs(value) / max) * height),
+            backgroundColor: color,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
 const SpendingTotalWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
   const money = useMoney();
   const range = useRange(config);
   const { data, loading } = useQuery(() => getPeriodSummary({ range, accountIds: config.accountIds }), [range.start.getTime(), range.end.getTime()]);
-  if (loading || !data) return <WidgetCard title="SPENDING"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Spending"><WidgetLoading /></WidgetCard>;
   const change = percentageChange(data.totals.netExpense, data.previous.netExpense);
   return (
-    <WidgetCard title="SPENDING" onPress={() => onNavigate('/analytics')}>
+    <WidgetCard title="Spending" onPress={() => onNavigate('/analytics')}>
       <AppText variant="numericMedium">{money.format(data.totals.netExpense)}</AppText>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
         {change === null ? (
@@ -477,11 +648,11 @@ const SavingsRateWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
     () => getPeriodSummary({ range, accountIds: config.accountIds }),
     [range.start.getTime(), range.end.getTime(), config.accountIds?.join(',')],
   );
-  if (loading || !data) return <WidgetCard title="SAVINGS RATE"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Savings rate"><WidgetLoading /></WidgetCard>;
   const rate = data.totals.savingsRate;
   const tone = rate >= 20 ? 'positive' : rate >= 0 ? 'accent' : 'negative';
   return (
-    <WidgetCard title="SAVINGS RATE" onPress={() => onNavigate('/reports/monthly')}>
+    <WidgetCard title="Savings rate" onPress={() => onNavigate('/reports/monthly')}>
       <View style={{ alignItems: 'center', gap: theme.spacing.sm }}>
         <Gauge
           progress={rate}
@@ -503,11 +674,11 @@ const SpendingPaceWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
     () => getSpendingVelocity({ range, accountIds: config.accountIds }),
     [range.start.getTime(), range.end.getTime(), config.accountIds?.join(',')],
   );
-  if (loading || !data) return <WidgetCard title="SPENDING PACE"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Spending pace"><WidgetLoading /></WidgetCard>;
   const expectedPerDay = data.daysInPeriod > 0 ? data.previousTotal / data.daysInPeriod : 0;
   const diff = data.currentPerDay - expectedPerDay;
   return (
-    <WidgetCard title="SPENDING PACE" onPress={() => onNavigate('/analytics')}>
+    <WidgetCard title="Spending pace" onPress={() => onNavigate('/analytics')}>
       <AppText variant="numericMedium">
         {money.format(data.currentPerDay)}
         <AppText variant="caption" tone="muted">
@@ -536,17 +707,17 @@ const SpendingTrendWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
     () => getTrend({ range, accountIds: config.accountIds }, undefined, ['expense']),
     [range.start.getTime(), range.end.getTime()],
   );
-  if (loading || !data) return <WidgetCard title="SPENDING TREND"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Spending trend"><WidgetLoading /></WidgetCard>;
   const points = data.points.filter((point) => point.net > 0);
   if (points.length === 0) {
     return (
-      <WidgetCard title="SPENDING TREND">
+      <WidgetCard title="Spending trend">
         <WidgetEmpty message="No spending data yet. Add a few transactions to see your trend." icon="trending-up-outline" />
       </WidgetCard>
     );
   }
   return (
-    <WidgetCard title="SPENDING TREND" subtitle={`Average ${money.format(data.average)}`} onPress={() => onNavigate('/analytics')}>
+    <WidgetCard title="Spending trend" subtitle={`Average ${money.format(data.average)}`} onPress={() => onNavigate('/analytics')}>
       {config.chart === 'bar' ? (
         <BarChart points={data.points.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.net }))} height={150} />
       ) : (
@@ -561,44 +732,93 @@ const SpendingTrendWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
 };
 
 const CategoryBreakdownWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
+  const theme = useTheme();
   const money = useMoney();
   const chart = useChartColors();
   const range = useRange(config);
-  const { data, loading } = useQuery(() => getCategoryBreakdown({ range, accountIds: config.accountIds }), [range.start.getTime(), range.end.getTime()]);
-  if (loading || !data) return <WidgetCard title="SPENDING CATEGORIES"><WidgetLoading /></WidgetCard>;
+  const { data, loading } = useQuery(
+    () => getCategoryBreakdown({ range, accountIds: config.accountIds }),
+    [range.start.getTime(), range.end.getTime(), config.accountIds?.join(',')],
+  );
+  if (loading || !data) {
+    return (
+      <WidgetCard title="Spending by category">
+        <WidgetLoading />
+      </WidgetCard>
+    );
+  }
   if (data.rows.length === 0) {
     return (
-      <WidgetCard title="SPENDING CATEGORIES">
+      <WidgetCard title="Spending by category">
         <WidgetEmpty message="No categories to show for this period." icon="pie-chart-outline" />
       </WidgetCard>
     );
   }
-  const top = data.rows.slice(0, 5);
+
+  // Three named categories plus an "Others" roll-up — the reference layout.
+  const top = data.rows.slice(0, 3);
+  const rest = data.rows.slice(3);
+  const restTotal = rest.reduce((sum, row) => sum + row.total, 0);
+  const rows = [
+    ...top.map((row, index) => ({ ...row, color: chart.slice(index, row.color) })),
+    ...(rest.length > 0
+      ? [
+          {
+            categoryId: null as string | null,
+            name: `Others (${rest.length})`,
+            icon: 'ellipsis-horizontal',
+            color: theme.colors.muted,
+            total: restTotal,
+            share: data.total > 0 ? (restTotal / data.total) * 100 : 0,
+          },
+        ]
+      : []),
+  ];
+  const max = Math.max(...rows.map((row) => row.total), 1);
+
   return (
-    <WidgetCard title="SPENDING CATEGORIES" actionLabel="Analytics" onAction={() => onNavigate('/analytics')}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
-        <DonutChart
-          size={140}
-          thickness={18}
-          slices={top.map((row, index) => ({ id: row.categoryId ?? 'none', label: row.name, value: row.total, color: chart.slice(index, row.color) }))}
-          centerTop="Total"
-          centerBottom={money.format(data.total, { compact: true })}
-        />
-        <View style={{ flex: 1, gap: 10 }}>
-          {top.slice(0, 4).map((row, index) => (
-            <Pressable
-              key={row.categoryId ?? 'none'}
-              onPress={() => (row.categoryId ? onNavigate(`/category/${row.categoryId}`) : undefined)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: chart.slice(index, row.color) }} />
-              <AppText variant="caption" numberOfLines={1} style={{ flex: 1 }}>
+    <WidgetCard title="Spending by category" actionLabel="View all" onAction={() => onNavigate('/analytics')}>
+      <View style={{ gap: theme.spacing.lg }}>
+        {rows.map((row) => (
+          <Pressable
+            key={row.categoryId ?? 'others'}
+            onPress={() => (row.categoryId ? onNavigate(`/category/${row.categoryId}`) : onNavigate('/analytics'))}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: theme.spacing.md,
+              opacity: pressed ? 0.75 : 1,
+            })}>
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: `${row.color}22`,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+              <Ionicons name={row.icon as IconName} size={17} color={row.color} />
+            </View>
+            <View style={{ flex: 1, gap: 6, minWidth: 0 }}>
+              <AppText variant="bodySmall" numberOfLines={1}>
                 {row.name}
               </AppText>
-              <AppText variant="numericCaption" tone="secondary">
+              <ProgressBar progress={(row.total / max) * 100} height={6} color={row.color} />
+            </View>
+            <View style={{ alignItems: 'flex-end', gap: 2, minWidth: 74 }}>
+              <MoneyText amount={row.total} variant="numericCaption" tone="neutral" showSign={false} numberOfLines={1} />
+              <AppText variant="caption" tone="muted" style={{ fontSize: 11 }}>
                 {formatPercent(row.share, 0)}
               </AppText>
-            </Pressable>
-          ))}
+            </View>
+          </Pressable>
+        ))}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <AppText variant="caption" tone="muted">
+            Total spending
+          </AppText>
+          <MoneyText amount={data.total} variant="numericCaption" tone="neutral" showSign={false} />
         </View>
       </View>
     </WidgetCard>
@@ -609,16 +829,16 @@ const BudgetProgressWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   const theme = useTheme();
   const money = useMoney();
   const { data, loading } = useQuery(() => getBudgetProgressList(), []);
-  if (loading || !data) return <WidgetCard title="BUDGETS"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Budgets"><WidgetLoading /></WidgetCard>;
   if (data.length === 0) {
     return (
-      <WidgetCard title="BUDGETS" actionLabel="Set up" onAction={() => onNavigate('/budgets')}>
+      <WidgetCard title="Budgets" actionLabel="Set up" onAction={() => onNavigate('/budgets')}>
         <WidgetEmpty message="No budgets yet. Create one to track category spending limits." icon="wallet-outline" />
       </WidgetCard>
     );
   }
   return (
-    <WidgetCard title="BUDGETS" subtitle={`${data.length} active`} actionLabel="All" onAction={() => onNavigate('/budgets')}>
+    <WidgetCard title="Budgets" subtitle={`${data.length} active`} actionLabel="All" onAction={() => onNavigate('/budgets')}>
       <View style={{ gap: 18 }}>
         {data.slice(0, 3).map((budget) => (
           <Pressable key={budget.budget.id} onPress={() => onNavigate(`/budget/${budget.budget.id}`)} style={{ gap: 8 }}>
@@ -666,49 +886,65 @@ const RecentTransactionsWidget: React.FC<WidgetProps> = ({ config, onNavigate })
     () => getRecentLedgerTransactions({ range, accountIds: config.accountIds }, 6, true),
     [config.accountIds?.join(',')],
   );
-  if (loading || !data) return <WidgetCard title="RECENT"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) {
+    return (
+      <WidgetCard title="Recent activity">
+        <WidgetLoading />
+      </WidgetCard>
+    );
+  }
   if (data.length === 0) {
     return (
-      <WidgetCard title="RECENT">
+      <WidgetCard title="Recent activity">
         <WidgetEmpty message="No transactions yet." icon="receipt-outline" />
       </WidgetCard>
     );
   }
   return (
-    <WidgetCard title="RECENT" actionLabel="All" onAction={() => onNavigate('/transactions')}>
-      <View style={{ gap: 2 }}>
-        {data.map((row) => (
-          <Pressable
-            key={`${row.id}-${row.categoryId ?? 'none'}`}
-            onPress={() => onNavigate(`/transaction/${row.id}`)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 }}>
-            <View
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 11,
-                backgroundColor: `${row.categoryColor ?? theme.colors.muted}22`,
+    <WidgetCard title="Recent activity" actionLabel="View all" onAction={() => onNavigate('/transactions')}>
+      <View>
+        {data.map((row, index) => {
+          const color = row.categoryColor ?? theme.colors.muted;
+          const title = row.merchant ?? row.description ?? row.categoryName ?? 'Transaction';
+          return (
+            <Pressable
+              key={`${row.id}-${row.categoryId ?? 'none'}`}
+              onPress={() => onNavigate(`/transaction/${row.id}`)}
+              accessibilityRole="button"
+              accessibilityLabel={title}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-              <Ionicons name={(row.categoryIcon as IconName) ?? 'pricetag-outline'} size={16} color={row.categoryColor ?? theme.colors.muted} />
-            </View>
-            <View style={{ flex: 1, gap: 1 }}>
-              <AppText variant="bodySmall" numberOfLines={1}>
-                {row.merchant ?? row.description ?? row.categoryName ?? 'Transaction'}
-              </AppText>
-              <AppText variant="caption" tone="muted" numberOfLines={1}>
-                {row.categoryName ?? 'Uncategorised'} · {row.accountName}
-              </AppText>
-            </View>
-            <View style={{ alignItems: 'flex-end', gap: 1 }}>
-              <MoneyText amount={row.amount} variant="numericSmall" tone={row.isTransfer ? 'neutral' : 'auto'} />
-              <AppText variant="caption" tone="muted">
-                {formatDayMonth(new Date(row.date))}
-              </AppText>
-            </View>
-          </Pressable>
-        ))}
+                gap: theme.spacing.md,
+                paddingVertical: theme.spacing.md,
+                borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
+                borderTopColor: theme.colors.border,
+                opacity: pressed ? 0.7 : 1,
+              })}>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: `${color}22`,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                <Ionicons name={(row.categoryIcon as IconName) ?? 'pricetag-outline'} size={18} color={color} />
+              </View>
+              <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+                <AppText variant="bodyMedium" numberOfLines={1}>
+                  {title}
+                </AppText>
+                <AppText variant="caption" tone="muted" numberOfLines={1}>
+                  {[row.categoryName ?? 'Uncategorised', formatDayMonth(new Date(row.date))].filter(Boolean).join(' · ')}
+                </AppText>
+              </View>
+              <MoneyText amount={row.amount} variant="numericSmall" tone={row.isTransfer ? 'neutral' : 'auto'} numberOfLines={1} />
+              <Ionicons name="chevron-forward" size={15} color={theme.colors.muted} />
+            </Pressable>
+          );
+        })}
       </View>
     </WidgetCard>
   );
@@ -719,17 +955,17 @@ const TopMerchantsWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
   const money = useMoney();
   const range = useRange(config);
   const { data, loading } = useQuery(() => getTopMerchants({ range, accountIds: config.accountIds }, 5), [range.start.getTime(), range.end.getTime()]);
-  if (loading || !data) return <WidgetCard title="TOP MERCHANTS"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Top merchants"><WidgetLoading /></WidgetCard>;
   if (data.length === 0) {
     return (
-      <WidgetCard title="TOP MERCHANTS">
+      <WidgetCard title="Top merchants">
         <WidgetEmpty message="No merchant data for this period." icon="storefront-outline" />
       </WidgetCard>
     );
   }
   const max = Math.max(...data.map((row) => row.total), 1);
   return (
-    <WidgetCard title="TOP MERCHANTS">
+    <WidgetCard title="Top merchants">
       <View style={{ gap: 14 }}>
         {data.map((row) => (
           <Pressable key={row.name} onPress={() => onNavigate(`/merchant/${encodeURIComponent(row.name)}`)} style={{ gap: 6 }}>
@@ -756,16 +992,16 @@ const LargestExpensesWidget: React.FC<WidgetProps> = ({ config, onNavigate }) =>
     () => getLargestExpenses({ range, accountIds: config.accountIds }, 5),
     [range.start.getTime(), range.end.getTime(), config.accountIds?.join(',')],
   );
-  if (loading || !data) return <WidgetCard title="LARGEST EXPENSES"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Largest expenses"><WidgetLoading /></WidgetCard>;
   if (data.length === 0) {
     return (
-      <WidgetCard title="LARGEST EXPENSES">
+      <WidgetCard title="Largest expenses">
         <WidgetEmpty message="Nothing to show for this period." icon="podium-outline" />
       </WidgetCard>
     );
   }
   return (
-    <WidgetCard title="LARGEST EXPENSES">
+    <WidgetCard title="Largest expenses">
       <View style={{ gap: 2 }}>
         {data.map((row) => (
           <Pressable
@@ -793,17 +1029,17 @@ const AccountBalancesWidget: React.FC<WidgetProps> = ({ config, onNavigate }) =>
   const money = useMoney();
   const scopeAccountId = config.accountIds?.[0] ?? null;
   const { data, loading } = useQuery(() => getNetWorthSummary(config.accountIds), [config.accountIds?.join(',')]);
-  if (loading || !data) return <WidgetCard title="ACCOUNTS"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Accounts"><WidgetLoading /></WidgetCard>;
   const visible = data.accounts.filter((account) => account.visibleOnDashboard);
   if (visible.length === 0) {
     return (
-      <WidgetCard title="ACCOUNTS" actionLabel="Add" onAction={() => onNavigate('/accounts')}>
+      <WidgetCard title="Accounts" actionLabel="Add" onAction={() => onNavigate('/accounts')}>
         <WidgetEmpty message="No accounts yet." icon="wallet-outline" />
       </WidgetCard>
     );
   }
   return (
-    <WidgetCard title="ACCOUNTS" actionLabel="All" onAction={() => onNavigate('/accounts')}>
+    <WidgetCard title="Accounts" actionLabel="All" onAction={() => onNavigate('/accounts')}>
       <View style={{ gap: 2 }}>
         {visible.slice(0, scopeAccountId ? 1 : 5).map((account) => (
           <Pressable
@@ -831,10 +1067,10 @@ const NetWorthTrendWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
     if (scopeAccountId) return getAccountBalanceTrend(scopeAccountId, getPeriodRange(period, { monthStartDay }), 'month');
     return getNetWorthTrend(getPeriodRange(period, { monthStartDay }), 'month');
   }, [period, monthStartDay, scopeAccountId]);
-  if (loading || !data) return <WidgetCard title="NET WORTH TREND"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Net worth trend"><WidgetLoading /></WidgetCard>;
   if (data.length < 2) {
     return (
-      <WidgetCard title="NET WORTH TREND">
+      <WidgetCard title="Net worth trend">
         <WidgetEmpty message="Add more history to see your net worth trend." icon="trending-up-outline" />
       </WidgetCard>
     );
@@ -869,7 +1105,7 @@ const MonthlyComparisonWidget: React.FC<WidgetProps> = ({ config, onNavigate }) 
     ]);
     return { current, previous };
   }, [monthStartDay, config.accountIds?.join(',')]);
-  if (loading || !data) return <WidgetCard title="MONTHLY COMPARISON"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Monthly comparison"><WidgetLoading /></WidgetCard>;
   const previousMap = new Map(data.previous.rows.map((row) => [row.categoryId ?? 'none', row.total]));
   const comparisons = data.current.rows.slice(0, 5).map((row) => {
     const previous = previousMap.get(row.categoryId ?? 'none') ?? 0;
@@ -877,13 +1113,13 @@ const MonthlyComparisonWidget: React.FC<WidgetProps> = ({ config, onNavigate }) 
   });
   if (comparisons.length === 0) {
     return (
-      <WidgetCard title="MONTHLY COMPARISON">
+      <WidgetCard title="Monthly comparison">
         <WidgetEmpty message="No spending to compare yet." icon="calendar-outline" />
       </WidgetCard>
     );
   }
   return (
-    <WidgetCard title="MONTHLY COMPARISON" subtitle="This month vs last" actionLabel="Review" onAction={() => onNavigate('/reports/monthly')}>
+    <WidgetCard title="Monthly comparison" subtitle="This month vs last" actionLabel="Review" onAction={() => onNavigate('/reports/monthly')}>
       <View style={{ gap: 2 }}>
         {comparisons.map((row) => (
           <Pressable
@@ -923,9 +1159,9 @@ const DailySpendingWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
     () => getDailySpendingStats({ range, accountIds: config.accountIds }),
     [range.start.getTime(), range.end.getTime(), config.accountIds?.join(',')],
   );
-  if (loading || !data) return <WidgetCard title="DAILY SPENDING"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Daily spending"><WidgetLoading /></WidgetCard>;
   return (
-    <WidgetCard title="DAILY SPENDING" onPress={() => onNavigate('/analytics')}>
+    <WidgetCard title="Daily spending" onPress={() => onNavigate('/analytics')}>
       <Row gap="lg">
         <View style={{ flex: 1 }}>
           <AppText variant="caption" tone="muted">
@@ -973,16 +1209,16 @@ const DailySpendingWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
 const RecurringUpcomingWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   const money = useMoney();
   const { data, loading } = useQuery(() => getUpcoming(4), []);
-  if (loading || !data) return <WidgetCard title="UPCOMING"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Upcoming"><WidgetLoading /></WidgetCard>;
   if (data.length === 0) {
     return (
-      <WidgetCard title="UPCOMING" actionLabel="Add" onAction={() => onNavigate('/recurring')}>
+      <WidgetCard title="Upcoming" actionLabel="Add" onAction={() => onNavigate('/recurring')}>
         <WidgetEmpty message="No upcoming recurring payments." icon="repeat-outline" />
       </WidgetCard>
     );
   }
   return (
-    <WidgetCard title="UPCOMING" actionLabel="Manage" onAction={() => onNavigate('/recurring')}>
+    <WidgetCard title="Upcoming" actionLabel="Manage" onAction={() => onNavigate('/recurring')}>
       <View style={{ gap: 2 }}>
         {data.map((item) => (
           <Pressable
@@ -1011,16 +1247,16 @@ const CashFlowWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
   const chart = useChartColors();
   const range = useRange(config);
   const { data, loading } = useQuery(() => getCategoryBreakdown({ range, accountIds: config.accountIds }, { limit: 6 }), [range.start.getTime(), range.end.getTime()]);
-  if (loading || !data) return <WidgetCard title="MONEY FLOW"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Money flow"><WidgetLoading /></WidgetCard>;
   if (data.rows.length === 0) {
     return (
-      <WidgetCard title="MONEY FLOW">
+      <WidgetCard title="Money flow">
         <WidgetEmpty message="No outflow data for this period." icon="git-branch-outline" />
       </WidgetCard>
     );
   }
   return (
-    <WidgetCard title="MONEY FLOW" onPress={() => onNavigate('/reports/cashflow')}>
+    <WidgetCard title="Money flow" onPress={() => onNavigate('/reports/cashflow')}>
       <FlowBars
         totalLabel="Money out"
         totalValue={data.total}
@@ -1038,11 +1274,11 @@ const CashFlowWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
 
 const ReviewQueueWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   const { data, loading } = useQuery(() => getReviewQueue(3), []);
-  if (loading) return <WidgetCard title="REVIEW"><WidgetLoading /></WidgetCard>;
+  if (loading) return <WidgetCard title="Review"><WidgetLoading /></WidgetCard>;
   const items = data ?? [];
   if (items.length === 0) return null; // Nothing to review → no widget.
   return (
-    <WidgetCard title="REVIEW" subtitle={`${items.length} need${items.length === 1 ? 's' : ''} attention`} actionLabel="Review all" onAction={() => onNavigate('/review')}>
+    <WidgetCard title="Review" subtitle={`${items.length} need${items.length === 1 ? 's' : ''} attention`} actionLabel="Review all" onAction={() => onNavigate('/review')}>
       <View style={{ gap: 2 }}>
         {items.map((item) => (
           <Pressable
@@ -1068,10 +1304,10 @@ const ReviewQueueWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
 const GoalsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   const money = useMoney();
   const { data, loading } = useQuery(() => getGoalsProgress(), []);
-  if (loading || !data) return <WidgetCard title="GOALS"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Goals"><WidgetLoading /></WidgetCard>;
   if (data.length === 0) {
     return (
-      <WidgetCard title="GOALS" actionLabel="Create" onAction={() => onNavigate('/goals')}>
+      <WidgetCard title="Goals" actionLabel="Create" onAction={() => onNavigate('/goals')}>
         <EmptyState
           compact
           icon="flag-outline"
@@ -1084,7 +1320,7 @@ const GoalsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
     );
   }
   return (
-    <WidgetCard title="GOALS" actionLabel="All" onAction={() => onNavigate('/goals')}>
+    <WidgetCard title="Goals" actionLabel="All" onAction={() => onNavigate('/goals')}>
       <View style={{ gap: 14 }}>
         {data.slice(0, 3).map((progress) => (
           <Pressable key={progress.goal.id} onPress={() => onNavigate(`/goal/${progress.goal.id}`)} style={{ gap: 7 }}>
@@ -1110,10 +1346,10 @@ const GoalsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
 const DebtSummaryWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   const money = useMoney();
   const { data, loading } = useQuery(() => getDebtOverview(), []);
-  if (loading || !data) return <WidgetCard title="MONEY OWED"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Money owed"><WidgetLoading /></WidgetCard>;
   const isEmpty = data.theyOweYou === 0 && data.youOwe === 0;
   return (
-    <WidgetCard title="MONEY OWED" actionLabel={isEmpty ? 'Add' : undefined} onAction={isEmpty ? () => onNavigate('/debts') : undefined} onPress={() => onNavigate('/debts')}>
+    <WidgetCard title="Money owed" actionLabel={isEmpty ? 'Add' : undefined} onAction={isEmpty ? () => onNavigate('/debts') : undefined} onPress={() => onNavigate('/debts')}>
       <Row gap="lg">
         <View style={{ flex: 1 }}>
           <AppText variant="caption" tone="muted">
@@ -1148,10 +1384,10 @@ const DebtSummaryWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
 const SubscriptionsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   const money = useMoney();
   const { data, loading } = useQuery(() => getSubscriptionSummary(), []);
-  if (loading || !data) return <WidgetCard title="SUBSCRIPTIONS"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Subscriptions"><WidgetLoading /></WidgetCard>;
   if (data.activeCount === 0) {
     return (
-      <WidgetCard title="SUBSCRIPTIONS" actionLabel="Manage" onAction={() => onNavigate('/recurring')} onPress={() => onNavigate('/recurring')}>
+      <WidgetCard title="Subscriptions" actionLabel="Manage" onAction={() => onNavigate('/recurring')} onPress={() => onNavigate('/recurring')}>
         <AppText variant="numericMedium">{money.format(0)}<AppText variant="caption" tone="muted">/mo</AppText></AppText>
         <AppText variant="bodySmall" tone="secondary" style={{ marginTop: 8 }}>
           No recurring subscriptions yet.
@@ -1163,7 +1399,7 @@ const SubscriptionsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
     );
   }
   return (
-    <WidgetCard title="SUBSCRIPTIONS" subtitle={`${data.activeCount} active`} actionLabel="Manage" onAction={() => onNavigate('/recurring')} onPress={() => onNavigate('/recurring')}>
+    <WidgetCard title="Subscriptions" subtitle={`${data.activeCount} active`} actionLabel="Manage" onAction={() => onNavigate('/recurring')} onPress={() => onNavigate('/recurring')}>
       <Row gap="lg">
         <View style={{ flex: 1 }}>
           <AppText variant="caption" tone="muted">
@@ -1211,7 +1447,7 @@ const InsightsWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
     }, 3);
   }, [range.start.getTime(), range.end.getTime(), currency, grouping, showDecimals, monthStartDay]);
 
-  if (loading || !data) return <WidgetCard title="INSIGHTS"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Insights"><WidgetLoading /></WidgetCard>;
   if (data.length === 0) return null;
 
   const toneColors: Record<string, string> = {
@@ -1222,7 +1458,7 @@ const InsightsWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
   };
 
   return (
-    <WidgetCard title="INSIGHTS">
+    <WidgetCard title="Insights">
       <View style={{ gap: 14 }}>
         {data.map((insight) => (
           <Pressable
@@ -1247,9 +1483,9 @@ const FinancialHealthWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   const money = useMoney();
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
   const { data, loading } = useQuery(() => getFinancialHealth(monthStartDay), [monthStartDay]);
-  if (loading || !data) return <WidgetCard title="FINANCIAL HEALTH"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Financial health"><WidgetLoading /></WidgetCard>;
   return (
-    <WidgetCard title="FINANCIAL HEALTH" actionLabel="Details" onAction={() => onNavigate('/reports/health')}>
+    <WidgetCard title="Financial health" actionLabel="Details" onAction={() => onNavigate('/reports/health')}>
       <View style={{ gap: 10 }}>
         <Row justify="space-between">
           <AppText variant="bodySmall" tone="secondary">Savings rate</AppText>
@@ -1277,10 +1513,10 @@ const FinancialHealthWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
 const InstallmentsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   const money = useMoney();
   const { data, loading } = useQuery(() => import('@/services/installments.service').then((m) => m.listInstallmentProgress()), []);
-  if (loading || !data) return <WidgetCard title="INSTALLMENTS"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Installments"><WidgetLoading /></WidgetCard>;
   if (data.length === 0) return null;
   return (
-    <WidgetCard title="INSTALLMENTS" actionLabel="Manage" onAction={() => onNavigate('/installments')}>
+    <WidgetCard title="Installments" actionLabel="Manage" onAction={() => onNavigate('/installments')}>
       <View style={{ gap: 14 }}>
         {data.slice(0, 3).map((plan) => (
           <View key={plan.plan.id} style={{ gap: 7 }}>
@@ -1326,11 +1562,11 @@ const UpcomingPaymentsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
       notifications.sharedReminders,
     ],
   );
-  if (loading) return <WidgetCard title="REMINDERS"><WidgetLoading /></WidgetCard>;
+  if (loading) return <WidgetCard title="Reminders"><WidgetLoading /></WidgetCard>;
   const items = (data ?? []).slice(0, 4);
   if (items.length === 0) return null;
   return (
-    <WidgetCard title="REMINDERS" actionLabel="Settings" onAction={() => onNavigate('/settings/notifications')}>
+    <WidgetCard title="Reminders" actionLabel="Settings" onAction={() => onNavigate('/settings/notifications')}>
       <View style={{ gap: 10 }}>
         {items.map((reminder) => (
           <Pressable
@@ -1386,14 +1622,14 @@ const CategoryMonthlyWidget: React.FC<WidgetProps> = ({ config, onNavigate }) =>
     [config.accountIds?.join(','), monthStartDay],
   );
 
-  if (loading || !data) return <WidgetCard title="CATEGORY TRENDS"><WidgetLoading /></WidgetCard>;
+  if (loading || !data) return <WidgetCard title="Category trends"><WidgetLoading /></WidgetCard>;
 
   const current = data.months[data.months.length - 1];
   const previous = data.months[data.months.length - 2];
   const rows = data.rows.filter((row) => row.current > 0 || row.previous > 0).slice(0, 5);
   if (rows.length === 0) {
     return (
-      <WidgetCard title="CATEGORY TRENDS" actionLabel="Analytics" onAction={() => onNavigate('/analytics')}>
+      <WidgetCard title="Category trends" actionLabel="Analytics" onAction={() => onNavigate('/analytics')}>
         <WidgetEmpty message="No spending in the last cycles to compare yet." icon="analytics-outline" />
       </WidgetCard>
     );
@@ -1401,7 +1637,7 @@ const CategoryMonthlyWidget: React.FC<WidgetProps> = ({ config, onNavigate }) =>
 
   return (
     <WidgetCard
-      title="CATEGORY TRENDS"
+      title="Category trends"
       subtitle={current && previous ? `${current.fullLabel} vs ${previous.fullLabel}` : 'Month on month'}
       actionLabel="All"
       onAction={() => onNavigate('/category-trends')}>
@@ -1469,6 +1705,7 @@ const CategoryMonthlyWidget: React.FC<WidgetProps> = ({ config, onNavigate }) =>
 
 const REGISTRY: Record<string, WidgetDefinition> = {
   net_worth: { type: 'net_worth', title: 'Net Worth', description: 'Your wealth with month-over-month change', icon: 'trending-up-outline', defaultWidth: 'full', defaultHeight: 'tall', Component: NetWorthWidget },
+  quick_actions: { type: 'quick_actions', title: 'Quick Actions', description: 'Add expense, income, transfer, budgets', icon: 'flash-outline', defaultWidth: 'full', defaultHeight: 'compact', Component: QuickActionsWidget },
   safe_to_spend: { type: 'safe_to_spend', title: 'Safe to Spend', description: 'Cash minus bills, savings and budget commitments', icon: 'shield-checkmark-outline', defaultWidth: 'full', defaultHeight: 'medium', Component: SafeToSpendWidget },
   total_balance: { type: 'total_balance', title: 'Total Balance', description: 'Spendable balance across accounts', icon: 'wallet-outline', defaultWidth: 'half', defaultHeight: 'compact', Component: TotalBalanceWidget },
   income_expense: { type: 'income_expense', title: 'Cash Flow', description: 'Income vs expenses this period', icon: 'swap-vertical-outline', defaultWidth: 'full', defaultHeight: 'medium', Component: IncomeExpenseWidget },

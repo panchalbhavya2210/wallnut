@@ -1,11 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { DrawerContentComponentProps } from 'expo-router/drawer';
+import { useDrawerStatus, type DrawerContentComponentProps } from 'expo-router/drawer';
 
-import { useTheme } from '@/theme/theme';
+import { useTheme, type Theme } from '@/theme/theme';
 import { AppText } from './ui/text';
 import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
@@ -88,12 +88,23 @@ export function WallnutDrawerContent(props: DrawerContentComponentProps) {
   const [search, setSearch] = useState('');
   const userName = useSettingsStore((state) => state.general.userName);
 
+  // Opening the drawer re-renders this whole tree (the drawer's open/closed
+  // state lives in navigation state). The net-worth query is the only real
+  // work here, so it is skipped entirely while the drawer is closed — on a
+  // long-lived Android session that DB hop during the open animation was what
+  // made the menu feel slow.
+  const drawerStatus = useDrawerStatus();
+  const summaryRef = useRef<{ netWorth: number; count: number } | null>(null);
   const summary = useQuery(async () => {
+    if (drawerStatus !== 'open') return summaryRef.current;
     const netWorth = await getNetWorthSummary();
-    return { netWorth: netWorth.netWorth, count: netWorth.accounts.length };
-  }, []);
+    const next = { netWorth: netWorth.netWorth, count: netWorth.accounts.length };
+    summaryRef.current = next;
+    return next;
+  }, [drawerStatus]);
 
   const activeRouteName = props.state.routeNames[props.state.index];
+  const { navigate, closeDrawer } = props.navigation;
 
   const query = search.trim().toLowerCase();
   const groups = useMemo(() => {
@@ -109,61 +120,21 @@ export function WallnutDrawerContent(props: DrawerContentComponentProps) {
     })).filter((group) => group.items.length > 0);
   }, [query]);
 
-  const go = (destination: Destination) => {
-    if (destination.screen) {
-      props.navigation.navigate(destination.screen as never);
-      props.navigation.closeDrawer();
-      return;
-    }
-    if (destination.href) {
-      const href = destination.href;
-      props.navigation.closeDrawer();
-      setTimeout(() => router.push(href as never), 160);
-    }
-  };
-
-  const renderItem = (destination: Destination) => {
-    const focused = destination.screen !== undefined && destination.screen === activeRouteName;
-    const tint = focused ? theme.colors.accent.base : theme.colors.textSecondary;
-    return (
-      <Pressable
-        key={destination.label}
-        onPress={() => go(destination)}
-        android_ripple={{ color: theme.colors.ripple }}
-        style={({ pressed }) => ({
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 14,
-          paddingVertical: 11,
-          paddingHorizontal: 12,
-          borderRadius: theme.radius.md,
-          backgroundColor: focused ? theme.colors.accent.soft : pressed ? theme.colors.pressed : 'transparent',
-        })}>
-        <View
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: theme.radius.md,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: focused ? `${theme.colors.accent.base}26` : theme.colors.neutralSoft,
-          }}>
-          <Ionicons name={destination.icon} size={18} color={tint} />
-        </View>
-        <View style={{ flex: 1, gap: 1 }}>
-          <AppText variant="bodyMedium" tone={focused ? 'accent' : 'primary'} numberOfLines={1}>
-            {destination.label}
-          </AppText>
-          {destination.detail ? (
-            <AppText variant="caption" tone="muted" numberOfLines={1}>
-              {destination.detail}
-            </AppText>
-          ) : null}
-        </View>
-        {focused ? <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: theme.colors.accent.base }} /> : null}
-      </Pressable>
-    );
-  };
+  const go = useCallback(
+    (destination: Destination) => {
+      if (destination.screen) {
+        navigate(destination.screen as never);
+        closeDrawer();
+        return;
+      }
+      if (destination.href) {
+        const href = destination.href;
+        closeDrawer();
+        setTimeout(() => router.push(href as never), 160);
+      }
+    },
+    [navigate, closeDrawer],
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.surface, paddingTop: insets.top }}>
@@ -263,7 +234,15 @@ export function WallnutDrawerContent(props: DrawerContentComponentProps) {
               style={{ marginLeft: theme.spacing.md, marginTop: theme.spacing.sm, marginBottom: theme.spacing.xs }}>
               {group.title.toUpperCase()}
             </AppText>
-            {group.items.map(renderItem)}
+            {group.items.map((destination) => (
+              <DrawerRow
+                key={destination.label}
+                destination={destination}
+                focused={destination.screen !== undefined && destination.screen === activeRouteName}
+                theme={theme}
+                onPress={go}
+              />
+            ))}
           </View>
         ))}
 
@@ -288,3 +267,61 @@ export function WallnutDrawerContent(props: DrawerContentComponentProps) {
     </View>
   );
 }
+
+/**
+ * One destination row. Memoized: re-rendering ~50 rows inside the open
+ * animation was the other half of the slow drawer.
+ */
+const DrawerRow = React.memo(function DrawerRow({
+  destination,
+  focused,
+  theme,
+  onPress,
+}: {
+  destination: Destination;
+  focused: boolean;
+  theme: Theme;
+  onPress: (destination: Destination) => void;
+}) {
+  const tint = focused ? theme.colors.accent.base : theme.colors.textSecondary;
+  return (
+    <Pressable
+      onPress={() => onPress(destination)}
+      android_ripple={{ color: theme.colors.ripple }}
+      accessibilityRole="button"
+      accessibilityLabel={destination.label}
+      accessibilityState={{ selected: focused }}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+        paddingVertical: 11,
+        paddingHorizontal: 12,
+        borderRadius: theme.radius.md,
+        backgroundColor: focused ? theme.colors.accent.soft : pressed ? theme.colors.pressed : 'transparent',
+      })}>
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: theme.radius.md,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: focused ? `${theme.colors.accent.base}26` : theme.colors.neutralSoft,
+        }}>
+        <Ionicons name={destination.icon} size={18} color={tint} />
+      </View>
+      <View style={{ flex: 1, gap: 1 }}>
+        <AppText variant="bodyMedium" tone={focused ? 'accent' : 'primary'} numberOfLines={1}>
+          {destination.label}
+        </AppText>
+        {destination.detail ? (
+          <AppText variant="caption" tone="muted" numberOfLines={1}>
+            {destination.detail}
+          </AppText>
+        ) : null}
+      </View>
+      {focused ? <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: theme.colors.accent.base }} /> : null}
+    </Pressable>
+  );
+});

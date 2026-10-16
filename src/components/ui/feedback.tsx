@@ -1,10 +1,18 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeOut,
+  SlideInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { useTheme } from '@/theme/theme';
-import { useUiStore } from '@/stores/ui.store';
+import { useUiStore, type ToastMessage } from '@/stores/ui.store';
 import { AppText } from './text';
 import { Button } from './controls';
 import type { IconName } from './layout';
@@ -161,6 +169,12 @@ export function InfoBanner({
 
 /* ---------------------------------- Toast ---------------------------------- */
 
+/**
+ * Saving feedback should feel like a receipt being handed to you, not a
+ * status bar. Each toast is a card: tone-tinted icon, a bold heading with the
+ * muted detail underneath, an Undo pill when the action is reversible, and a
+ * countdown line that shows exactly how long it will stay.
+ */
 export function ToastHost() {
   const theme = useTheme();
   const toasts = useUiStore((state) => state.toasts);
@@ -169,51 +183,119 @@ export function ToastHost() {
   if (toasts.length === 0) return null;
 
   return (
-    <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end', padding: theme.spacing.lg, paddingBottom: 110 }]}>
+    <View
+      pointerEvents="box-none"
+      style={[
+        StyleSheet.absoluteFill,
+        { justifyContent: 'flex-end', paddingHorizontal: theme.spacing.lg, paddingBottom: 104, gap: theme.spacing.sm },
+      ]}>
       {toasts.map((toast) => (
-        <Animated.View
-          key={toast.id}
-          entering={FadeInDown.duration(180)}
-          exiting={FadeOut.duration(140)}
-          style={{ marginTop: theme.spacing.sm }}>
-          <Pressable
-            onPress={() => dismissToast(toast.id)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: theme.spacing.md,
-              backgroundColor: theme.colors.surfaceElevated,
-              borderColor: theme.colors.border,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderRadius: theme.radius.md,
-              paddingHorizontal: theme.spacing.lg,
-              paddingVertical: theme.spacing.md,
-              ...theme.shadow('md'),
-            }}>
-            <Ionicons
-              name={toast.tone === 'positive' ? 'checkmark-circle-outline' : toast.tone === 'negative' ? 'alert-circle-outline' : 'information-circle-outline'}
-              size={17}
-              color={toast.tone === 'positive' ? theme.colors.positive : toast.tone === 'negative' ? theme.colors.negative : theme.colors.accent.base}
-            />
-            <AppText variant="bodySmall" style={{ flex: 1 }}>
-              {toast.text}
-            </AppText>
-            {toast.actionLabel ? (
-              <Pressable
-                onPress={() => {
-                  dismissToast(toast.id);
-                  toast.onAction?.();
-                }}
-                hitSlop={8}>
-                <AppText variant="bodySmall" tone="accent">
-                  {toast.actionLabel}
-                </AppText>
-              </Pressable>
-            ) : null}
-          </Pressable>
-        </Animated.View>
+        <ToastCard key={toast.id} toast={toast} onDismiss={() => dismissToast(toast.id)} />
       ))}
     </View>
+  );
+}
+
+function ToastCard({ toast, onDismiss }: { toast: ToastMessage; onDismiss: () => void }) {
+  const theme = useTheme();
+  const reduceMotion = theme.motion.reduceMotion;
+  const color =
+    toast.tone === 'positive' ? theme.colors.positive : toast.tone === 'negative' ? theme.colors.negative : theme.colors.accent.base;
+  const icon = toast.tone === 'positive' ? 'checkmark-circle' : toast.tone === 'negative' ? 'alert-circle' : 'information-circle';
+
+  // The countdown shrinks a hairline under the card so the dismissal never
+  // feels abrupt — and Undo toasts visibly run out of time.
+  const [barWidth, setBarWidth] = useState(0);
+  const progress = useSharedValue(1);
+  useEffect(() => {
+    progress.value = 1;
+    progress.value = withTiming(0, { duration: toast.durationMs, easing: Easing.linear });
+  }, [progress, toast.durationMs, toast.id]);
+  const barStyle = useAnimatedStyle(() => ({ width: Math.max(0, barWidth * progress.value) }));
+
+  return (
+    <Animated.View
+      entering={reduceMotion ? undefined : SlideInDown.springify().damping(19).stiffness(230)}
+      exiting={FadeOut.duration(150)}>
+      <Pressable
+        onPress={onDismiss}
+        accessibilityRole="alert"
+        accessibilityLiveRegion="polite"
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: theme.spacing.md,
+          backgroundColor: theme.colors.surfaceElevated,
+          borderColor: theme.colors.border,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderRadius: theme.radius.lg,
+          paddingHorizontal: theme.spacing.lg,
+          paddingVertical: theme.spacing.md + 2,
+          overflow: 'hidden',
+          ...theme.shadow('md'),
+        }}>
+        <View
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            backgroundColor: `${color}1F`,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <Ionicons name={icon} size={17} color={color} />
+        </View>
+
+        <View style={{ flex: 1, gap: 1 }}>
+          {toast.title ? (
+            <>
+              <AppText variant="bodyMedium" numberOfLines={1}>
+                {toast.title}
+              </AppText>
+              <AppText variant="caption" tone="muted" numberOfLines={2}>
+                {toast.text}
+              </AppText>
+            </>
+          ) : (
+            <AppText variant="bodyMedium" numberOfLines={2}>
+              {toast.text}
+            </AppText>
+          )}
+        </View>
+
+        {toast.actionLabel ? (
+          <Pressable
+            onPress={() => {
+              onDismiss();
+              toast.onAction?.();
+            }}
+            hitSlop={6}
+            accessibilityRole="button"
+            style={({ pressed }) => ({
+              paddingHorizontal: 12,
+              height: 32,
+              borderRadius: theme.radius.full,
+              backgroundColor: theme.colors.accent.soft,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.7 : 1,
+            })}>
+            <AppText variant="captionMedium" tone="accent">
+              {toast.actionLabel}
+            </AppText>
+          </Pressable>
+        ) : null}
+
+        {!reduceMotion ? (
+          <View
+            pointerEvents="none"
+            onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
+            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 3 }}>
+            <Animated.View style={[{ height: 3, backgroundColor: color, opacity: 0.5 }, barStyle]} />
+          </View>
+        ) : null}
+      </Pressable>
+    </Animated.View>
   );
 }
 

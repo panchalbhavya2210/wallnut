@@ -55,7 +55,7 @@ export function parseJsonObject<T>(text: string): T | null {
 }
 
 /** Bump when prompts/parsers change so stale cached wording is never served. */
-export const AI_PROMPT_VERSION = 2;
+export const AI_PROMPT_VERSION = 3;
 
 export async function runAiFeature<T>(options: {
   feature: AiFeature;

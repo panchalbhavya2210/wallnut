@@ -1,7 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { Redirect } from 'expo-router';
-import { Drawer } from 'expo-router/drawer';
+import { Drawer, type DrawerContentComponentProps } from 'expo-router/drawer';
 
 import { useTheme } from '@/theme/theme';
 import { useSettingsStore } from '@/stores/settings.store';
@@ -40,31 +40,47 @@ export default function AppLayout() {
     return () => clearTimeout(timer);
   }, []);
 
+  /**
+   * Drawer performance: the navigator re-renders on every open (its open state
+   * lives in navigation state). Stable identities here stop that re-render from
+   * cascading — the options object, the content renderer and the scene layout
+   * are all recreated only when the theme actually changes. `freezeOnBlur`
+   * keeps the two background scenes from re-rendering while the drawer slides.
+   */
+  const drawerContent = React.useCallback(
+    (props: DrawerContentComponentProps) => <WallnutDrawerContent {...props} />,
+    [],
+  );
+  const screenLayout = React.useCallback(
+    ({ children }: { children: React.ReactNode }) => (
+      <View style={{ flex: 1 }}>
+        {children}
+        <BottomNav />
+      </View>
+    ),
+    [],
+  );
+  const screenOptions = React.useMemo(
+    () => ({
+      headerShown: false,
+      drawerType: 'front' as const,
+      swipeEnabled: true,
+      swipeEdgeWidth: 56,
+      freezeOnBlur: true,
+      overlayColor: theme.mode === 'dark' ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.42)',
+      drawerStyle: { width: 316, backgroundColor: theme.colors.surface },
+      sceneStyle: { backgroundColor: theme.colors.background },
+    }),
+    [theme],
+  );
+
   if (!onboarded) return <Redirect href="/onboarding" />;
 
   return (
-    <>
-      <Drawer
-        drawerContent={(props) => <WallnutDrawerContent {...props} />}
-        screenLayout={({ children }) => (
-          <View style={{ flex: 1 }}>
-            {children}
-            <BottomNav />
-          </View>
-        )}
-        screenOptions={{
-          headerShown: false,
-          drawerType: 'front',
-          swipeEnabled: true,
-          swipeEdgeWidth: 56,
-          overlayColor: theme.mode === 'dark' ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.42)',
-          drawerStyle: { width: 316, backgroundColor: theme.colors.surface },
-          sceneStyle: { backgroundColor: theme.colors.background },
-        }}>
-        <Drawer.Screen name="index" options={{ title: 'Home' }} />
-        <Drawer.Screen name="transactions" options={{ title: 'Transactions' }} />
-        <Drawer.Screen name="analytics" options={{ title: 'Analytics' }} />
-      </Drawer>
-    </>
+    <Drawer drawerContent={drawerContent} screenLayout={screenLayout} screenOptions={screenOptions}>
+      <Drawer.Screen name="index" options={{ title: 'Home' }} />
+      <Drawer.Screen name="transactions" options={{ title: 'Transactions' }} />
+      <Drawer.Screen name="analytics" options={{ title: 'Analytics' }} />
+    </Drawer>
   );
 }

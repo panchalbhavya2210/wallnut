@@ -1,25 +1,25 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
 import { Screen, IconName } from '@/components/ui/layout';
 import { AppText, MoneyText } from '@/components/ui/text';
 import { Button, Chip, IconButton, SegmentedControl } from '@/components/ui/controls';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/feedback';
-import { HeaderMenuButton } from '@/components/HeaderMenuButton';
+import { AppHeader, RoundIconButton } from '@/components/AppHeader';
 import { BottomSheet, DatePickerSheet, PickerSheet } from '@/components/ui/sheets';
 import { SwipeableRow } from '@/components/ui/SwipeableRow';
 import { confirm } from '@/components/ui/confirm';
-import { CompactPeriodSheet } from '@/components/PeriodPicker';
+import { CompactPeriodSheet, PeriodPill } from '@/components/PeriodPicker';
 import { useQuery, useDebouncedValue, useNow } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useUiStore, toast } from '@/stores/ui.store';
 import { listAccounts, ACCOUNT_TYPE_LABELS } from '@/services/accounts.service';
 import { listCategories, buildCategoryTree } from '@/services/categories.service';
-import { listTags } from '@/services/tags.service';
+import { addTagToTransactions, listTags } from '@/services/tags.service';
 import {
   bulkDeleteTransactions,
   bulkUpdateAccount,
@@ -32,21 +32,21 @@ import {
   type TransactionFilters,
   type TransactionListItem,
 } from '@/services/transactions.service';
-import { addTagToTransactions } from '@/services/tags.service';
-import { fromISODate, getPeriodRange, PERIOD_LABELS, toISODate, type PeriodPreset } from '@/utils/date';
+import { fromISODate, getPeriodRange, toISODate, type PeriodPreset } from '@/utils/date';
 import {
   bucketKeyForDate,
   groupRecords,
   RECORDS_GROUPING_LABELS,
   resolveRecordsGrouping,
   rowDateLabel,
+  rowTimeLabel,
   type RecordsGrouping,
 } from '@/utils/records';
 
 /**
- * Records — the statement view: a period selector with a running total, weekly
- * (or daily/monthly) groups with their own subtotals, statement-style rows and
- * the full search/filter/bulk-edit toolkit behind the header.
+ * Transactions — the statement view: period control with a running total, day
+ * (or week/month) groups with statement rows, and the full search/filter/
+ * bulk-edit toolkit behind the header.
  */
 
 type TabKey = 'all' | 'expenses' | 'income' | 'transfers';
@@ -57,6 +57,7 @@ export default function TransactionsScreen() {
   const theme = useTheme();
   const money = useMoney();
   const now = useNow();
+  const params = useLocalSearchParams<{ search?: string }>();
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
   const confirmDeletion = useSettingsStore((state) => state.transactions.confirmDeletion);
   const showIcons = useSettingsStore((state) => state.transactions.showIcons);
@@ -79,7 +80,7 @@ export default function TransactionsScreen() {
   const [showViewOptions, setShowViewOptions] = useState(false);
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [page, setPage] = useState(1);
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(params.search === '1');
 
   const period = recordsPeriod;
   const range = useMemo(() => getPeriodRange(period, { monthStartDay }), [period, monthStartDay]);
@@ -163,7 +164,6 @@ export default function TransactionsScreen() {
   );
 
   const activeFilterCount = countActiveFilters(filters);
-  const periodLabel = customRange ? 'CUSTOM RANGE' : PERIOD_LABELS[period].toUpperCase();
 
   const handleDelete = async (item: TransactionListItem) => {
     if (confirmDeletion) {
@@ -195,55 +195,65 @@ export default function TransactionsScreen() {
   return (
     <Screen>
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: theme.spacing.md }}>
-        {selectionMode ? (
-          <>
-            <AppText variant="title">{selectedIds.length} selected</AppText>
-            <IconButton icon="close" onPress={clearSelection} accessibilityLabel="Exit selection" />
-          </>
-        ) : (
-          <>
-            <HeaderMenuButton />
-            <View style={{ flex: 1 }}>
-              <AppText variant="title">Records</AppText>
-              {summary.data !== null ? (
-                <AppText variant="caption" tone="muted">
-                  {summary.data.count} transaction{summary.data.count === 1 ? '' : 's'}
-                </AppText>
-              ) : null}
-            </View>
-            <IconButton icon="search-outline" onPress={() => setSearchOpen((value) => !value)} accessibilityLabel="Search" />
-            <IconButton icon="ellipsis-vertical" onPress={() => setShowViewOptions(true)} accessibilityLabel="View options" />
-          </>
-        )}
-      </View>
+      {selectionMode ? (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingTop: theme.spacing.md,
+            paddingBottom: theme.spacing.md,
+          }}>
+          <AppText variant="title">{selectedIds.length} selected</AppText>
+          <IconButton icon="close" onPress={clearSelection} accessibilityLabel="Exit selection" />
+        </View>
+      ) : (
+        <AppHeader
+          title="Transactions"
+          subtitle={summary.data ? `${summary.data.count} transaction${summary.data.count === 1 ? '' : 's'}` : undefined}
+          onSearch={() => setSearchOpen((value) => !value)}
+          onFilter={() => setShowFilters(true)}
+        />
+      )}
 
       {/* Period + running total */}
       {!selectionMode ? (
-        <Pressable
-          onPress={() => setShowPeriod(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Choose period"
-          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.md }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <AppText variant="label" tone="muted">
-              {periodLabel}
-            </AppText>
-            <Ionicons name="chevron-down" size={13} color={theme.colors.muted} />
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <AppText variant="caption" tone="muted">
-              Σ
-            </AppText>
-            {summary.data ? (
-              <MoneyText amount={summary.data.total} variant="numericBody" tone={summary.data.total < 0 ? 'negative' : 'positive'} />
-            ) : (
-              <AppText variant="numericBody" tone="muted">
-                —
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingBottom: theme.spacing.md,
+          }}>
+          <PeriodPill value={period} monthStartDay={monthStartDay} onRequestOpen={() => setShowPeriod(true)} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
+            <View style={{ alignItems: 'flex-end' }}>
+              <AppText variant="caption" tone="muted" style={{ fontSize: 11 }}>
+                {customRange ? 'Total in range' : 'Total'}
               </AppText>
-            )}
+              {summary.data ? (
+                <MoneyText
+                  amount={summary.data.total}
+                  variant="numericSmall"
+                  tone={
+                    transfersInTotal
+                      ? 'neutral'
+                      : summary.data.total < 0
+                        ? 'negative'
+                        : summary.data.total > 0
+                          ? 'positive'
+                          : 'muted'
+                  }
+                />
+              ) : (
+                <AppText variant="numericSmall" tone="muted">
+                  —
+                </AppText>
+              )}
+            </View>
+            <RoundIconButton icon="ellipsis-vertical" onPress={() => setShowViewOptions(true)} label="View options" />
           </View>
-        </Pressable>
+        </View>
       ) : null}
 
       {/* Search */}
@@ -253,12 +263,12 @@ export default function TransactionsScreen() {
             flexDirection: 'row',
             alignItems: 'center',
             gap: theme.spacing.sm,
-            backgroundColor: theme.colors.inputBackground,
-            borderRadius: theme.radius.md,
+            backgroundColor: theme.colors.surface,
+            borderRadius: theme.radius.full,
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: theme.colors.border,
             paddingHorizontal: theme.spacing.md,
-            height: 42,
+            height: 40,
             marginBottom: theme.spacing.sm,
           }}>
           <Ionicons name="search-outline" size={16} color={theme.colors.muted} />
@@ -281,9 +291,13 @@ export default function TransactionsScreen() {
         </View>
       ) : null}
 
-      {/* Tabs */}
+      {/* Tabs — pill filter row, scrolls so the filter chip never wraps. */}
       {!selectionMode ? (
-        <View style={{ flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.sm }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginBottom: theme.spacing.sm, flexGrow: 0 }}
+          contentContainerStyle={{ gap: theme.spacing.sm, paddingRight: theme.spacing.lg }}>
           {([
             { key: 'all', label: 'All' },
             { key: 'expenses', label: 'Expenses' },
@@ -308,7 +322,7 @@ export default function TransactionsScreen() {
               onPress={() => setShowFilters(true)}
             />
           ) : null}
-        </View>
+        </ScrollView>
       ) : null}
 
       {/* List */}
@@ -348,18 +362,17 @@ export default function TransactionsScreen() {
             if (hasMore(summary.data?.count, rows.length) && !query.loading) setPage((value) => value + 1);
           }}
           renderItem={({ item: group }) => (
-            <View>
+            <View style={{ marginBottom: theme.spacing.lg }}>
               {group.label ? (
                 <View
                   style={{
                     flexDirection: 'row',
                     justifyContent: 'space-between',
-                    alignItems: 'flex-end',
-                    paddingVertical: theme.spacing.md,
-                    backgroundColor: theme.colors.background,
+                    alignItems: 'center',
+                    paddingBottom: theme.spacing.sm,
                   }}>
                   <View style={{ gap: 1 }}>
-                    <AppText variant="label" tone="secondary">
+                    <AppText variant="captionMedium" tone="secondary" style={{ fontSize: 13 }}>
                       {group.label}
                     </AppText>
                     {group.subtitle ? (
@@ -368,43 +381,59 @@ export default function TransactionsScreen() {
                       </AppText>
                     ) : null}
                   </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <AppText variant="caption" tone="muted">
-                      Σ
-                    </AppText>
+                  {resolvedGrouping !== 'day' ? (
                     <MoneyText
                       amount={group.total}
                       variant="numericCaption"
                       tone={group.total < 0 ? 'negative' : group.total > 0 ? 'positive' : 'muted'}
                     />
-                  </View>
+                  ) : null}
                 </View>
               ) : null}
-              {group.rows.map((row) => (
-                <TransactionRow
-                  key={row.id}
-                  row={row}
-                  now={now}
-                  showIcon={showIcons}
-                  showDate={resolvedGrouping !== 'day'}
-                  selectionMode={selectionMode}
-                  selected={selectedIds.includes(row.id)}
-                  onPress={() => {
-                    if (selectionMode) toggleSelected(row.id);
-                    else router.push(`/transaction/${row.id}` as never);
-                  }}
-                  onLongPress={() => {
-                    setSelectionMode(true);
-                    toggleSelected(row.id);
-                  }}
-                  onDelete={() => handleDelete(row)}
-                  onEdit={() => router.push(`/transaction/${row.id}?edit=1` as never)}
-                  onReviewed={() => {
-                    void markReviewed([row.id], !row.isReviewed);
-                    toast.show(row.isReviewed ? 'Marked unreviewed' : 'Marked reviewed');
-                  }}
-                />
-              ))}
+              <View
+                style={{
+                  backgroundColor: theme.colors.surface,
+                  borderRadius: theme.radius.lg,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: theme.colors.border,
+                  overflow: 'hidden',
+                }}>
+                {group.rows.map((row, index) => (
+                  <View key={row.id}>
+                    {index > 0 ? (
+                      <View
+                        style={{
+                          height: StyleSheet.hairlineWidth,
+                          backgroundColor: theme.colors.border,
+                          marginLeft: theme.spacing.md,
+                        }}
+                      />
+                    ) : null}
+                    <TransactionRow
+                      row={row}
+                      now={now}
+                      showIcon={showIcons}
+                      showDate={resolvedGrouping !== 'day'}
+                      selectionMode={selectionMode}
+                      selected={selectedIds.includes(row.id)}
+                      onPress={() => {
+                        if (selectionMode) toggleSelected(row.id);
+                        else router.push(`/transaction/${row.id}` as never);
+                      }}
+                      onLongPress={() => {
+                        setSelectionMode(true);
+                        toggleSelected(row.id);
+                      }}
+                      onDelete={() => handleDelete(row)}
+                      onEdit={() => router.push(`/transaction/${row.id}?edit=1` as never)}
+                      onReviewed={() => {
+                        void markReviewed([row.id], !row.isReviewed);
+                        toast.show(row.isReviewed ? 'Marked unreviewed' : 'Marked reviewed');
+                      }}
+                    />
+                  </View>
+                ))}
+              </View>
             </View>
           )}
         />
@@ -513,6 +542,8 @@ function TransactionRow({
   if (row.isRecurring) metaParts.push('Recurring');
   if (row.splitCount > 0) metaParts.push(`${row.splitCount} splits`);
   if (!row.isReviewed) metaParts.push('Needs review');
+  // Day groups are dated by their header, so the row carries the clock time.
+  const trailingMeta = showDate ? rowDateLabel(row.date, now) : rowTimeLabel(row.date);
 
   return (
     <SwipeableRow
@@ -533,8 +564,8 @@ function TransactionRow({
           flexDirection: 'row',
           alignItems: 'center',
           gap: theme.spacing.md,
-          paddingVertical: theme.spacing.md,
-          paddingHorizontal: theme.spacing.xs,
+          paddingVertical: 13,
+          paddingHorizontal: theme.spacing.md,
           backgroundColor: selected ? `${theme.colors.accent.base}14` : pressed ? theme.colors.pressed : 'transparent',
         })}>
         {selectionMode ? (
@@ -550,7 +581,7 @@ function TransactionRow({
               style={{
                 width: 42,
                 height: 42,
-                borderRadius: theme.radius.md,
+                borderRadius: theme.radius.full,
                 backgroundColor: `${color}26`,
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -596,12 +627,15 @@ function TransactionRow({
         </View>
         <View style={{ alignItems: 'flex-end', gap: 2 }}>
           <MoneyText amount={row.amount} variant="numericBody" tone={row.isTransfer ? 'neutral' : 'auto'} />
-          {showDate ? (
+          {trailingMeta ? (
             <AppText variant="caption" tone="muted" style={{ fontSize: 11 }}>
-              {rowDateLabel(row.date, now)}
+              {trailingMeta}
             </AppText>
           ) : null}
         </View>
+        {!selectionMode ? (
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.muted} style={{ marginLeft: -6 }} />
+        ) : null}
       </Pressable>
     </SwipeableRow>
   );

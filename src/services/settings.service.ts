@@ -1,6 +1,5 @@
 import { getDb } from '@/db/client';
 import { settings } from '@/db/schema';
-import { eq } from 'drizzle-orm';
 import type { AccentName } from '@/theme/colors';
 import type { PeriodPreset } from '@/utils/date';
 import type { CurrencyCode } from '@/utils/money';
@@ -173,8 +172,8 @@ export const DEFAULT_SETTINGS: SettingsGroups = {
     showDecimals: false,
   },
   appearance: {
-    theme: 'dark',
-    accent: 'magenta',
+    theme: 'light',
+    accent: 'botanical',
     fontFamily: 'inter',
     palette: 'wallnut',
     deviceColors: false,
@@ -182,7 +181,7 @@ export const DEFAULT_SETTINGS: SettingsGroups = {
     chartColors: 'theme',
     reduceMotion: false,
     fontScale: 'default',
-    themeVersion: 2,
+    themeVersion: 3,
   },
   dashboard: {
     defaultPeriod: 'thisMonth',
@@ -277,10 +276,17 @@ export async function loadAllSettings(): Promise<Partial<SettingsGroups>> {
         // Beta brand refresh: indigo was the old default and reads as generic
         // fintech blue. Installs that never left the default move to magenta;
         // an explicit choice afterwards is preserved (themeVersion is set).
-        if (appearance.themeVersion !== 2 && appearance.accent === 'indigo') {
-          appearance.accent = DEFAULT_SETTINGS.appearance.accent;
+        if ((appearance.themeVersion ?? 0) < 2 && appearance.accent === 'indigo') {
+          appearance.accent = 'magenta';
         }
-        appearance.themeVersion = 2;
+        // Pass 19 — the finance-app revamp: green identity on a light canvas.
+        // Installs still on the previous default (magenta on dark) follow;
+        // anything the user picked themselves is left alone.
+        if ((appearance.themeVersion ?? 0) < 3) {
+          if (appearance.accent === 'magenta') appearance.accent = DEFAULT_SETTINGS.appearance.accent;
+          if (appearance.theme === 'dark') appearance.theme = DEFAULT_SETTINGS.appearance.theme;
+        }
+        appearance.themeVersion = 3;
         result.appearance = appearance;
         continue;
       }
