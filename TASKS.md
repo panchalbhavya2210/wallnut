@@ -508,3 +508,8 @@ Merging `development` into `main` is what ships.
   by `node_modules/react-native/gradle/libs.versions.toml`.
 - Built APK files are gitignored (`*.apk`) — release assets live on the
   Releases page, not in the repo.
+- **Verified end-to-end**: run #2 built and released
+  [`v1.0.0-b2`](https://github.com/panchalbhavya2210/wallnut/releases/tag/v1.0.0-b2)
+  (~16 min). The downloaded APK reports `versionCode=2`, `versionName=1.0.0+b2`,
+  and its signer SHA-256 matches the local keystore exactly — so installed local
+  builds update in place via `adb install -r`.
