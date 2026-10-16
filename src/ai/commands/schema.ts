@@ -112,6 +112,30 @@ export function extractJsonObject(text: string): unknown {
   }
 }
 
+/** Like `extractJsonObject`, but also accepts a top-level array of commands. */
+function extractJsonValue(text: string): unknown {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    // fall through to the brace hunt
+  }
+  const firstObject = trimmed.indexOf('{');
+  const firstArray = trimmed.indexOf('[');
+  const starts = [firstObject, firstArray].filter((index) => index !== -1).sort((a, b) => a - b);
+  for (const start of starts) {
+    const isObject = start === firstObject;
+    const end = isObject ? trimmed.lastIndexOf('}') : trimmed.lastIndexOf(']');
+    if (end <= start) continue;
+    try {
+      return JSON.parse(trimmed.slice(start, end + 1)) as unknown;
+    } catch {
+      // try the other delimiter
+    }
+  }
+  return null;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -179,21 +203,16 @@ function coerceMissing(value: unknown): AiMissingField[] {
 
 /* --------------------------------- Parsing --------------------------------- */
 
-/**
- * Parses and validates raw provider output into an `AiFinancialCommand`.
- * Unknown keys are dropped, wrong types become null, and an out-of-list
- * intent is rejected outright — malformed output is never executed.
- */
-export function parseAiCommand(text: string, options: AiCommandParseOptions = {}): AiCommandParseResult {
-  const today = options.today ?? toISODate(new Date());
-  const raw = extractJsonObject(text);
-  if (raw === null) return { ok: false, reason: 'malformed_json' };
-  if (!isRecord(raw)) return { ok: false, reason: 'not_an_object' };
+const RAW_INTENTS = new Set<string>(AI_COMMAND_INTENTS);
 
+/** Validates one raw command record; null when the intent is not supported. */
+function parseCommandRecord(
+  raw: Record<string, unknown>,
+  today: string,
+  currency?: string,
+): AiFinancialCommand | null {
   const rawIntent = typeof raw.intent === 'string' ? raw.intent.trim().toUpperCase() : '';
-  if (!(AI_COMMAND_INTENTS as readonly string[]).includes(rawIntent)) {
-    return { ok: false, reason: 'unsupported_intent' };
-  }
+  if (!RAW_INTENTS.has(rawIntent)) return null;
   const intent = rawIntent as AiCommandIntent;
 
   let transactionType = coerceEnum(raw.transactionType, AI_TRANSACTION_TYPES);
@@ -205,7 +224,6 @@ export function parseAiCommand(text: string, options: AiCommandParseOptions = {}
   if (!transactionType && intent === 'CREATE_RECURRING') transactionType = 'EXPENSE';
 
   const amount = coerceAmount(raw.amount);
-  const currency = cleanString(raw.currency, 3)?.toUpperCase() ?? null;
   const participants = Array.isArray(raw.participants)
     ? raw.participants
         .map((entry) => cleanString(entry, 80))
@@ -213,11 +231,12 @@ export function parseAiCommand(text: string, options: AiCommandParseOptions = {}
         .slice(0, 12)
     : null;
 
-  const command: AiFinancialCommand = {
+  const rawCurrency = cleanString(raw.currency, 3)?.toUpperCase() ?? null;
+  return {
     intent,
     transactionType,
     amount: amount !== null && amount > 0 && amount <= MAX_COMMAND_AMOUNT_MAJOR ? amount : null,
-    currency: currency && /^[A-Z]{3}$/.test(currency) ? currency : (options.currency ?? null),
+    currency: rawCurrency && /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : (currency ?? null),
     merchant: cleanString(raw.merchant, 120),
     category: cleanString(raw.category, 120),
     account: cleanString(raw.account, 120),
@@ -231,8 +250,81 @@ export function parseAiCommand(text: string, options: AiCommandParseOptions = {}
     confidence: coerceConfidence(raw.confidence),
     reportedMissing: coerceMissing(raw.missing),
   };
+}
 
+/**
+ * Parses and validates raw provider output into an `AiFinancialCommand`.
+ * Unknown keys are dropped, wrong types become null, and an out-of-list
+ * intent is rejected outright — malformed output is never executed.
+ */
+export function parseAiCommand(text: string, options: AiCommandParseOptions = {}): AiCommandParseResult {
+  const today = options.today ?? toISODate(new Date());
+  const raw = extractJsonObject(text);
+  if (raw === null) return { ok: false, reason: 'malformed_json' };
+  if (!isRecord(raw)) return { ok: false, reason: 'not_an_object' };
+  const command = parseCommandRecord(raw, today, options.currency);
+  if (!command) return { ok: false, reason: 'unsupported_intent' };
   return { ok: true, command };
+}
+
+/* ------------------------------ Batch intake ------------------------------- */
+
+/** Cap on commands parsed from one message — anything beyond is a mistake. */
+export const MAX_COMMANDS_PER_MESSAGE = 20;
+
+export interface AiParsedCommandList {
+  commands: AiFinancialCommand[];
+  /** Fragments the model deliberately left out (they need the single flow). */
+  excluded: string[];
+}
+
+export type AiCommandListParseResult =
+  | { ok: true; data: AiParsedCommandList }
+  | { ok: false; reason: 'malformed_json' | 'not_an_object' | 'empty' };
+
+function coerceExcluded(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => cleanString(entry, 200))
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, 10);
+}
+
+/**
+ * Parses a multi-command model response. Accepts `{"commands":[…]}`, a bare
+ * command object, or a top-level array. Individual malformed commands are
+ * dropped (the user reviews every surviving row); a response with nothing
+ * usable fails so the caller can fall back to the single-sentence flow.
+ */
+export function parseAiCommandList(text: string, options: AiCommandParseOptions = {}): AiCommandListParseResult {
+  const today = options.today ?? toISODate(new Date());
+  const raw = extractJsonValue(text);
+  if (raw === null) return { ok: false, reason: 'malformed_json' };
+
+  let records: unknown[];
+  let excluded: string[] = [];
+  if (Array.isArray(raw)) {
+    records = raw;
+  } else if (isRecord(raw)) {
+    if (Array.isArray(raw.commands)) {
+      records = raw.commands;
+      excluded = coerceExcluded(raw.excluded);
+    } else {
+      // A bare single command is a valid list of one.
+      records = [raw];
+    }
+  } else {
+    return { ok: false, reason: 'not_an_object' };
+  }
+
+  const commands: AiFinancialCommand[] = [];
+  for (const record of records.slice(0, MAX_COMMANDS_PER_MESSAGE)) {
+    if (!isRecord(record)) continue;
+    const command = parseCommandRecord(record, today, options.currency);
+    if (command) commands.push(command);
+  }
+  if (commands.length === 0) return { ok: false, reason: 'empty' };
+  return { ok: true, data: { commands, excluded } };
 }
 
 /* ---------------------------- Required / missing ---------------------------- */

@@ -249,7 +249,10 @@ export default function TransactionComposer() {
           defaultCategoryId: categoryId,
         });
       }
-      toast.success(editingId ? 'Transaction updated' : 'Transaction added');
+      const kind = type === 'transfer' ? 'Transfer' : type === 'income' ? 'Income' : 'Expense';
+      toast.success(`${money.format(amountMinor)}${merchant ? ` · ${merchant}` : ''}`, {
+        title: editingId ? `${kind} updated` : `${kind} saved`,
+      });
       router.back();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not save the transaction');

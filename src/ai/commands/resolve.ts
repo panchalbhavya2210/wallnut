@@ -463,3 +463,42 @@ export function commandRows(resolved: ResolvedQuickEntry, data: QuickEntryLocalD
   rows.push({ label: 'Date', value: parsed ? formatDayLabel(parsed) : date, field: 'date' });
   return rows;
 }
+
+/* --------------------------------- Batch ----------------------------------- */
+
+export const BATCHABLE_INTENTS = ['CREATE_TRANSACTION', 'CREATE_INCOME', 'CREATE_TRANSFER'] as const;
+
+/** True when the verification screen can fully edit and save this command. */
+export function isBatchableIntent(intent: AiFinancialCommand['intent']): boolean {
+  return (BATCHABLE_INTENTS as readonly string[]).includes(intent);
+}
+
+const MISSING_FIELD_LABELS: Record<AiMissingField, string> = {
+  amount: 'an amount',
+  transactionType: 'a type (money in or out)',
+  merchant: 'a name',
+  account: 'an account',
+  toAccount: 'a destination account',
+  person: 'a person',
+  participants: 'participants',
+  goal: 'a goal',
+  frequency: 'a frequency',
+};
+
+/**
+ * Why a batch row cannot be saved yet, or null when it is ready. Batch rows
+ * offer name/amount/category/date/account editors only — anything else a
+ * command still needs must be handled in the single-entry flow.
+ */
+export function batchRowIssue(command: AiFinancialCommand, missing: AiMissingField[]): string | null {
+  if (command.intent === 'UNKNOWN') return 'Not understood — remove this row and add it on its own.';
+  if (!isBatchableIntent(command.intent)) {
+    return 'Loans, splits and schedules need the single-entry flow — remove this row and add it on its own.';
+  }
+  // A name is a nicety, not a blocker — the row is still saveable without one.
+  const fields = missing.filter((field) => field !== 'merchant');
+  if (fields.length > 0) {
+    return `Still needs ${fields.map((field) => MISSING_FIELD_LABELS[field]).join(', ')}.`;
+  }
+  return null;
+}

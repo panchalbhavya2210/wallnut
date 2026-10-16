@@ -23,15 +23,8 @@ import { AppText } from './text';
 import { Button } from './controls';
 import { PressableBounce } from './bounce';
 import { EmptyState } from './feedback';
-import {
-  addDays,
-  addMonths,
-  isSameDay,
-  isSameMonth,
-  startOfMonth,
-  startOfWeek,
-  toISODate,
-} from '@/utils/date';
+import { AppCalendar, PickerDayCell } from './calendar';
+import { addDays, fromISODate, toISODate } from '@/utils/date';
 import type { IconName } from './layout';
 
 /* ------------------------------- Bottom sheet ------------------------------ */
@@ -340,44 +333,46 @@ export function PickerSheet({
 
 /* ------------------------------ Date picker sheet --------------------------- */
 
-const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-
+/**
+ * Every date picker in the app opens this sheet — now backed by the maintained
+ * `react-native-calendars` grid (month navigation, swipe, accessibility) with
+ * Wallnut's theming instead of a hand-rolled month view.
+ */
 export function DatePickerSheet({
   visible,
   onClose,
   value,
   onSelect,
   title = 'Choose date',
+  minDate,
+  maxDate,
 }: {
   visible: boolean;
   onClose: () => void;
   value: Date;
   onSelect: (date: Date) => void;
   title?: string;
+  /** YYYY-MM-DD bounds (greyed out and not selectable). */
+  minDate?: string;
+  maxDate?: string;
 }) {
   const theme = useTheme();
-  const [month, setMonth] = useState(() => startOfMonth(value));
-
-  useEffect(() => {
-    if (visible) setMonth(startOfMonth(value));
-  }, [visible, value]);
-
-  const cells = useMemo(() => {
-    const first = startOfMonth(month);
-    const gridStart = startOfWeek(first, { weekStartsOn: 1 });
-    return Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
-  }, [month]);
 
   const today = new Date();
   const quick = [
     { label: 'Today', date: today },
     { label: 'Yesterday', date: addDays(today, -1) },
     { label: 'Tomorrow', date: addDays(today, 1) },
-  ];
+  ].filter((entry) => {
+    const iso = toISODate(entry.date);
+    if (minDate && iso < minDate) return false;
+    if (maxDate && iso > maxDate) return false;
+    return true;
+  });
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} title={title} maxHeightRatio={0.8}>
-      <View style={{ flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.lg }}>
+    <BottomSheet visible={visible} onClose={onClose} title={title} maxHeightRatio={0.86}>
+      <View style={{ flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.md }}>
         {quick.map((entry) => (
           <Pressable
             key={entry.label}
@@ -402,68 +397,18 @@ export function DatePickerSheet({
         ))}
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.md }}>
-        <Pressable onPress={() => setMonth(addMonths(month, -1))} hitSlop={10} style={{ padding: theme.spacing.sm }}>
-          <Ionicons name="chevron-back" size={18} color={theme.colors.text} />
-        </Pressable>
-        <AppText variant="titleSmall">
-          {month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-        </AppText>
-        <Pressable onPress={() => setMonth(addMonths(month, 1))} hitSlop={10} style={{ padding: theme.spacing.sm }}>
-          <Ionicons name="chevron-forward" size={18} color={theme.colors.text} />
-        </Pressable>
-      </View>
-
-      <View style={{ flexDirection: 'row', marginBottom: theme.spacing.xs }}>
-        {WEEKDAYS.map((day, index) => (
-          <View key={`${day}-${index}`} style={{ flex: 1, alignItems: 'center', paddingVertical: theme.spacing.xs }}>
-            <AppText variant="caption" tone="muted">
-              {day}
-            </AppText>
-          </View>
-        ))}
-      </View>
-
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-        {cells.map((cell) => {
-          const inMonth = isSameMonth(cell, month);
-          const selected = isSameDay(cell, value);
-          const isToday = isSameDay(cell, today);
-          return (
-            <Pressable
-              key={toISODate(cell)}
-              onPress={() => {
-                onSelect(cell);
-                onClose();
-              }}
-              style={{ width: `${100 / 7}%`, height: 42, alignItems: 'center', justifyContent: 'center' }}>
-              <View
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: selected ? theme.colors.accent.base : 'transparent',
-                  borderWidth: isToday && !selected ? StyleSheet.hairlineWidth * 2 : 0,
-                  borderColor: theme.colors.accent.base,
-                }}>
-                <AppText
-                  variant="bodySmall"
-                  style={{
-                    color: selected
-                      ? theme.colors.accent.on
-                      : inMonth
-                        ? theme.colors.text
-                        : theme.colors.muted,
-                  }}>
-                  {cell.getDate()}
-                </AppText>
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
+      <AppCalendar
+        initialDate={toISODate(value)}
+        minDate={minDate}
+        maxDate={maxDate}
+        dayComponent={PickerDayCell}
+        onDayPress={(day) => {
+          const parsed = fromISODate(day.dateString);
+          if (!parsed) return;
+          onSelect(parsed);
+          onClose();
+        }}
+      />
     </BottomSheet>
   );
 }

@@ -2,18 +2,22 @@ import { describe, expect, it } from 'vitest';
 
 import {
   answerCommand,
+  batchRowIssue,
   buildQuestions,
   commandAmountMinor,
   commandRows,
+  isBatchableIntent,
   resolveQuickEntry,
   unresolvedFields,
 } from '@/ai/commands/resolve';
 import {
+  MAX_COMMANDS_PER_MESSAGE,
   coerceAmount,
   confirmationDecision,
   isSelfName,
   missingFields,
   parseAiCommand,
+  parseAiCommandList,
   type AiFinancialCommand,
 } from '@/ai/commands/schema';
 import type { QuickEntryLocalData } from '@/ai/commands/context';
@@ -392,6 +396,101 @@ describe('clarification questions', () => {
       { labels: ['Rahul'], text: 'Amit' },
     );
     expect(participants.participants).toEqual(['Rahul', 'Amit']);
+  });
+});
+
+/* ------------------------------- Batch intake ------------------------------- */
+
+describe('bulk quick entry (many transactions in one message)', () => {
+  it('parses a command list with excluded fragments', () => {
+    const result = parseAiCommandList(
+      JSON.stringify({
+        commands: [
+          { intent: 'CREATE_TRANSACTION', transactionType: 'EXPENSE', amount: 450, merchant: 'Zomato', account: 'Kotak' },
+          { intent: 'CREATE_TRANSACTION', transactionType: 'EXPENSE', amount: 200, merchant: 'Cab', account: 'Kotak' },
+          { intent: 'CREATE_INCOME', amount: 42000, account: 'Kotak' },
+        ],
+        excluded: ['Netflix 649 every month'],
+      }),
+      { today: '2026-10-07', currency: 'INR' },
+    );
+    if (!result.ok) throw new Error(`expected ok, got ${result.reason}`);
+    expect(result.data.commands).toHaveLength(3);
+    expect(result.data.commands.map((command) => command.amount)).toEqual([450, 200, 42000]);
+    expect(result.data.commands[2]!.transactionType).toBe('INCOME');
+    expect(result.data.excluded).toEqual(['Netflix 649 every month']);
+  });
+
+  it('accepts a bare command, a top-level array and prose-wrapped JSON', () => {
+    const single = parseAiCommandList(JSON.stringify({ intent: 'CREATE_TRANSACTION', amount: 100 }));
+    expect(single.ok && single.data.commands).toHaveLength(1);
+
+    const array = parseAiCommandList(
+      `[{"intent":"CREATE_TRANSACTION","amount":100},{"intent":"CREATE_TRANSACTION","amount":200}]`,
+    );
+    expect(array.ok && array.data.commands.map((command) => command.amount)).toEqual([100, 200]);
+
+    const fenced = parseAiCommandList('Here you go:\n```json\n{"commands":[{"intent":"CREATE_TRANSACTION","amount":50}]}\n```');
+    expect(fenced.ok && fenced.data.commands).toHaveLength(1);
+  });
+
+  it('drops unusable entries but keeps the good ones', () => {
+    const result = parseAiCommandList(
+      JSON.stringify({
+        commands: [
+          { intent: 'CREATE_TRANSACTION', amount: 450 },
+          { intent: 'DELETE_EVERYTHING' },
+          'not an object',
+          { intent: 'CREATE_TRANSACTION', amount: -5 },
+        ],
+      }),
+    );
+    if (!result.ok) throw new Error(`expected ok, got ${result.reason}`);
+    // The bad intent and the string are dropped; the negative amount survives
+    // as a command with amount null so the user can fix it on the row.
+    expect(result.data.commands).toHaveLength(2);
+    expect(result.data.commands[0]!.amount).toBe(450);
+    expect(result.data.commands[1]!.amount).toBeNull();
+  });
+
+  it('fails cleanly when there is nothing usable', () => {
+    expect(parseAiCommandList('totally not json').ok).toBe(false);
+    expect(parseAiCommandList(JSON.stringify({ commands: [] }))).toEqual({ ok: false, reason: 'empty' });
+    expect(parseAiCommandList(JSON.stringify({ commands: [{ intent: 'NOPE' }] }))).toEqual({ ok: false, reason: 'empty' });
+    expect(parseAiCommandList(JSON.stringify('a string'))).toEqual({ ok: false, reason: 'not_an_object' });
+  });
+
+  it('caps a runaway list at the per-message maximum', () => {
+    const commands = Array.from({ length: 40 }, () => ({ intent: 'CREATE_TRANSACTION', amount: 10 }));
+    const result = parseAiCommandList(JSON.stringify({ commands }));
+    if (!result.ok) throw new Error(`expected ok, got ${result.reason}`);
+    expect(result.data.commands).toHaveLength(MAX_COMMANDS_PER_MESSAGE);
+  });
+
+  it('blocks rows that bulk entry cannot complete, and passes the ready ones', () => {
+    const data = makeData({ defaultAccountId: 'kotak' });
+
+    const expense = parse({ intent: 'CREATE_TRANSACTION', transactionType: 'EXPENSE', amount: 450, account: 'Kotak' });
+    const resolvedExpense = resolveQuickEntry(expense, data);
+    expect(batchRowIssue(expense, unresolvedFields(expense, resolvedExpense, data))).toBeNull();
+
+    // A name is never a blocker — Wallnut can save without a merchant.
+    const nameless = parse({ intent: 'CREATE_TRANSACTION', transactionType: 'EXPENSE', amount: 50 });
+    const resolvedNameless = resolveQuickEntry(nameless, data);
+    expect(unresolvedFields(nameless, resolvedNameless, data)).toEqual([]);
+    expect(batchRowIssue(nameless, [])).toBeNull();
+
+    const brokenTransfer = parse({ intent: 'CREATE_TRANSFER', amount: 1000, account: 'Kotak' });
+    const resolvedTransfer = resolveQuickEntry(brokenTransfer, data);
+    const issue = batchRowIssue(brokenTransfer, unresolvedFields(brokenTransfer, resolvedTransfer, data));
+    expect(issue).toContain('a destination account');
+
+    // Loans/splits/schedules are not bulkable — they point at the single flow.
+    const lending = parse({ intent: 'CREATE_LENDING', amount: 2000, person: 'Rahul' });
+    expect(isBatchableIntent('CREATE_LENDING')).toBe(false);
+    expect(batchRowIssue(lending, [])).toContain('single-entry flow');
+    expect(isBatchableIntent('CREATE_TRANSFER')).toBe(true);
+    expect(isBatchableIntent('CREATE_INCOME')).toBe(true);
   });
 });
 

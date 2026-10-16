@@ -68,6 +68,19 @@ export function accentGradient(base: string, mode: 'light' | 'dark'): [string, s
   return [base, partner];
 }
 
+/**
+ * The deep hero gradient (balance card, net-worth hero): the accent darkened
+ * into deep tonal greens so white type and a bright chart line read crisply on
+ * top. Deliberately darker than `accentGradient` — a hero surface, not a button.
+ */
+export function heroGradient(base: string, mode: 'light' | 'dark'): [string, string] {
+  const { h, s } = hexToHsl(base);
+  const sat = Math.max(30, Math.min(58, s));
+  const deep = hslToHex(h + 10, sat, mode === 'dark' ? 13 : 17);
+  const mid = hslToHex(h - 8, Math.min(64, sat + 8), mode === 'dark' ? 24 : 31);
+  return [deep, mid];
+}
+
 export function buildChartTokens(
   mode: 'light' | 'dark',
   accent: AccentName,

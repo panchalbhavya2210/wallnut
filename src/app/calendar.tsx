@@ -6,20 +6,18 @@ import { router } from 'expo-router';
 import { useTheme } from '@/theme/theme';
 import { Card, Row, ScrollScreen, ScreenHeader } from '@/components/ui/layout';
 import { AppText, MoneyText } from '@/components/ui/text';
-import { IconButton } from '@/components/ui/controls';
-import { EmptyState, LoadingBlock } from '@/components/ui/feedback';
+import { LoadingBlock } from '@/components/ui/feedback';
+import { AppCalendar, LedgerDayCell, CalendarArrow, type DateData } from '@/components/ui/calendar';
 import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
 import { listTransactions } from '@/services/transactions.service';
 import { getRecurringCalendar } from '@/services/recurring.service';
-import { addDays, addMonths, endOfMonth, formatMonthYear, isSameDay, startOfMonth, startOfWeek, toISODate } from '@/utils/date';
-import { formatPercent } from '@/utils/money';
-
-const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+import { endOfMonth, formatMonthYear, fromISODate, startOfMonth, toISODate } from '@/utils/date';
 
 /**
  * Calendar — income, spending and scheduled payments laid out by day, with a
- * per-day breakdown on tap.
+ * per-day breakdown on tap. The month grid is `react-native-calendars`
+ * (swipe, accessibility, month paging) with Wallnut's day cells on top.
  */
 export default function CalendarScreen() {
   const theme = useTheme();
@@ -29,15 +27,15 @@ export default function CalendarScreen() {
 
   const monthStart = startOfMonth(month);
   const monthEnd = endOfMonth(month);
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-  const cells = useMemo(() => Array.from({ length: 42 }, (_, index) => addDays(gridStart, index)), [gridStart]);
+  const monthStartKey = toISODate(monthStart);
+  const monthEndKey = toISODate(monthEnd);
 
   const query = useQuery(async () => {
     const [transactions, schedule] = await Promise.all([
       listTransactions({
-        from: toISODate(gridStart),
-        to: toISODate(addDays(gridStart, 41)),
-        limit: 500,
+        from: monthStartKey,
+        to: monthEndKey,
+        limit: 800,
         includeTransfers: true,
         includeRefunds: true,
         includeAdjustments: true,
@@ -47,7 +45,7 @@ export default function CalendarScreen() {
       getRecurringCalendar(monthStart, monthEnd),
     ]);
     return { transactions, schedule };
-  }, [toISODate(gridStart), toISODate(monthEnd)]);
+  }, [monthStartKey, monthEndKey]);
 
   const byDay = useMemo(() => {
     const map = new Map<string, { income: number; expense: number; count: number }>();
@@ -73,101 +71,92 @@ export default function CalendarScreen() {
   const monthTotals = useMemo(() => {
     let income = 0;
     let expense = 0;
-    for (const cell of cells) {
-      if (cell.getMonth() !== month.getMonth()) continue;
-      const entry = byDay.get(toISODate(cell));
-      if (!entry) continue;
+    let busiest = 0;
+    for (const entry of byDay.values()) {
       income += entry.income;
       expense += entry.expense;
+      busiest = Math.max(busiest, entry.expense);
     }
-    return { income, expense };
-  }, [cells, byDay, month]);
+    return { income, expense, busiest };
+  }, [byDay]);
 
   const selectedKey = selected ? toISODate(selected) : null;
   const selectedTransactions = (query.data?.transactions ?? []).filter((row) => row.date === selectedKey);
+
+  const markedDates = useMemo(
+    () => (selectedKey ? { [selectedKey]: { selected: true } } : {}),
+    [selectedKey],
+  );
+
+  const renderDayFooter = (date: DateData) => {
+    const entry = byDay.get(date.dateString);
+    if (entry) {
+      return (
+        <View style={{ gap: 0.5 }}>
+          {entry.income > 0 ? (
+            <AppText variant="caption" tone="positive" style={{ fontSize: 8.5, lineHeight: 10 }} numberOfLines={1}>
+              +{money.format(entry.income, { compact: true })}
+            </AppText>
+          ) : null}
+          {entry.expense > 0 ? (
+            <AppText variant="caption" tone="negative" style={{ fontSize: 8.5, lineHeight: 10 }} numberOfLines={1}>
+              −{money.format(entry.expense, { compact: true })}
+            </AppText>
+          ) : null}
+        </View>
+      );
+    }
+    if ((scheduledByDay.get(date.dateString) ?? 0) !== 0) {
+      return <Ionicons name="repeat" size={9} color={theme.colors.muted} />;
+    }
+    return null;
+  };
 
   return (
     <ScrollScreen>
       <ScreenHeader
         title="Calendar"
         subtitle={formatMonthYear(month)}
-        hint={{ id: 'calendar', message: 'A day-by-day view of income, spending and bills. Step through months to plan around paydays and due dates.' }}
+        hint={{ id: 'calendar', message: 'A day-by-day view of income, spending and bills. Swipe or step through months to plan around paydays and due dates.' }}
       />
 
       <View style={{ gap: theme.spacing.lg }}>
-        <Card>
-          <Row justify="space-between" style={{ marginBottom: theme.spacing.md }}>
-            <IconButton icon="chevron-back" onPress={() => setMonth(addMonths(month, -1))} accessibilityLabel="Previous month" />
-            <AppText variant="titleSmall">{formatMonthYear(month)}</AppText>
-            <IconButton icon="chevron-forward" onPress={() => setMonth(addMonths(month, 1))} accessibilityLabel="Next month" />
-          </Row>
-
-          <View style={{ flexDirection: 'row' }}>
-            {WEEKDAYS.map((day, index) => (
-              <View key={`${day}-${index}`} style={{ flex: 1, alignItems: 'center', paddingVertical: 4 }}>
-                <AppText variant="caption" tone="muted">
-                  {day}
-                </AppText>
-              </View>
-            ))}
-          </View>
-
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            {cells.map((cell) => {
-              const key = toISODate(cell);
-              const inMonth = cell.getMonth() === month.getMonth();
-              const entry = byDay.get(key);
-              const scheduled = scheduledByDay.get(key) ?? 0;
-              const isSelected = selectedKey === key;
-              const isToday = isSameDay(cell, new Date());
-              const intensity = entry ? Math.min(1, entry.expense / Math.max(1, monthTotals.expense / 8)) : 0;
+        <Card padded={false} style={{ paddingVertical: theme.spacing.sm }}>
+          <AppCalendar
+            initialDate={toISODate(monthStart)}
+            markedDates={markedDates}
+            dayComponent={(props) => {
+              const key = props.date?.dateString ?? '';
+              const entry = key ? byDay.get(key) : undefined;
               return (
-                <Pressable
-                  key={key}
-                  onPress={() => setSelected(cell)}
-                  style={{ width: `${100 / 7}%`, height: 56, padding: 2 }}>
-                  <View
-                    style={{
-                      flex: 1,
-                      borderRadius: theme.radius.sm,
-                      padding: 4,
-                      backgroundColor: isSelected
-                        ? theme.colors.accent.soft
-                        : entry && inMonth
-                          ? `${theme.colors.accent.base}${Math.round(intensity * 22 + 8).toString(16).padStart(2, '0')}`
-                          : 'transparent',
-                      borderWidth: isToday ? 1 : isSelected ? 1 : 0,
-                      borderColor: isToday ? theme.colors.accent.base : theme.colors.accent.base,
-                      opacity: inMonth ? 1 : 0.35,
-                    }}>
-                    <AppText variant="captionMedium" tone={isToday ? 'accent' : 'secondary'}>
-                      {cell.getDate()}
-                    </AppText>
-                    {entry ? (
-                      <View style={{ marginTop: 2, gap: 1 }}>
-                        {entry.income > 0 ? (
-                          <AppText variant="caption" tone="positive" style={{ fontSize: 9, lineHeight: 11 }} numberOfLines={1}>
-                            +{money.format(entry.income, { compact: true })}
-                          </AppText>
-                        ) : null}
-                        {entry.expense > 0 ? (
-                          <AppText variant="caption" tone="negative" style={{ fontSize: 9, lineHeight: 11 }} numberOfLines={1}>
-                            −{money.format(entry.expense, { compact: true })}
-                          </AppText>
-                        ) : null}
-                      </View>
-                    ) : scheduled !== 0 ? (
-                      <View style={{ marginTop: 2 }}>
-                        <Ionicons name="repeat" size={9} color={theme.colors.muted} />
-                      </View>
-                    ) : null}
-                  </View>
-                </Pressable>
+                <LedgerDayCell
+                  {...props}
+                  renderFooter={renderDayFooter}
+                  highlighted={Boolean(entry)}
+                  intensity={entry && monthTotals.busiest > 0 ? Math.min(1, entry.expense / monthTotals.busiest) : 0}
+                />
               );
-            })}
-          </View>
+            }}
+            renderArrow={(direction) => <CalendarArrow direction={direction === 'left' ? 'left' : 'right'} />}
+            onDayPress={(day) => {
+              const parsed = fromISODate(day.dateString);
+              if (parsed) setSelected(parsed);
+            }}
+            onMonthChange={(day) => {
+              const parsed = fromISODate(day.dateString);
+              if (parsed) setMonth(startOfMonth(parsed));
+            }}
+          />
 
-          <Row justify="space-between" style={{ marginTop: theme.spacing.md, paddingTop: theme.spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border }}>
+          <Row
+            justify="space-between"
+            style={{
+              marginTop: theme.spacing.sm,
+              paddingTop: theme.spacing.md,
+              paddingHorizontal: theme.spacing.lg,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: theme.colors.border,
+            }}>
             <View>
               <AppText variant="caption" tone="muted">
                 Month income
@@ -199,7 +188,7 @@ export default function CalendarScreen() {
                   key={row.id}
                   onPress={() => router.push(`/transaction/${row.id}` as never)}
                   android_ripple={{ color: theme.colors.ripple }}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: 10 }}>
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: 12 }}>
                   <View style={{ flex: 1 }}>
                     <AppText variant="bodySmall" numberOfLines={1}>
                       {row.merchant || row.description || row.categoryName || 'Transaction'}

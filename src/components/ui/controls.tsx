@@ -42,8 +42,8 @@ export function Button({
   const theme = useTheme();
   const { background, foreground, border } = buttonColors(variant, theme);
 
-  const heights: Record<ButtonSize, number> = { sm: 34, md: 44, lg: 52 };
-  const padding: Record<ButtonSize, number> = { sm: theme.spacing.md, md: theme.spacing.lg, lg: theme.spacing.xl };
+  const heights: Record<ButtonSize, number> = { sm: 34, md: 44, lg: 50 };
+  const padding: Record<ButtonSize, number> = { sm: theme.spacing.md, md: theme.spacing.xl, lg: theme.spacing.xxl };
   const textVariant = size === 'sm' ? 'bodySmall' : 'bodyMedium';
 
   return (
@@ -61,7 +61,7 @@ export function Button({
           borderWidth: border ? StyleSheet.hairlineWidth * 2 : 0,
           height: heights[size],
           paddingHorizontal: padding[size],
-          borderRadius: theme.radius.md,
+          borderRadius: theme.radius.full,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
@@ -164,6 +164,7 @@ export function Chip({
 }) {
   const theme = useTheme();
   const activeColor = color ?? theme.colors.accent.base;
+  const selectedForeground = color ? '#FFFFFF' : theme.colors.accent.on;
   return (
     <PressableBounce
       onPress={onPress}
@@ -176,20 +177,22 @@ export function Chip({
         alignItems: 'center',
         gap: 5,
         paddingHorizontal: size === 'sm' ? theme.spacing.md : theme.spacing.lg - 2,
-        height: size === 'sm' ? 28 : 34,
+        height: size === 'sm' ? 28 : 36,
         borderRadius: theme.radius.full,
-        backgroundColor: selected ? `${activeColor}22` : theme.colors.surface,
+        // Selected chips are filled with the accent (the reference's segment
+        // pills); unselected chips are quiet white surfaces with a hairline.
+        backgroundColor: selected ? activeColor : theme.colors.surface,
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: selected ? `${activeColor}66` : theme.colors.border,
+        borderColor: selected ? activeColor : theme.colors.border,
       }}>
       {selected ? (
-        <Ionicons name="checkmark" size={12} color={activeColor} />
+        <Ionicons name="checkmark" size={12} color={selectedForeground} />
       ) : icon ? (
         <Ionicons name={icon} size={13} color={theme.colors.textSecondary} />
       ) : null}
       <AppText
         variant={size === 'sm' ? 'captionMedium' : 'bodySmall'}
-        style={{ color: selected ? activeColor : theme.colors.textSecondary }}>
+        style={{ color: selected ? selectedForeground : theme.colors.textSecondary }}>
         {label}
       </AppText>
     </PressableBounce>
@@ -210,26 +213,29 @@ export function SegmentedControl<T extends string>({
   style,
 }: {
   options: SegmentOption<T>[];
-  value: T;
+  /** `null` renders with no segment highlighted (active value lives outside the set). */
+  value: T | null;
   onChange: (value: T) => void;
   style?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
-  const index = Math.max(0, options.findIndex((option) => option.value === value));
+  const index = options.findIndex((option) => option.value === value);
+  const selected = index >= 0;
   const width = useSharedValue(0);
-  const animatedIndex = useSharedValue(index);
+  const animatedIndex = useSharedValue(Math.max(0, index));
 
   React.useEffect(() => {
-    animatedIndex.value = withSpring(index, { damping: 22, stiffness: 260, overshootClamping: true });
+    animatedIndex.value = withSpring(Math.max(0, index), { damping: 22, stiffness: 260, overshootClamping: true });
   }, [index, animatedIndex]);
 
   const indicatorStyle = useAnimatedStyle(() => {
     const segment = width.value / Math.max(1, options.length);
     return {
+      opacity: selected ? 1 : 0,
       transform: [{ translateX: animatedIndex.value * segment }],
       width: segment,
     };
-  }, [options.length]);
+  }, [options.length, selected]);
 
   return (
     <View

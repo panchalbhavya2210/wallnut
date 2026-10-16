@@ -70,6 +70,47 @@ export function ScrollScreen({
   );
 }
 
+/**
+ * Same as `ScrollScreen`, but the header row stays put while the content
+ * scrolls — the menu button, tabs and search never leave the top of the screen.
+ */
+export function HeaderScrollScreen({
+  header,
+  children,
+  bottomInset = true,
+  contentContainerStyle,
+  refreshControl,
+  ...rest
+}: ScreenProps & {
+  header: React.ReactNode;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+  refreshControl?: React.ReactElement<RefreshControlProps>;
+}) {
+  const theme = useTheme();
+  const chartScrubbing = useUiStore((state) => state.chartScrubbing);
+  return (
+    <Screen padded={false} {...rest}>
+      <View style={{ paddingHorizontal: theme.spacing.lg }}>{header}</View>
+      <ScrollView
+        style={{ flex: 1 }}
+        scrollEnabled={!chartScrubbing}
+        contentContainerStyle={[
+          {
+            paddingHorizontal: theme.spacing.lg,
+            paddingTop: theme.spacing.sm,
+            paddingBottom: bottomInset ? theme.spacing.colossal * 2 : theme.spacing.xxl,
+          },
+          contentContainerStyle,
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={refreshControl}>
+        {children}
+      </ScrollView>
+    </Screen>
+  );
+}
+
 /* ---------------------------------- Card ---------------------------------- */
 
 export function Card({
@@ -206,9 +247,9 @@ export function ListRow({
       {icon ? (
         <View
           style={{
-            width: 34,
-            height: 34,
-            borderRadius: theme.radius.md,
+            width: 36,
+            height: 36,
+            borderRadius: theme.radius.full,
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: iconTile ? `${iconTint ?? iconColor ?? theme.colors.accent.base}22` : 'transparent',
@@ -259,19 +300,20 @@ export function SectionHeader({
   actionLabel?: string;
   onAction?: () => void;
   style?: StyleProp<ViewStyle>;
-}) {  const theme = useTheme();
+}) {
+  const theme = useTheme();
   return (
     <View
       style={[
         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.sm },
         style,
       ]}>
-      <AppText variant="label" tone="muted">
-        {title}
-      </AppText>
+      {/* Sentence-case section titles: hierarchy comes from weight and size,
+          not from shouting. */}
+      <AppText variant="titleSmall">{title}</AppText>
       {actionLabel && onAction ? (
         <Pressable onPress={onAction} hitSlop={10}>
-          <AppText variant="captionMedium" tone="accent">
+          <AppText variant="bodySmall" tone="accent" style={{ fontFamily: theme.typography.captionMedium.fontFamily }}>
             {actionLabel}
           </AppText>
         </Pressable>

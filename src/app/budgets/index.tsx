@@ -4,10 +4,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
-import { Card, IconName, Row, ScrollScreen, ScreenHeader } from '@/components/ui/layout';
+import { Card, HeaderScrollScreen, IconName, Row } from '@/components/ui/layout';
 import { AppText, MoneyText } from '@/components/ui/text';
-import { Button, Chip, IconButton, ProgressBar, SettingSwitch } from '@/components/ui/controls';
+import { Chip, SettingSwitch } from '@/components/ui/controls';
 import { EmptyState, InfoBanner, LoadingBlock } from '@/components/ui/feedback';
+import { AppHeader, RoundIconButton } from '@/components/AppHeader';
+import { ScreenHint } from '@/components/ScreenHint';
 import { AmountField, FormSheet, PickerSheet } from '@/components/ui/sheets';
 import { AnimatedMoney, Gauge } from '@/components/Gauge';
 import { confirm } from '@/components/ui/confirm';
@@ -81,14 +83,20 @@ export default function BudgetsScreen() {
   };
 
   return (
-    <ScrollScreen>
-      <ScreenHeader
-        title="Budgets"
-        subtitle={budgets.length > 0 ? `${money.format(totalSpent)} of ${money.format(totalBudgeted)} used` : 'Set limits that actually adapt'}
-        hint={{ id: 'budgets', message: 'Budgets track category limits for the period. Tap a budget for its pace and safe-to-spend, edit the amount, or turn on rollover to carry unused money forward.' }}
-        right={<IconButton icon="add" onPress={() => openEditor(null)} accessibilityLabel="Add budget" />}
-      />
-
+    <HeaderScrollScreen
+      header={
+        <>
+          <AppHeader
+            title="Budgets"
+            subtitle={budgets.length > 0 ? `${money.format(totalSpent)} of ${money.format(totalBudgeted)} used` : 'Set limits that actually adapt'}
+            right={<RoundIconButton icon="add" onPress={() => openEditor(null)} label="Add budget" tone="accent" />}
+          />
+          <ScreenHint
+            id="budgets"
+            message="Budgets track category limits for the period. Tap a budget for its pace and safe-to-spend, edit the amount, or turn on rollover to carry unused money forward."
+          />
+        </>
+      }>
       {query.loading && !query.data ? (
         <LoadingBlock label="Loading budgets…" />
       ) : budgets.length === 0 ? (
@@ -104,8 +112,8 @@ export default function BudgetsScreen() {
           <Card>
             <Row justify="space-between" gap="lg">
               <View style={{ flex: 1, gap: 6 }}>
-                <AppText variant="label" tone="muted">
-                  THIS PERIOD
+                <AppText variant="caption" tone="muted">
+                  This period
                 </AppText>
                 <AnimatedMoney
                   amount={totalBudgeted - totalSpent}
@@ -146,7 +154,7 @@ export default function BudgetsScreen() {
                         style={{
                           width: 32,
                           height: 32,
-                          borderRadius: theme.radius.md,
+                          borderRadius: theme.radius.full,
                           backgroundColor: `${budget.categoryColor ?? theme.colors.accent.base}22`,
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -265,6 +273,6 @@ export default function BudgetsScreen() {
           setPickerOpen(false);
         }}
       />
-    </ScrollScreen>
+    </HeaderScrollScreen>
   );
 }

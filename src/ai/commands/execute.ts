@@ -55,6 +55,7 @@ function money(data: QuickEntryLocalData, minor: number): string {
 export async function executeQuickEntry(
   resolved: ResolvedQuickEntry,
   data: QuickEntryLocalData,
+  options: { trusted?: boolean } = {},
 ): Promise<ExecutionResult> {
   const { command } = resolved;
   const amountMinor = commandAmountMinor(command);
@@ -67,7 +68,10 @@ export async function executeQuickEntry(
   const date = command.date ?? toISODate(new Date());
   const sig = signature(resolved, amount);
   const now = Date.now();
-  if (sig === lastSignature && now - lastSignatureAt < DUPLICATE_WINDOW_MS) {
+  // `trusted` is set only by the batch flow, where every row was reviewed on
+  // the verification screen. Two identical rows there are intentional, so the
+  // double-tap guard would eat the second one.
+  if (!options.trusted && sig === lastSignature && now - lastSignatureAt < DUPLICATE_WINDOW_MS) {
     throw new Error('That command was just saved — ignored as a duplicate.');
   }
 
@@ -75,6 +79,46 @@ export async function executeQuickEntry(
   lastSignature = sig;
   lastSignatureAt = now;
   return result;
+}
+
+export interface QuickEntryBatchOutcome {
+  /** One entry per row that was saved, in save order. */
+  saved: { id: string; result: ExecutionResult }[];
+  /** The first row that failed — saving stops there rather than half-saving. */
+  failed: { id: string; message: string } | null;
+  /** Reverses every row saved by this call, newest first. */
+  undo: () => Promise<void>;
+}
+
+/**
+ * Executes a reviewed batch of quick-entry rows through the same services the
+ * single flow uses. Rows are saved in order; a failure stops the run and
+ * reports which row it was, so the UI can keep exactly the unsaved ones.
+ */
+export async function executeQuickEntryBatch(
+  entries: { id: string; resolved: ResolvedQuickEntry }[],
+  data: QuickEntryLocalData,
+): Promise<QuickEntryBatchOutcome> {
+  const saved: { id: string; result: ExecutionResult }[] = [];
+  let failed: { id: string; message: string } | null = null;
+  for (const entry of entries) {
+    try {
+      const result = await executeQuickEntry(entry.resolved, data, { trusted: true });
+      saved.push({ id: entry.id, result });
+    } catch (error) {
+      failed = { id: entry.id, message: error instanceof Error ? error.message : 'Could not save that row.' };
+      break;
+    }
+  }
+  return {
+    saved,
+    failed,
+    undo: async () => {
+      for (const entry of [...saved].reverse()) {
+        await entry.result.undo?.();
+      }
+    },
+  };
 }
 
 async function run(
