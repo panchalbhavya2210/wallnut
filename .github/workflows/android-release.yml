@@ -91,8 +91,23 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+          # The runner image ships cmdline-tools but does not put sdkmanager on
+          # PATH. Resolve it under ANDROID_HOME (falling back to a search).
+          if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          else
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -n 1)"
+          fi
+          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found under $ANDROID_HOME/cmdline-tools"
+            exit 1
+          fi
+          echo "Using $SDKMANAGER"
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          # The image has platform 36 / build-tools 36.0.0, but not the NDK and
+          # CMake versions this project pins - install them explicitly.
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
 
       - name: Wire release signing
         env:
