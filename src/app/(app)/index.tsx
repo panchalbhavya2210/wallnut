@@ -1,12 +1,13 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, type ErrorBoundaryProps } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
 import { HeaderScrollScreen, ScrollScreen, Row } from '@/components/ui/layout';
+import { GradientBlobs } from '@/components/ui/backdrop';
 import { AppText } from '@/components/ui/text';
-import { AppHeader, TopTabs } from '@/components/AppHeader';
+import { AppHeader } from '@/components/AppHeader';
 import { AccountScopeRow } from '@/components/AccountScope';
 import { AiInsightCard } from '@/components/AiInsightCard';
 import { WidgetBoundary } from '@/components/WidgetBoundary';
@@ -28,14 +29,16 @@ import { getReviewQueue } from '@/services/review.service';
  * spending overview (cash flow, categories) and recent activity. The sections
  * are the configurable dashboard widgets, so the default layout behaves like a
  * production finance app while power users can still rearrange everything.
+ *
+ * Performance: the greeting owns the minute clock (not the screen), and the
+ * widget tree is memoized against the widget rows + account scope, so neither
+ * ticking time nor unrelated store changes can re-render every card.
  */
 export default function HomeScreen() {
   const theme = useTheme();
-  const now = useNow();
   const userName = useSettingsStore((state) => state.general.userName);
   const density = useSettingsStore((state) => state.dashboard.density);
   const scopeAccountId = useUiStore((state) => state.accountScopeId);
-  const [, setRefreshing] = React.useState(false);
 
   const widgets = useQuery(async () => {
     const db = getDb();
@@ -67,7 +70,26 @@ export default function HomeScreen() {
     router.push(href as never);
   }, []);
 
-  const greeting = getGreeting(now);
+  const rows = useMemo(() => packWidgets(widgets.data?.widgets ?? []), [widgets.data?.widgets]);
+
+  // The element tree only changes when the actual widget rows or the account
+  // scope change — store updates elsewhere in the app leave it untouched.
+  const widgetTree = useMemo(
+    () => (
+      <>
+        {rows.map((row, index) => (
+          <View key={`row-${index}`} style={{ flexDirection: 'row', gap: theme.spacing.md, alignItems: 'flex-start' }}>
+            {row.map((widget) => (
+              <View key={widget.id} style={{ flex: 1, minWidth: 0 }}>
+                <WidgetBoundary key={widget.id}>{renderWidget(widget, navigate, scopeAccountId)}</WidgetBoundary>
+              </View>
+            ))}
+          </View>
+        ))}
+      </>
+    ),
+    [rows, navigate, scopeAccountId, theme.spacing.md],
+  );
 
   if (widgets.error) {
     return (
@@ -81,41 +103,21 @@ export default function HomeScreen() {
   return (
     <HeaderScrollScreen
       header={
-        <>
-          <AppHeader
-            brand
-            reviewCount={widgets.data?.reviewCount ?? 0}
-            onSearch={() => router.push('/transactions?search=1' as never)}
-          />
-          <TopTabs
-            tabs={[
-              { value: 'overview', label: 'Overview' },
-              { value: 'accounts', label: 'Accounts' },
-              { value: 'insights', label: 'Insights' },
-            ]}
-            value="overview"
-            onChange={(value) => {
-              if (value === 'accounts') router.push('/accounts' as never);
-              else if (value === 'insights') router.push('/analytics' as never);
-            }}
-          />
-        </>
+        <AppHeader
+          brand
+          reviewCount={widgets.data?.reviewCount ?? 0}
+          onSearch={() => router.push('/transactions?search=1' as never)}
+        />
       }
       refreshControl={
         <RefreshControl
           refreshing={false}
-          onRefresh={() => {
-            setRefreshing(true);
-            refresh();
-            setTimeout(() => setRefreshing(false), 400);
-          }}
+          onRefresh={() => refresh()}
           tintColor={theme.colors.muted}
         />
       }>
-      <AppText variant="bodySmall" tone="muted" style={{ marginTop: theme.spacing.sm }}>
-        {greeting}
-        {userName ? `, ${userName}` : ''} · {now.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}
-      </AppText>
+      <GradientBlobs />
+      <GreetingLine userName={userName} />
 
       {widgets.loading && !widgets.data ? (
         <LoadingBlock label="Opening your ledger…" />
@@ -151,15 +153,7 @@ export default function HomeScreen() {
             <AccountScopeRow />
           </WidgetBoundary>
 
-          {packWidgets(widgets.data?.widgets ?? []).map((row, index) => (
-            <View key={`row-${index}`} style={{ flexDirection: 'row', gap: theme.spacing.md, alignItems: 'flex-start' }}>
-              {row.map((widget) => (
-                <View key={widget.id} style={{ flex: 1, minWidth: 0 }}>
-                  <WidgetBoundary key={widget.id}>{renderWidget(widget, navigate, scopeAccountId)}</WidgetBoundary>
-                </View>
-              ))}
-            </View>
-          ))}
+          {widgetTree}
 
           <WidgetBoundary>
             <AiInsightCard />
@@ -188,6 +182,21 @@ export default function HomeScreen() {
         </View>
       )}
     </HeaderScrollScreen>
+  );
+}
+
+/**
+ * The greeting owns the minute clock so the dashboard itself never re-renders
+ * on a tick — only this one line does.
+ */
+function GreetingLine({ userName }: { userName: string | null }) {
+  const theme = useTheme();
+  const now = useNow();
+  return (
+    <AppText variant="bodySmall" tone="muted" style={{ marginTop: theme.spacing.sm }}>
+      {getGreeting(now)}
+      {userName ? `, ${userName}` : ''} · {now.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}
+    </AppText>
   );
 }
 

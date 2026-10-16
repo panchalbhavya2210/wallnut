@@ -141,8 +141,7 @@ export function ruleMatches(rule: Rule, target: RuleTarget): boolean {
 }
 
 /** Evaluates enabled rules in order and merges their actions. */
-export function evaluateRules(enabledRules: Rule[], target: RuleTarget): RuleOutcome {
-  const outcome: RuleOutcome = {
+export function evaluateRules(enabledRules: Rule[], target: RuleTarget): RuleOutcome {  const outcome: RuleOutcome = {
     matchedRuleIds: [],
     addTagNames: [],
     markRecurring: false,
@@ -180,9 +179,21 @@ export function evaluateRules(enabledRules: Rule[], target: RuleTarget): RuleOut
   return outcome;
 }
 
+/**
+ * Splits rules by how they behave when they match:
+ *   apply   — write the action silently (classic rules, manual entry + imports)
+ *   suggest — only propose (merchant memory): imports preselect and explain it,
+ *             and the user opts into "apply silently" per rule.
+ */
+export function partitionRulesByMode(rules: Rule[]): { apply: Rule[]; suggest: Rule[] } {
+  const apply: Rule[] = [];
+  const suggest: Rule[] = [];
+  for (const rule of rules) (rule.mode === 'suggest' ? suggest : apply).push(rule);
+  return { apply, suggest };
+}
+
 /** Human-readable one-liner used by the rules list ("Merchant contains "Swiggy" → Food & Dining"). */
-export function describeRule(rule: Rule): { when: string; then: string } {
-  const conditions = parseConditions(rule);
+export function describeRule(rule: Rule): { when: string; then: string } {  const conditions = parseConditions(rule);
   const actions = parseActions(rule);
   const conditionText = conditions
     .map((condition) => {

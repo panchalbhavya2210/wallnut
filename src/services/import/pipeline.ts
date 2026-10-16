@@ -1,6 +1,6 @@
 import type { MerchantAlias, Rule, Transaction, TransactionType } from '@/db/schema';
 import { canonicalMerchant } from '@/utils/merchant';
-import { evaluateRules } from '@/utils/rules';
+import { evaluateRules, partitionRulesByMode } from '@/utils/rules';
 import { toISODate } from '@/utils/date';
 import { transactionFingerprint } from '@/utils/hash';
 import { createId } from '@/utils/id';
@@ -15,7 +15,7 @@ import { parseMoney } from '@/utils/money';
  * Nothing inserts a transaction without passing validation and dedupe.
  */
 
-export type ImportSourceId = 'manual' | 'csv' | 'json' | 'sms' | 'xlsx' | 'pdf' | 'api';
+export type ImportSourceId = 'manual' | 'csv' | 'json' | 'ofx' | 'sms' | 'xlsx' | 'pdf' | 'api';
 
 export interface ImportSource {
   id: ImportSourceId;
@@ -29,9 +29,28 @@ export const IMPORT_SOURCES: ImportSource[] = [
   { id: 'json', label: 'JSON backup', available: true },
   { id: 'sms', label: 'Bank SMS', available: false },
   { id: 'xlsx', label: 'Excel file', available: false },
+  { id: 'ofx', label: 'OFX / QFX statement', available: false },
   { id: 'pdf', label: 'PDF statement', available: false },
   { id: 'api', label: 'Bank connection', available: false },
 ];
+
+/** Maps a pipeline source to the value stored on `transactions.capture_source`. */
+export function captureSourceFor(source: ImportSourceId | undefined): Transaction['captureSource'] {
+  switch (source) {
+    case 'csv':
+      return 'csv';
+    case 'json':
+      return 'json';
+    case 'ofx':
+      return 'ofx';
+    case 'pdf':
+      return 'pdf';
+    case 'sms':
+      return 'sms';
+    default:
+      return 'manual';
+  }
+}
 
 /** A record as it arrives from a source, before interpretation. */
 export interface RawRecord {
@@ -54,6 +73,9 @@ export interface DraftTransaction {
   categoryId?: string | null;
   /** Resolved by the local rules engine (wins over the wizard's account). */
   accountId?: string | null;
+  /** Suggest-mode rule output: review shows and preselects it, never applies it silently. */
+  suggestedCategoryId?: string | null;
+  suggestedRuleName?: string | null;
 }
 
 export interface ValidatedTransaction extends DraftTransaction {
@@ -218,6 +240,7 @@ export function validateDrafts(drafts: DraftTransaction[]): ValidatedTransaction
 export interface ImportRuleContext {
   /** Account the wizard selected; rules may reroute individual rows. */
   accountId: string;
+  /** Every enabled rule (apply + suggest); the pipeline partitions by mode. */
   rules: Rule[];
   aliases: MerchantAlias[];
   /** From Settings → Transactions: flag imports for the review queue. */
@@ -237,6 +260,8 @@ const IMPORTABLE_TYPES: TransactionType[] = ['expense', 'income', 'refund', 'adj
  * Local-first categorization for imports, exactly like manual entry:
  *   1. canonicalise the merchant through merchant_aliases ("AMZN Mktp" → "Amazon")
  *   2. run the user's enabled rules (exact rules always beat raw statement text)
+ *   3. suggest-mode rules (merchant memory) only propose a category — the import
+ *      review screen preselects and explains them, nothing is applied silently
  * AI never runs here — uncertain rows go to the review queue instead.
  */
 export function applyImportRules<T extends DraftTransaction>(draft: T, context: ImportRuleContext): ImportRuleResult<T> {
@@ -250,7 +275,13 @@ export function applyImportRules<T extends DraftTransaction>(draft: T, context: 
     categoryId: null,
     date: draft.date,
   };
-  const outcome = evaluateRules(context.rules, target);
+  const { apply, suggest } = partitionRulesByMode(context.rules);
+  const outcome = evaluateRules(apply, target);
+  const suggestion = suggest.length > 0 ? evaluateRules(suggest, target) : null;
+  const suggestedRuleName = suggestion
+    ? (suggest.find((rule) => suggestion.matchedRuleIds.includes(rule.id))?.name ?? null)
+    : null;
+  const suggestedCategoryId = suggestion?.categoryId ?? draft.suggestedCategoryId ?? null;
   const ruleType = IMPORTABLE_TYPES.includes(outcome.type as TransactionType)
     ? (outcome.type as TransactionType)
     : undefined;
@@ -261,8 +292,12 @@ export function applyImportRules<T extends DraftTransaction>(draft: T, context: 
       categoryId: outcome.categoryId ?? draft.categoryId ?? null,
       accountId: outcome.accountId ?? draft.accountId ?? null,
       type: ruleType ?? draft.type,
+      suggestedCategoryId,
+      suggestedRuleName,
     },
-    isReviewed: outcome.markReview ? false : !context.autoReview,
+    // A suggestion with nothing applied still needs the user's eyes, so it
+    // lands in review rather than being written silently.
+    isReviewed: outcome.markReview ? false : suggestedCategoryId && !outcome.categoryId ? false : !context.autoReview,
     matchedRuleIds: outcome.matchedRuleIds,
   };
 }
@@ -271,6 +306,40 @@ export function applyImportRules<T extends DraftTransaction>(draft: T, context: 
 export function enrichDrafts<T extends DraftTransaction>(drafts: T[], context: ImportRuleContext): T[] {
   if (context.rules.length === 0 && context.aliases.length === 0) return drafts;
   return drafts.map((draft) => applyImportRules(draft, context).draft);
+}
+
+/**
+ * Pure: reconstructs the pipeline draft shape from a staged `import_drafts`
+ * row. An explicit category choice wins; a suggestion is only preselected
+ * until the user confirms the row.
+ */
+export function stagedDraftToDraftTransaction(draft: {
+  sourceRow: number;
+  date: string | null;
+  amount: number | null;
+  type: DraftTransaction['type'];
+  merchant: string | null;
+  description: string | null;
+  reference: string | null;
+  notes: string | null;
+  categoryId: string | null;
+  suggestedCategoryId: string | null;
+  accountId: string | null;
+}): DraftTransaction {
+  return {
+    sourceRow: draft.sourceRow,
+    date: draft.date,
+    amount: draft.amount,
+    type: draft.type,
+    merchant: draft.merchant,
+    description: draft.description,
+    accountName: null,
+    categoryName: null,
+    reference: draft.reference,
+    notes: draft.notes,
+    categoryId: draft.categoryId ?? draft.suggestedCategoryId ?? null,
+    accountId: draft.accountId,
+  };
 }
 
 export interface DedupeInput {
@@ -283,8 +352,7 @@ export interface DedupeResult {
   duplicateOf?: string;
 }
 
-/** Stage 3 — deterministic fingerprints checked against both the file and DB. */
-export function buildFingerprints(items: DedupeInput[], existing: Set<string>): Map<number, DedupeResult> {
+/** Stage 3 — deterministic fingerprints checked against both the file and DB. */export function buildFingerprints(items: DedupeInput[], existing: Set<string>): Map<number, DedupeResult> {
   const results = new Map<number, DedupeResult>();
   const seenInFile = new Map<string, number>();
   for (const { item, accountId } of items) {
@@ -316,7 +384,15 @@ export function buildFingerprints(items: DedupeInput[], existing: Set<string>): 
 /** Stage 4 — turn validated drafts into insertable rows. */
 export function toTransactionRows(
   items: { draft: DraftTransaction; fingerprint: string; isReviewed?: boolean }[],
-  options: { accountId: string; categoryIdByName: Map<string, string>; defaultCategoryId?: string | null },
+  options: {
+    accountId: string;
+    categoryIdByName: Map<string, string>;
+    defaultCategoryId?: string | null;
+    /** Origin recorded on the written rows ('csv', 'pdf', …). */
+    captureSource?: Transaction['captureSource'];
+    /** Batch that staged these rows. */
+    importBatchId?: string | null;
+  },
 ): Transaction[] {
   const now = Date.now();
   return items.map(({ draft, fingerprint, isReviewed }, index) => {
@@ -327,6 +403,9 @@ export function toTransactionRows(
         : draft.type === 'adjustment'
           ? amount
           : -Math.abs(amount);
+    // Suggestions are deliberately excluded here: only an explicit choice (or
+    // a statement/rule value) may be written. A suggested-only row stays
+    // uncategorised and lands in review — it is never applied silently.
     const categoryId =
       draft.categoryId ??
       (draft.categoryName ? options.categoryIdByName.get(draft.categoryName.toLowerCase()) : null) ??
@@ -350,6 +429,8 @@ export function toTransactionRows(
       installmentId: null,
       fingerprint,
       isReviewed: isReviewed ?? false,
+      captureSource: options.captureSource ?? 'manual',
+      importBatchId: options.importBatchId ?? null,
       createdAt: now + index,
       updatedAt: now + index,
     };

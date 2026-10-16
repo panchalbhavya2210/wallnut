@@ -291,7 +291,13 @@ function labelForAction(action: InboxActionKind, item: InboxItem): string {
     case 'open_transaction':
       return 'Open';
     case 'open':
-      return item.kind === 'shared_balance' ? 'Settle up' : item.kind === 'goal_complete' ? 'View goal' : 'View';
+      return item.kind === 'shared_balance'
+        ? 'Settle up'
+        : item.kind === 'goal_complete'
+          ? 'View goal'
+          : item.kind === 'import_review'
+            ? 'Review'
+            : 'View';
     case 'create_recurring':
       return 'Create schedule';
     case 'delete_transaction':

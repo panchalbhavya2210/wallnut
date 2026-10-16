@@ -78,6 +78,10 @@ export interface TransactionFilters {
   includeUnreviewedOnly?: boolean;
   onlyRecurring?: boolean;
   onlySubscriptions?: boolean;
+  /** Imported rows (capture_source != 'manual'). */
+  importedOnly?: boolean;
+  /** Hand-entered rows only. */
+  manualOnly?: boolean;
   isReviewed?: boolean;
   sort?: 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
   limit?: number;
@@ -185,6 +189,8 @@ export async function createTransaction(input: TransactionInput): Promise<Transa
       description: effectiveInput.description,
     }),
     isReviewed: effectiveInput.isReviewed ?? false,
+    captureSource: 'manual',
+    importBatchId: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -503,6 +509,9 @@ function buildWhere(filters: TransactionFilters): { clause: string; params: (str
   }
   if (filters.onlyRecurring) clauses.push('t.is_recurring = 1');
   if (filters.isReviewed !== undefined) clauses.push(`t.is_reviewed = ${filters.isReviewed ? 1 : 0}`);
+  if (filters.includeUnreviewedOnly) clauses.push('t.is_reviewed = 0');
+  if (filters.importedOnly) clauses.push("t.capture_source <> 'manual'");
+  if (filters.manualOnly) clauses.push("t.capture_source = 'manual'");
 
   if (filters.search) {
     const term = `%${filters.search.toLowerCase().trim()}%`;
@@ -555,6 +564,8 @@ function mapListRow(row: Record<string, unknown>): TransactionListItem {
     installmentId: (row.installment_id as string | null) ?? null,
     fingerprint: (row.fingerprint as string | null) ?? null,
     isReviewed: Boolean(row.is_reviewed),
+    captureSource: (row.capture_source as Transaction['captureSource']) ?? 'manual',
+    importBatchId: (row.import_batch_id as string | null) ?? null,
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
     categoryName: (row.categoryName as string | null) ?? null,

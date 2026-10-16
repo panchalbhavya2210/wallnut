@@ -193,6 +193,7 @@ describe('import rule enrichment (§18, §21-23)', () => {
     name: 'Swiggy → Food',
     isEnabled: true,
     matchType: 'all',
+    mode: 'apply',
     conditions: JSON.stringify([{ field: 'merchant', operator: 'contains', value: 'swiggy' }]),
     actions: JSON.stringify([{ type: 'set_category', value: 'cat_food' }]),
     sortOrder: 0,

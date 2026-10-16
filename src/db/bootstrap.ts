@@ -5,7 +5,7 @@ import { postDueRecurring } from '@/services/recurring.service';
 import { syncReminderNotifications } from '@/services/notifications.service';
 import { seedDefaultCategories } from '@/services/categories.service';
 import { seedDefaultMerchantAliases } from '@/services/merchant.service';
-import { isDatabaseEmpty, migrateDashboardLayout, ensureSafeToSpendWidget, ensureCategoryMonthlyWidget, seedDefaultDashboardWidgets, seedDemoData } from '@/services/seed.service';
+import { isDatabaseEmpty, migrateDashboardLayout, ensureSafeToSpendWidget, ensureCategoryMonthlyWidget, ensureQuickActionsWidget, seedDefaultDashboardWidgets, seedDemoData } from '@/services/seed.service';
 import { hydrateSettings, useSettingsStore } from '@/stores/settings.store';
 import { useBootstrapStore } from '@/stores/bootstrap.store';
 
@@ -116,6 +116,10 @@ async function runBootstrap(): Promise<BootstrapResult> {
   // Add the month-on-month Category Trends card for existing dashboards.
   const addedCategoryTrends = await ensureCategoryMonthlyWidget();
   if (addedCategoryTrends) stage('category trends widget added');
+
+  // Make sure the Quick Actions row (with Import) is on every dashboard.
+  const addedQuickActions = await ensureQuickActionsWidget();
+  if (addedQuickActions) stage('quick actions widget added');
 
   // Hand the "we posted things for you" facts to the UI so it can say so.
   useBootstrapStore.getState().setResult({

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
@@ -52,6 +52,18 @@ import {
 type TabKey = 'all' | 'expenses' | 'income' | 'transfers';
 
 const PAGE_SIZE = 60;
+
+/** Row badge copy for anything that wasn't typed by hand. */
+const CAPTURE_SOURCE_LABELS: Record<string, string> = {
+  csv: 'Imported',
+  json: 'Imported',
+  ofx: 'Imported',
+  pdf: 'Imported',
+  sms: 'From SMS',
+  notification: 'From notification',
+  widget: 'From widget',
+  ai: 'From AI',
+};
 
 export default function TransactionsScreen() {
   const theme = useTheme();
@@ -356,6 +368,10 @@ export default function TransactionsScreen() {
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: 140 }}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={9}
+          removeClippedSubviews={Platform.OS === 'android'}
           refreshControl={<RefreshControl refreshing={false} onRefresh={query.refresh} tintColor={theme.colors.muted} />}
           onEndReachedThreshold={0.4}
           onEndReached={() => {
@@ -541,6 +557,7 @@ function TransactionRow({
     : [row.categoryName && row.categoryName !== title ? row.categoryName : null, row.accountName];
   if (row.isRecurring) metaParts.push('Recurring');
   if (row.splitCount > 0) metaParts.push(`${row.splitCount} splits`);
+  if (row.captureSource && row.captureSource !== 'manual') metaParts.push(CAPTURE_SOURCE_LABELS[row.captureSource] ?? 'Imported');
   if (!row.isReviewed) metaParts.push('Needs review');
   // Day groups are dated by their header, so the row carries the clock time.
   const trailingMeta = showDate ? rowDateLabel(row.date, now) : rowTimeLabel(row.date);
@@ -548,7 +565,6 @@ function TransactionRow({
   return (
     <SwipeableRow
       enabled={!selectionMode}
-      onLongPress={onLongPress}
       leftAction={{
         icon: 'create-outline',
         label: 'Edit',
@@ -560,6 +576,7 @@ function TransactionRow({
       <Pressable
         onPress={onPress}
         onLongPress={onLongPress}
+        delayLongPress={300}
         style={({ pressed }) => ({
           flexDirection: 'row',
           alignItems: 'center',
@@ -1019,6 +1036,27 @@ function FilterSheet({
             <Chip label="Refunds" selected={draft.includeRefunds === true} onPress={() => setDraft({ ...draft, includeRefunds: draft.includeRefunds === true ? false : true })} />
             <Chip label="Adjustments" selected={draft.includeAdjustments === true} onPress={() => setDraft({ ...draft, includeAdjustments: draft.includeAdjustments === true ? false : true })} />
             <Chip label="Recurring only" selected={draft.onlyRecurring === true} onPress={() => setDraft({ ...draft, onlyRecurring: draft.onlyRecurring === true ? undefined : true })} />
+          </View>
+        </FilterBlock>
+
+        {/* Where the row came from */}
+        <FilterBlock label="Source">
+          <View style={{ flexDirection: 'row', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
+            <Chip
+              label="Imported"
+              selected={draft.importedOnly === true}
+              onPress={() => setDraft({ ...draft, importedOnly: draft.importedOnly === true ? undefined : true, manualOnly: undefined })}
+            />
+            <Chip
+              label="Manual entry"
+              selected={draft.manualOnly === true}
+              onPress={() => setDraft({ ...draft, manualOnly: draft.manualOnly === true ? undefined : true, importedOnly: undefined })}
+            />
+            <Chip
+              label="Needs review"
+              selected={draft.includeUnreviewedOnly === true}
+              onPress={() => setDraft({ ...draft, includeUnreviewedOnly: draft.includeUnreviewedOnly === true ? undefined : true })}
+            />
           </View>
         </FilterBlock>
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -22,6 +22,7 @@ import {
   previewCsv,
   type ImportContext,
 } from '@/services/import';
+import { listStagedImportBatches, stageImportPreview } from '@/services/import/staging.service';
 import { createBackup, describeBackup, exportTransactionsCsv, exportMonthlySummaryCsv, restoreBackup, validateBackup, type BackupFile } from '@/services/import/export.service';
 import type { ImportMapping, ImportPreview } from '@/services/import/pipeline';
 import { clearAllData, isDatabaseEmpty, seedDemoData } from '@/services/seed.service';
@@ -50,6 +51,7 @@ export default function DataScreen() {
 
   const accounts = useQuery(() => listAccounts(), []);
   const categories = useQuery(() => listCategories(), []);
+  const staged = useQuery(() => listStagedImportBatches(), []);
 
   const selectedAccount = accounts.data?.find((entry) => entry.id === accountId) ?? null;
   const selectedCategory = categories.data?.find((entry) => entry.id === defaultCategoryId) ?? null;
@@ -149,7 +151,7 @@ export default function DataScreen() {
     }
     setBusy(true);
     try {
-      const context: ImportContext = { mapping, accountId, defaultCategoryId };
+      const context: ImportContext = { mapping, accountId, defaultCategoryId, source: 'csv' };
       const { preview: next } = await previewCsv(csvText, context);
       setPreview(next);
       setMode('preview');
@@ -160,11 +162,28 @@ export default function DataScreen() {
     }
   };
 
+  /** Stages the preview for row-by-row review — nothing reaches the ledger yet. */
+  const stageForReview = async () => {
+    if (!preview || !accountId) return;
+    setBusy(true);
+    try {
+      const stagedBatch = await stageImportPreview(preview, { source: 'csv', accountId, defaultCategoryId });
+      toast.show(`${stagedBatch.staged} rows staged for review`);
+      setMode('home');
+      setPreview(null);
+      router.replace(`/import/${stagedBatch.batchId}` as never);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not stage the file');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runImport = async () => {
     if (!preview || !accountId) return;
     setBusy(true);
     try {
-      const outcome = await commitImport(preview, { mapping, accountId, defaultCategoryId }, { includeDuplicates });
+      const outcome = await commitImport(preview, { mapping, accountId, defaultCategoryId, source: 'csv' }, { includeDuplicates });
       setResult(outcome);
       setMode('done');
       toast.success(`${outcome.inserted} transactions imported`);
@@ -275,6 +294,7 @@ export default function DataScreen() {
         busy={busy}
         onBack={() => setMode(mode === 'map' ? 'home' : 'map')}
         onPreview={buildPreview}
+        onReview={stageForReview}
         onImport={runImport}
         onDone={() => {
           setMode('home');
@@ -349,6 +369,15 @@ export default function DataScreen() {
             disabled={busy}
             chevron
           />
+          {(staged.data?.length ?? 0) > 0 ? (
+            <ListRow
+              title="Statement review waiting"
+              subtitle={`${staged.data!.reduce((sum, batch) => sum + batch.pending, 0)} rows staged — confirm them before they reach the ledger`}
+              icon="file-tray-full-outline"
+              onPress={() => router.push(`/import/${staged.data![0]!.id}` as never)}
+              chevron
+            />
+          ) : null}
           <ListRow
             title="Restore JSON backup"
             subtitle="Replaces the current database with the backup's contents"
@@ -415,6 +444,7 @@ function ImportWizard({
   busy,
   onBack,
   onPreview,
+  onReview,
   onImport,
   onDone,
   sheet,
@@ -440,6 +470,7 @@ function ImportWizard({
   busy: boolean;
   onBack: () => void;
   onPreview: () => void;
+  onReview: () => void;
   onImport: () => void;
   onDone: () => void;
   sheet: 'none' | 'account' | 'category' | 'mapping';
@@ -606,13 +637,27 @@ function ImportWizard({
           </View>
 
           <Button
-            label={`Import ${includeDuplicates ? preview.counts.new + preview.counts.duplicate : preview.counts.new} transactions`}
+            label={
+              preview.counts.new + (includeDuplicates ? preview.counts.duplicate : 0) === 0
+                ? 'Nothing to import'
+                : `Review ${includeDuplicates ? preview.counts.new + preview.counts.duplicate : preview.counts.new} transactions`
+            }
             size="lg"
             fullWidth
             loading={busy}
             disabled={preview.counts.new + (includeDuplicates ? preview.counts.duplicate : 0) === 0}
+            onPress={onReview}
+          />
+          <Button
+            label="Import without review"
+            variant="secondary"
+            fullWidth
+            disabled={busy || preview.counts.new + (includeDuplicates ? preview.counts.duplicate : 0) === 0}
             onPress={onImport}
           />
+          <AppText variant="caption" tone="muted" style={{ textAlign: 'center' }}>
+            Review stages every row until you confirm — nothing reaches your ledger from the file alone.
+          </AppText>
         </View>
       ) : null}
 

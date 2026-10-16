@@ -1,7 +1,7 @@
 # Wallnut — project status & living task list
 
 > **Read this first.** This file is the handoff document for any new session
-> (human or agent). Keep it updated as work lands. Last updated: 2026-10-16 (Pass 20 — bulk AI quick entry with a per-row verification screen, drawer open-performance fixes, `react-native-calendars` everywhere, redesigned save toasts).
+> (human or agent). Keep it updated as work lands. Last updated: 2026-10-16 (Pass 22: Home polish — account pills with balances + add-account + long-press actions, top tabs removed, gradient-blob backdrop, chart polish, long-press fixes; Pass 21: statement import P1 + Quick Actions + performance).
 
 ---
 
@@ -65,6 +65,7 @@ src/
     onboarding.tsx         first-run wizard (currency → name → first account)
     transaction/new.tsx    quick-add composer (keypad, pickers, splits, tags, receipts, AI category suggest)
     transaction/[id].tsx   detail: splits, tags, attachments, review state
+    import/[batchId].tsx   statement review: staged drafts → confirm/skip/edit/merchant memory → ledger
     accounts/, account/[id], account-groups, adjust
     budgets/, budget/[id], goals/, goal/[id], debts/, debt/new, person/[id]
     shared/ (index, group/[id], expense/new, expense/[id]) — Splitwise-style shared expenses
@@ -100,7 +101,8 @@ src/
     useWidgetAutoRefresh.ts  debounced db-revision + settings subscription
     defs.ts                widget provider names/labels (must match app.json)
   db/
-    schema.ts              32 tables + relations (money = integer minor units); ai_cache; widget_snapshots
+    schema.ts              34 tables + relations (money = integer minor units); ai_cache; widget_snapshots;
+                           import_batches/import_drafts (statement staging); transactions.capture_source
     client.ts              NATIVE driver: expo-sqlite sync + drizzle/expo-sqlite + migrator
     client.web.ts          WEB driver: expo-sqlite ASYNC + drizzle/sqlite-proxy
                            (see §5 — the sync bridge truncates results in browsers)
@@ -117,6 +119,15 @@ src/
   utils/split.ts           pure split maths (equal/exact/%/shares, paise-safe), proportional
                            user↔person attribution, exact member balances, settlement
                            suggestions, item totals and the ledger plan
+  services/import/         statement import pipeline: sources → normalize → validate → local rules → dedupe → preview → commit
+                           (`pipeline.ts` is pure and unit-tested; `staging.service.ts` persists previews as
+                           `import_batches` + `import_drafts` — a file never writes to the ledger directly;
+                           CSV stages today, OFX/QFX + PDF planned — §7 “Transaction Inbox”)
+  services/inbox.service.ts Financial Inbox: ONE attention queue derived from review + recurring + upcoming + goals + shared (dismissals only)
+  services/review.service.ts review queue (uncategorised / unreviewed / duplicate / large / broken transfer) + duplicate groups
+  services/rules.service.ts  rules engine CRUD; reachability matching is pure in utils/rules.ts
+  services/merchant.service.ts merchant stats + aliases; canonicalisation is pure in utils/merchant.ts
+  screens/DataScreen.tsx   Import & export wizard (map → preview → dedupe → review → commit), backup/restore
   security/                app lock (pin.ts hashing, PinPad, LockScreen), enforced by app/_layout
   theme/fonts.ts           font registry (Inter, Poppins, Manrope, DM Sans, Sora, Outfit, Space Grotesk, Lora)
   theme/colors.ts          19 accents (incl. red + neon set) with dark/light tokens
@@ -223,16 +234,95 @@ index.ts                   custom entry: registers widget task handler, then exp
   - **Toasts**: save feedback is a card with a tone icon, heading + summary, Undo pill and a countdown hairline; action toasts auto-dismiss too.
   - **Verification**: 165 tests green, `tsc` clean, lint clean on all touched files, web export rebuilt; screenshots `home-batch.png`, `budgets-pass20.png`, `drawer-open.png`, `toast-save.png`, `quick-entry-pass20.png`.
 
+* **Pass 21 (statement import P1 + dashboard quick actions + performance)**:
+  - **Statement import is now staged, not written** (`services/import/staging.service.ts`, migrations 0010): a CSV
+    preview becomes an `import_batches` row plus `import_drafts` rows; **nothing reaches `transactions` from a
+    file**. The wizard's primary action is now **Review N transactions** (stage → `/import/[batchId]`), with
+    “Import without review” kept as the fast path. Invalid rows are counted but never staged; possible
+    duplicates stay staged but are unchecked by default (“fingerprint matched date + amount + merchant”).
+    The Data screen lists any pending review (“Statement review waiting”), and the Financial Inbox carries it
+    as one Action-required item.
+  - **Review screen** (`src/app/import/[batchId].tsx`): one card per draft (checkbox, merchant, raw statement
+    text, date, category, amount), per-row edit sheet (merchant, type, date, category, note), skip, bulk
+    “Add N transactions”, “Clear them” for duplicates, “Later” survives navigation/restarts, “Abandon import”
+    deletes the staged rows. Confirming writes through the existing transaction service (balances included,
+    rows land as reviewed) and **deletes the staged statement data** once every row is resolved — retention
+    default, no opt-in needed. A batch fully resolved marks itself committed; a deep link falls back to the
+    dashboard when there is no history to pop.
+  - **Merchant memory** (`rememberMerchantForCategory`): a category correction can save “Always suggest this
+    category” → a **suggest-mode rule** (`rules.mode`) + merchant alias. Suggest rules never apply on manual
+    entry or imports — they preselect on the next import and say where the suggestion came from (“From
+    ‘Remember Amazon’”). Apply-mode rules behave exactly as before; the rule engine gained
+    `partitionRulesByMode` (pure, unit-tested).
+  - **Capture source**: `transactions.capture_source` (`manual | csv | json | ofx | pdf | sms | notification |
+    widget | ai`, backfilled `manual`) + `import_batch_id`. Records rows show an “Imported / From SMS / …”
+    badge, and the filter sheet has a **Source** block (Imported / Manual entry / Needs review).
+  - **Backup/privacy**: `import_batches`/`import_drafts` are wiped on restore but **excluded from backup
+    files** (`VOLATILE_TABLES`) — raw statement text never travels in a backup.
+  - **Dashboard quick actions** (`quick_actions` widget): Add expense · Add income · Transfer · **Import**
+    (→ `/data`), exactly the reference layout. `ensureQuickActionsWidget()` places it immediately under the
+    net-worth hero for dashboards that lack it (and moves it above Safe-to-spend when that card was
+    auto-placed between them — the old Pass 11 order), once, without touching a deliberately rearranged
+    dashboard. `ensureSafeToSpendWidget` now anchors after the quick actions when they exist.
+  - **Performance pass** (the lag complaint): `useQuery` is **stale-while-revalidate** — a re-run (any write,
+    any focus refresh) no longer flips `loading` back on, so cards never flash a spinner/layout jump for data
+    that is already on screen; `notifyDbChanged` **coalesces writes within a tick** (a multi-write save used to
+    re-run every subscriber once per write); the Home screen's widget tree is memoized against the widget rows
+    + account scope and the minute clock moved into a `GreetingLine` child (it used to re-render every widget
+    every minute); `LineChart`/`BarChart`/`DonutChart`/`Sparkline`/`FlowBars` are `React.memo`ized.
+  - **Verification**: `tsc --noEmit` clean, **173 tests** green (8 new: rule partitioning, suggest-never-applies,
+    suggestions never written silently, capture-source mapping, staged category precedence), lint clean on all
+    touched files, web export rebuilt. `scripts/verify-statement.mjs` (19 checks) drives the whole flow in
+    headless Chrome — fixture CSV → map → preview → stage → edit sheet + merchant memory → inbox item →
+    commit → ledger badge → saved rule — and screenshots `home-pass21.png` (quick actions under the hero),
+    `statement-review.png`, `statement-edit.png`, `inbox-statement.png`, `transactions-imported.png`,
+    `rules-merchant-memory.png`.
+
+* **Pass 22 (Home polish — scope bar, blobs, charts, long-press fixes)**:
+  - **Top tabs removed from Home** (Overview / Accounts / Insights). The bottom nav + the drawer remain
+    the navigation; the dashboard is a single scroll again.
+  - **Account scope bar rebuilt** (`components/AccountScope.tsx`): one tinted pill per account showing its
+    **live balance** (account colour as the dot/border, liabilities in red), an **All accounts** pill with the
+    combined balance, and a dashed **Add account** pill that opens `AccountEditor` in place — add an account
+    without leaving the dashboard. **Long-press any pill** for quick actions (Open account / Adjust balance /
+    Edit account / Scope dashboard here) with haptic feedback; the sheet is also where "Scope dashboard here"
+    lives, so the pills stay single-tap for scoping.
+  - **Long-press was genuinely buggy on Records**: rows were wired to **two** long-press systems
+    (`SwipeableRow`'s gesture-handler recognizer *and* the row's own `Pressable`), which double-fires or
+    swallows the gesture on Android. The duplicate path is gone — the row's Pressable owns long-press
+    (multi-select), the pan gesture only swipes. Bonus: the per-row Pan recognizer is now memoized, so a
+    500-row list stops rebuilding one gesture object per row per render. The header menu's long-press
+    privacy toggle now confirms with a toast ("Amounts hidden — long-press again to show").
+  - **Glass/gradient theming** (`components/ui/backdrop.tsx`): soft radial **colour blobs** (accent /
+    positive / tertiary) behind the top of Home — dark-mode aware, pointer-events off, one small SVG.
+  - **Charts**: donut slices get **round caps + gaps** (reads as separate petals, tiny slices stay visible as
+    dots); bars get **vertical gradient fills** (primary + secondary). LineChart already had the gradient area.
+  - **Performance**: `renderWidget` caches each widget's parsed config per row (WeakMap) so the dashboard hot
+    path stops re-parsing JSON; the Records `FlatList` is tuned (initial 8 / batch 8 / window 9, clipped
+    subviews on Android) on top of Pass 21's stale-while-revalidate + coalesced bumps.
+  - **Verification**: `tsc` clean, 173 tests green, web export rebuilt; screenshots `home-pass22.png`
+    (tabs gone, balance pills, add-account), `scope-actions.png` (long-press sheet), `scope-add-account.png`
+    (editor from Home), `analytics-via-nav.png` (gradient bars), `records-longpress.png` (multi-select via
+    long-press). APK rebuilt: `wallnut-2026-10-16.apk`.
+
+### Priorities (user-set, 2026-10-16)
+1. **Transaction Inbox + statement import + merchant memory** — **P1 landed (Pass 21)**: staging tables,
+   review screen, capture source, suggest-mode merchant memory. Remaining: OFX/QFX (cheap, same staging),
+   statement reconciliation, PDF extraction spike, retention controls in Settings → Privacy. See §7.
+2. **Flexible budget cycles** — periods that follow payday / statement cycles. See §7.
+3. Then the rest of §7 in order.
+
 ### Known open items
 1. **Device palette (Material You wallpaper colours)** — now powered by first-party `@expo/ui`
    (`getMaterialColors`, Android 12+; falls back honestly below that). Needs the Android build
    (works in Expo Go too); web/iOS report it unavailable. The import is guarded to the native
    bridge file only — `@expo/ui` throws if required on web.
-2. Unit tests are in place and green (165 tests: money maths, accounting rules, budget maths,
+2. Unit tests are in place and green (173 tests: money maths, accounting rules, budget maths,
    anchored recurring schedules, investments, duplicate detection, CSV import, date ranges,
    category tree, palette generation, AI privacy/hash/intents/affordability, quick-entry
-   schema/resolution/confirmation + bulk-list parsing, inbox priorities, shared-expense
-   splits/balances/items/settlements, records statement grouping/subtotals/month-cycle buckets).
+   schema/resolution/confirmation + bulk-list parsing, statement staging semantics
+   (apply vs suggest rules, never-write-suggestions, capture sources), inbox priorities,
+   shared-expense splits/balances/items/settlements, records statement grouping/subtotals/month-cycle buckets).
    DB-level scenario tests against a real SQLite (better-sqlite3) remain a nice-to-have.
 3. Branding assets — **done (Pass 12)**: `scripts/generate-assets.ps1` + `assets/brand-source.png`; regenerate whenever the mark changes.
 4. Recurring editor polish still open: end-date + reminder picker + notes fields
@@ -254,9 +344,13 @@ index.ts                   custom entry: registers widget task handler, then exp
    Pass 19 status map for the list.
 
 ### Explicitly out of scope for V1
-Bank connectivity, cloud sync, multi-user, payment initiation, market data,
-AI/NL search, PDF/XLSX parsing, SMS ingestion (architecture ready:
-`src/services/sms/` + the shared import pipeline).
+Bank connectivity (no aggregators, no credentials, ever), cloud sync, multi-user,
+payment initiation, market data, AI/NL search. **Statement import is in scope** —
+file-based CSV/OFX/PDF statement reading is the #1 planned feature (§7 “Transaction
+Inbox”); what stays out is any *aggregator* login. SMS/notification capture is a
+best-effort convenience only (architecture ready in `src/services/sms/`), never the
+only capture path. PDF/XLSX *report export* stays minimal (CSV is the supported
+report path) — import and export are different problems.
 
 ---
 
@@ -290,6 +384,10 @@ AI/NL search, PDF/XLSX parsing, SMS ingestion (architecture ready:
 | Custom calendar cells (`calendar.tsx`, `DatePickerSheet`, ledger calendar) | hand-rolled month grid | all date picking goes through `src/components/ui/calendar.tsx` (`react-native-calendars`, JS-only so no prebuild, but the APK must be rebuilt); its `dayComponent` receives `DayProps & { date?: DateData }` where `DayProps.date` is a `string`, so custom cells must accept `date?: DateData` and guard |
 | Toast invisible / never dismissed | toasts render in the root layout **after** the `<Stack>`, so they paint above modals — but an `onAction` toast used to never auto-dismiss and thin bars were easy to miss | `ToastMessage` now always carries `durationMs` (base 3.4 s, undo 6.5 s, error 5.2 s) and renders a countdown line; pass `{ title }` to show a bold heading with the summary as the muted detail (`toast.undo('₹450 · Zomato', undo, { title: 'Saved' })`) |
 | Bulk quick entry never triggers / re-asks the same split | `looksLikeList()` (`,`, `;`, newline) routes to the **list** prompt — a single movement that merely contains a comma (a people list, two items on one bill) must stay in the single flow | the list prompt is told never to split a single movement and to return non-plain fragments in `excluded`; `parseAiCommandList` drops unusable rows and fails with `empty` so the caller falls back to `analyzeQuickEntry`; the list cache slot is `mode: 'list'`, and `AI_PROMPT_VERSION` must be bumped whenever prompt text changes |
+| Dashboard flashes spinners / every card rebuilds after any write | `useQuery` used to set `loading: true` at the start of every re-run, and `notifyDbChanged` bumped once per service write (multi-write saves re-ran every subscriber per write) | `useQuery` is stale-while-revalidate (keeps previous data; `loading` only before the first `resolved` result) and `notifyDbChanged` coalesces to one bump per tick — do not "fix" either back to eager loading |
+| A screen stuck on its loading state after the data resolved | a query whose value is legitimately `null` (e.g. `getImportBatchBundle` for a missing batch) | `useQuery` tracks a `resolved` flag separately from `data` — `loading = !resolved && !error`; never infer "loading" from `data === null` |
+| Revenue/expense analytics influenced by statement imports | an unconfirmed draft must never reach `transactions` | only `/import/[batchId]` (or the explicit “Import without review”) writes rows, through `insertImportedTransactions`; drafts live in `import_drafts` and are deleted when resolved or abandoned |
+| Backup restore leaves stale statement drafts | staging tables are wiped by restore but excluded from backup files | `VOLATILE_TABLES` (`import_batches`, `import_drafts`) covers both: excluded from `createBackup`, still in `USER_DATA_TABLE` delete order |
 
 ---
 
@@ -304,8 +402,9 @@ Researched `budgetbakers.com/en/features` and Material Design 3's colour/data-vi
 | Scheduled payments: reminders, subscription management, payment calendar | **Adopted** — recurring + subscriptions with annualised cost, upcoming list, per-launch posting, in-app reminders, calendar view. |
 | Receipt scanning & storage, split transactions | **Adopted (local)** — attachments stored on-device, real split editor with balance validation. |
 | Reports: CSV/PDF, tax reports, custom ranges | **Partly** — CSV export (transactions + monthly summary), JSON backup/restore, custom periods. PDF/tax-report templates are not in V1. |
+| Import transactions from files (YNAB/Monarch-style) | **CSV + JSON done; PDF is the #1 next feature** (user brief 2026-10-16, §7 “Transaction Inbox”) — OFX/QFX follow; the differentiator is the review + merchant-memory loop around it, not the parser. |
 | Multi-currency with live exchange rates | **Storage yes, rates no** — currencies are first-class in storage and formatting; there is no FX feed (offline-first). |
-| Bank sync (15,000+ banks, PSD2), cloud sync, family sharing, AI/ML categorisation | **Declined for V1** — would require a backend, credentials or network calls, which contradicts the local-first promise. Deterministic rules replace the AI categorisation; SMS import is the planned next ingestion path. |
+| Bank sync (15,000+ banks, PSD2), cloud sync, family sharing, AI/ML categorisation | **Declined for V1** — would require a backend, credentials or network calls, which contradicts the local-first promise. Deterministic rules replace the AI categorisation; **file-based statement import (CSV/OFX/PDF) is the planned next ingestion path, with SMS/notifications kept deliberately best-effort**. |
 | Needs vs wants classification | **Declined** — not a Wallet feature, and tags already cover “Trip / Work / Family / Tax” without adding a second taxonomy to maintain. |
 
 Design guidance applied: charts take their colour from the active palette
@@ -317,14 +416,162 @@ reduce-motion setting.
 
 ## 7. Next actions (priority order)
 
-1. **Phase B of the second brief: Financial Inbox** — unify the review queue into one attention queue (URGENT / ACTION REQUIRED / SUGGESTION / INFORMATION) with accept/edit/create/ignore actions. Then C (Safe-to-Spend v2), D (forecast warnings), E (subscription price changes), F–I in order (see the phase status map below).
-2. **Pass 16 APK — built (2026-10-07)**: `wallnut-2026-10-07.apk` (74.5 MB, warm build 4m 13s) — verified with `aapt2` to contain all four widget receivers (`Snapshot`, `Balance`, `QuickAdd`, `Upcoming` with labels), `WIDGET_CLICK` + `APPWIDGET_UPDATE` actions, `widgetCategory=home_screen`, `updatePeriodMillis=1800000`, the `wallnut://` deep-link scheme, and the bundled Inter fonts. Install with `adb install -r wallnut-2026-10-07.apk` (or copy it to the phone), then add a Wallnut widget from the launcher — widgets never work in Expo Go.
-3. Quick-entry follow-ups: on-device speech input (the composer relies on the keyboard mic today), a widget “recent transactions” provider, and per-widget configuration screens.
+1. **Transaction Inbox + statement import + merchant memory** — the #1 next feature (user brief, 2026-10-16). Deliberately prioritised **above** notification/SMS capture: background capture rules vary per Android OEM and can never be the only path. Design, scope and open questions are in “Transaction Inbox + statement import (planned)” below.
+2. **Flexible budget cycles** — budgets (and any period the app calls “this month”) should follow a real pay cycle or statement cycle, not just the calendar month (user brief, 2026-10-16). Scope in “Flexible budget cycles (planned)” below.
+3. **Safe-to-Spend v2 + forecast warnings** (second brief phases C/D) — emergency reserve, credit-card obligations, confirmed expected income, low-balance runway warning.
 4. Recurring editor fields (end date, reminder offsets, notes) and multi-day monthly schedules.
-5. AI follow-ups: import-time categorization review, rules created from accepted corrections, merchant→category alias memory.
-6. SMS ingestion (Phase 9 of the master brief) — needs the Android native reader; nothing fake ships before that.
-7. PDF/XLSX statement import — only with a real parser; CSV wizard stays the supported path for now.
-8. Screenshot review at phone widths once Chrome viewport emulation is usable again (puppeteer/Chrome CDP mismatch — see §5).
+5. AI follow-ups: import-time batch categorization review, rules created from accepted corrections (this is where merchant memory plugs in), merchant→category alias memory.
+6. Subscription intelligence (phase E): price-increase detection + a dedicated review screen (annualised summary + detection already exist).
+7. Anomaly detection (phase I): merchant/category vs a 3-month average, paycheck detection.
+8. Quick-entry follow-ups: on-device speech input (the composer relies on the keyboard mic today), a widget “recent transactions” provider, and per-widget configuration screens.
+9. SMS ingestion (best-effort convenience only) — the Android native reader over `src/services/sms/`; it must never be the only capture path, and nothing fake ships before it exists.
+10. PDF/XLSX **report export** templates (import is item 1 — export is a separate renderer problem).
+11. Screenshot review at phone widths once Chrome viewport emulation is usable again (puppeteer/Chrome CDP mismatch — see §5).
+
+> **Pass 16 APK — built (2026-10-07)**: `wallnut-2026-10-07.apk` (74.5 MB, warm build 4m 13s) — verified with `aapt2` to contain all four widget receivers (`Snapshot`, `Balance`, `QuickAdd`, `Upcoming` with labels), `WIDGET_CLICK` + `APPWIDGET_UPDATE` actions, `widgetCategory=home_screen`, `updatePeriodMillis=1800000`, the `wallnut://` deep-link scheme, and the bundled Inter fonts. A fresh APK is needed for Pass 19/20 (theme, calendars, drawer fix, bulk quick entry). Install with `adb install -r <file>.apk`, then add a widget from the launcher — widgets never work in Expo Go.
+
+### Transaction Inbox + statement import (planned — user brief, 2026-10-16)
+
+The user is locked out of aggregators by choice (“I don’t trust 3rd parties with my
+banking login”), so their only path today is manual entry. The feature is **not a PDF
+uploader** — it is a way to capture transactions Wallnut would otherwise miss, recover
+the context behind purchases, and let the user decide what belongs in the ledger:
+
+```
+Import (bank statement / export file)  →  Review (staged drafts)  →  Confirm (write to ledger)
+```
+
+**Non-negotiables**
+
+- **Staging, not writing.** Extraction never touches the ledger. Drafts live in their own
+  tables/status; totals (dashboard, analytics, budgets, safe-to-spend, widgets) must never
+  include an unconfirmed draft. The CSV wizard already behaves this way (map → preview →
+  dedupe → review → commit) — every new source reuses the same pipeline
+  (`src/services/import/pipeline.ts` is pure and unit-tested).
+- **Review screen per draft**: date, the bank's raw description, best-effort merchant,
+  amount, suggested category (from rules/aliases, explained as “from your saved rule”),
+  an optional note prompt, plus split / mark-transfer / skip / **Later**. Confirm in bulk
+  or one row at a time. “Later” must survive navigation and app restarts.
+- **Duplicate detection warns, never assumes.** Same date + same amount can be two real
+  purchases — mark “possible duplicate” with keep-both / skip, and reuse
+  `buildFingerprints()` + `findDuplicateGroups()` rather than inventing a second matcher.
+- **Merchant memory**: a correction on a reviewed row can be saved as a rule —
+  *WHEN merchant matches X → THEN suggest category Y* (via `rules.service` +
+  `utils/merchant.ts` aliases). Preselect + explain the source; never silently apply, and
+  never auto-reuse a previous transaction's personal note. Add “apply silently” only as an
+  explicit per-rule choice.
+- **Reconciliation**: at the end of a batch (and from `/review`) compare the statement's
+  opening/closing balance and totals against the account's ledger for the same window —
+  “statement says ₹X, Wallnut says ₹Y → 2 rows missing, 1 possible duplicate”.
+- **Capture status**: add an explicit `transactions.captureSource` (`manual | csv | ofx |
+  pdf | sms | notification | widget | ai`) + `importBatchId`. Today nothing records where a
+  row came from (`is_reviewed` + `fingerprint` exist; there is no origin column). Surface
+  it as a row badge + filter (“Imported”, “Unreviewed”) so “find unreviewed imports” is a
+  real query, not a guess.
+
+**Formats — phased, honest about reliability**
+
+| Phase | Format | Notes |
+| --- | --- | --- |
+| P1 | **CSV** + **review staging + merchant memory** | **Done (Pass 21)** — staging tables, `/import/[batchId]` review screen, capture source badge/filter, suggest-mode merchant memory, Inbox + Data entrances, drafts deleted on resolution and excluded from backups. |
+| P2 | **PDF statement** | Picking is solved (`expo-document-picker` + `expo-file-system`, both already used by the import wizard/composer). **First task is a spike**: `pdfjs-dist` under Hermes (needs DOM shims and a worker strategy) vs a native text-extraction module (requires prebuild + a config plugin). Text-based statements then get line/column heuristics + a “confirm the columns” step like the CSV wizard, and a **saved per-bank template** once a layout is confirmed. Scanned/image PDFs and password-protected files must fail with a clear “not supported yet / unlock it yourself first” state — never a fake success. **Never persist the PDF or its password**: read from the cache copy, delete after extraction, ask for passwords per import and discard immediately. |
+| P3 | **OFX / QFX** | Structured and easy to validate — cheap now the staging/review layer exists (drafts already carry `ofx` as a source). QIF only if asked. |
+| later | XLSX | Reuse the CSV path with a spreadsheet reader; no priority. |
+
+**Security & retention (design the storage layer before the uploader)**
+
+- Payment statements are the most sensitive data the app will ever hold.
+- Temporary import vault: keep the original file only while extraction/review runs; delete
+  on commit **by default**, with an explicit “keep an encrypted copy” opt-in (and a
+  “delete everything from this import” action).
+- No statement content, account numbers or raw descriptions in diagnostic logs; review
+  backup/restore behaviour for drafts (drafts should not survive a wipe silently).
+  **Pass 21:** `import_batches`/`import_drafts` are cleared by restore/wipe but deliberately
+  excluded from backup files (`VOLATILE_TABLES` in `db/tables.ts`), and resolved drafts are
+  deleted the moment every row is confirmed or skipped.
+- Honest encryption statement: today the SQLite file is not encrypted; before shipping
+  PDF import, investigate `expo-sqlite` SQLCipher support + `expo-secure-store` for the key,
+  or keep drafts file-only in the app cache with immediate deletion. Either way, Settings →
+  Privacy must state exactly what is stored and for how long.
+- Processing stays on-device (local-first promise). If a cloud OCR/AI step is ever offered,
+  it must be opt-in, clearly labelled, and off by default.
+
+**Existing pieces to build on**: `services/import/` (sources/normalize/validate/rules/dedupe/staging),
+`screens/DataScreen.tsx` (wizard + backup/restore), `services/review.service.ts` +
+`services/inbox.service.ts` + `/review` + `/inbox` (attention queue already lives here),
+`utils/rules.ts` + `services/rules.service.ts` (apply + suggest modes), `utils/merchant.ts` +
+`services/merchant.service.ts`, `utils/inbox.ts` priorities, `transactions.fingerprint` /
+`is_reviewed` / `capture_source` / `import_batch_id`, `/import/[batchId]` review screen.
+
+**Missing**: a PDF text extractor + per-bank templates, statement reconciliation, retention
+controls in Settings → Privacy, split / mark-transfer actions inside the review sheet
+(the composer covers splits afterwards), and OFX/QFX parsing over the same staging layer.
+
+**Work breakdown (in order — each slice ships and verifies on its own)**
+
+1. ~~`transactions.captureSource` + `importBatchId`~~ — **done (Pass 21)**: migration 0010,
+   backup table list, Records badge, Source filter (Imported / Manual entry / Needs review).
+2. ~~`import_batches` + `import_drafts` + `staging.service.ts`~~ — **done (Pass 21)**: stage a
+   preview, list/resume batches, update/skip/confirm drafts, confirm bulk, abandon; pure
+   semantics (draft → row, suggestions never applied) unit-tested.
+3. ~~Review screen (`/import/[batchId]`)~~ — **done (Pass 21)**: cards, per-row edit sheet,
+   skip, bulk confirm, duplicate handling (“Clear them”, auto-skipped on bulk confirm),
+   **Later**, abandon, progress “N of M reviewed”, Inbox + Data entrances. Split / mark
+   transfer from the review sheet remain for a later slice.
+4. ~~Merchant memory~~ — **done (Pass 21)**: “Always suggest this category” writes a
+   suggest-mode rule + merchant alias; imports preselect it and explain the source
+   (“From ‘Remember Amazon’”), nothing applies silently. An explicit per-rule “apply
+   silently” switch in the rules editor is still to do.
+5. Reconciliation card: statement opening/closing balance + totals vs the account's ledger
+   for the same window (pure comparator in `utils/`, service reads the window).
+6. PDF: extraction spike (pdfjs vs native) → generic text-line parser + saved per-bank
+   templates → password/unsupported states → staged review (same screens as P1).
+7. OFX/QFX parser over the same staging layer.
+8. Settings → Privacy: retention controls (“delete originals after import” default on,
+   “keep an encrypted copy” opt-in) and “delete everything from this import”. (Pass 21
+   already deletes staged drafts on resolution/abandon and keeps them out of backups —
+   the visible controls are still to come.)
+
+### Flexible budget cycles (planned — user brief, 2026-10-16)
+
+Problem stated by the user: “Most budgets are based on a per calendar month cycle. But
+depending on how I'm paid each month, I can easily end up in the red until the end of the
+month.” The fix is to make the **cycle** a first-class, user-owned object instead of the
+single global `monthStartDay` integer.
+
+**Scope**
+
+1. **Cycle model** (`settings.finance`): a list of named cycles —
+   `{ id, name, kind: 'month_day' | 'payday' | 'statement', anchorDay?, accountId?, payCadence? }`
+   plus `activeCycleId`. `month_day` covers “starts on the 25th” (the existing
+   `monthStartDay`, migrated into a default cycle named “Monthly”), `payday` anchors to the
+   salary/income deposit day (detected from history, user-confirmable, deterministic
+   fallback to `anchorDay`), `statement` mirrors a credit-card account's `statementDay`.
+2. **Every “this month” follows the active cycle**: budget progress/pace/rollover, safe-to-spend,
+   Home period pills, analytics/insights/reports, category month-on-month, widgets
+   (`widgets/snapshot.ts` reads `settings.general.monthStartDay` today), and period labels
+   (“25 Sep – 24 Oct”, not “October”).
+3. **Per-budget override (optional)**: a budget may pin its own cycle (e.g. the card budget
+   follows the statement cycle) — default is the active cycle.
+4. **Safety rails**: cycles never change historical bucket boundaries retroactively for
+   *past* periods (a cycle change takes effect from the current period forward); label must
+   always show the concrete range; a sanity check rejects anchors that would create a
+   2-day or 40-day period.
+
+**Implementation notes**: `utils/date.ts` already has `startOfCycle` / `endOfCycle` /
+`getPeriodRange(..., { monthStartDay })` and `monthCycleBuckets` — the work is to pass a
+cycle *object* (anchor + kind + resolved start) through the services instead of a bare
+number, and to add a resolver that maps “now + cycle” → `{ start, end, label }` (pure +
+unit-testable). `budgets.period` is `weekly | monthly | yearly | custom`; add
+`cycleId?: string | null` and a migration. `accounts.statementDay` already exists for the
+card preset. Verification: unit tests for the resolver (incl. payday drift and Feb 28/29),
+then screenshots of Budgets + Home with a 25th-anchored cycle showing the right labels and
+totals.
+
+**Work breakdown**: (a) pure cycle resolver + tests (`utils/date.ts` / `utils/cycle.ts`) →
+(b) settings model + migration (`monthStartDay` → default cycle, Settings → Finance UI) →
+(c) thread the resolved cycle through budgets/safe-to-spend/analytics/insights/widgets and
+the period labels, with a per-budget override chip in the budget editor.
 
 ### Feature roadmap — status map (user's 23-point brief)
 
@@ -333,10 +580,10 @@ reduce-motion setting.
 | 2 | Credit cards own system | **Partial** — limit/available/utilisation, statement + due days, min payment in the editor; still to do: statement panel + min/full due surfaced on the card, one-tap "Pay card" (bank → card transfer, never an expense) |
 | 3 | Safe-to-spend flagship | **Partial** — per-budget safe-to-spend exists; global flagship (income − bills − savings − commitments, per-day) still to do |
 | 4 | Net worth understands everything + monthly history | **Mostly done** — accounts (+flags) + receivables − payables across every screen and the trend; month table still to do |
-| 5 | Statement import | **Partial** — CSV wizard (map → preview → dedupe → review → commit); PDF/paste-text sources still to do |
-| 6 | SMS transaction detection | **Architecture ready** (`src/services/sms/`), native Android receiver + tri-state setting still to do |
+| 5 | Statement import | **Partial — PDF/OFX is the #1 next feature (§7 “Transaction Inbox”)** — CSV/JSON wizard live (map → preview → dedupe → review → commit); next: staged drafts, review screen, merchant memory, reconciliation, then PDF (on-device text extraction) and OFX/QFX |
+| 6 | SMS transaction detection | **Architecture ready** (`src/services/sms/`); native Android receiver + tri-state setting still to do — **best-effort convenience only, deliberately behind file-based import** |
 | 7 | Rules engine | **Done** (rules + editor). Advanced AND/OR conditions are future |
-| 8 | Recurring detection | **To do** (scan history for monthly patterns → suggest schedules) |
+| 8 | Recurring detection | **Done** — `detectRecurringCandidates()` finds monthly patterns from history; confirmed candidates become manual-confirmation schedules (Inbox + Recurring screen). Multi-day monthly schedules still to do |
 | 9 | Subscription waste detector | **Partial** — annualised summary + AI review; dedicated "review your subscriptions" screen to do |
 | 10 | Cash-flow calendar | **Partial** — day cells show actual spent/income + scheduled markers; expected-monthly per day and payday emphasis to do |
 | 11 | Cash-flow forecasting | **Partial** — budget projection + spending pace; 30-day projected balance line to do |
@@ -347,8 +594,8 @@ reduce-motion setting.
 | 16 | Reimbursements | **Partial (Pass 15)** — shared expenses cover split bills, receivables and payback tracking; a reimbursement status on ordinary tagged transactions is still future |
 | 17 | Split transactions | **Done** — split editor with balance validation, expanded by `effective_ledger` |
 | 18 | Split bills → Money owed | **Done (Pass 15)** — shared expenses: people, groups, 4 split types, payer selection, computed balances, partial settlements; flows into Money Owed + net worth |
-| 19 | Powerful search | **Partial** — search + advanced filters; natural-language search will ride on the AI assistant |
-| 20 | Export / backup | **Mostly done** — CSV/JSON export + restore; Excel/PDF + automatic local backup to do |
+| 19 | Powerful search | **Mostly done** — search covers merchant, description, notes, reference, category, account, transfer account and tags; NL search will ride on the AI assistant |
+| 20 | Export / backup | **Mostly done** — CSV/JSON export + restore (all 23 tables, rollback-safe); Excel/PDF export stays minimal by design (CSV is the supported report path — import is the priority), automatic local backup to do |
 | 21 | App lock | **Done (Pass 13)** — biometrics (native) + salted-hash PIN fallback + auto-lock timeout + Lock now, enforced by the root layout |
 | 22 | Privacy mode | **Done** — `security.hideAmounts` masks every amount through `useMoney().format`; eye on the Home hero + long-press the header avatar toggles it |
 | 23 | Custom dashboard | **Done** — drag-to-reorder, visibility, per-widget config, presets |
@@ -387,7 +634,7 @@ reduce-motion setting.
 | Phase | Feature | Status |
 | --- | --- | --- |
 | A | Shared expenses / Splitwise-style | **Done (Pass 15)** — groups, dynamic line items, multiple payers per bill, equal/exact/%/shares, exact member balances + fewest-transfer settlement suggestions, settlements between any members, partial settlements + undo, Money Owed + net worth merge, composer "Shared" mode, quiet opt-in reminders; verified end-to-end (`verify-shared` + `verify-trip`) |
-| B | Financial Inbox | **To do** — extend the review queue into one attention queue with priorities |
+| B | Financial Inbox | **Done** — `/inbox` is one attention queue (urgent / action / suggestion / info) over the review queue + recurring candidates + upcoming + goals + shared balances, with dismiss/snooze (`utils/inbox.ts`, `inbox.service.ts`, `verify-inbox.mjs`); the review queue already flags duplicate / uncategorised / unreviewed / large / broken-transfer rows. **Extension planned:** statement-import drafts report into this same queue (§7 “Transaction Inbox”) instead of a parallel surface |
 | C | Safe-to-Spend v2 | **Partial / to do** — add emergency reserve, credit-card obligations, confirmed expected income; keep the visible breakdown |
 | D | Cash-flow forecast warnings | **Partial / to do** — actual/scheduled/estimated timeline + low-balance runway warning (never "you will run out") |
 | E | Subscription intelligence | **Partial** — annualised summary + detection exist; price-increase detection and a dedicated review screen remain |
@@ -402,6 +649,12 @@ reduce-motion setting.
 > persistence → restart-verify, and shared expenses may never inflate personal
 > spending, settlements may never become income/expense, and credit-card payments
 > stay transfers.
+>
+> Import rules (added 2026-10-16, §7 “Transaction Inbox”): a file never writes to the
+> ledger — drafts stay staged until the user confirms; unreviewed drafts never count in
+> spending, budgets, safe-to-spend or widgets; duplicate detection warns instead of
+> assuming; learned rules only *suggest* unless the user opts into auto-apply; statement
+> files and passwords are transient by default and never logged.
 
 
 ---
@@ -503,8 +756,50 @@ reduce-motion setting.
   - **Insights**: full `analytics.tsx` rebuild into Spending/Income/Net worth/Trends with the hero cards, insight banner, Amount/% category toggle and the redistributed older sections. `getCategoryBreakdown({ kind: 'income' })` powers the income sources card.
   - **Verification**: 159 tests green (records label expectations updated), `tsc --noEmit` clean, `npx expo export --platform web` rebuilt, screenshots `home.png` / `transactions.png` / `insights.png` (light 390×844) plus tab + scroll + dark-mode passes via throwaway puppeteer scripts in `.expo/verify/` (deleted after use). The 20 MB `dist/` swap is enough; Metro must be restarted for a dev-server run because the theme defaults are baked into the bundle.
 
+- **Pass 21 — statement import P1, dashboard quick actions, performance**:
+  - **Import (bank statement / export file) → Review (staged drafts) → Confirm (write to ledger)** is now the
+    real flow. Migration 0010 adds `import_batches` + `import_drafts` and `transactions.capture_source`
+    (backfilled `manual`) + `import_batch_id`. `services/import/staging.service.ts` stages a preview, lists
+    pending batches, edits/skips/confirms drafts (bulk and single), abandons a batch, counts pending rows for
+    badges, and owns merchant memory (`rememberMerchantForCategory`). Rows are written only through
+    `insertImportedTransactions` (balances included) and land as reviewed; a batch fully resolved marks itself
+    committed and **deletes its draft copies** (raw statement text). Backups exclude the staging tables.
+  - **Rules gained a mode** (`rules.mode: apply | suggest`, existing rules stay `apply`): suggest rules (merchant
+    memory) never run on manual entry or in the import writer — they preselect and explain (“From ‘Remember
+    Amazon’”) on the review screen, and an applied category/rule always wins. `partitionRulesByMode` is pure and
+    unit-tested; `loadEnabledRules(mode)` defaults to `apply` so nothing can silently apply a suggestion.
+  - **`/import/[batchId]` review screen**: draft cards (checkbox, merchant, raw statement line, date, category,
+    amount, duplicate chip), per-row edit sheet (merchant/type/date/category/note + “Always suggest this
+    category”), skip, “Clear them” for duplicates, bulk “Add N transactions” (auto-skips unchecked duplicates),
+    progress “N of M reviewed · nothing is in your ledger yet”, **Later**, abandon (deletes the batch), and a
+    dashboard fallback when a deep link has no history. The Data wizard’s primary action stages + replaces into
+    the review (“Review N transactions”), “Import without review” stays as the fast path; the Data screen and
+    the Financial Inbox both surface pending reviews.
+  - **Records**: imported rows carry a source badge (“Imported”, “From SMS”, …) and the filter sheet gained a
+    **Source** block (Imported / Manual entry / Needs review). `TransactionFilters.importedOnly` /
+    `manualOnly` are real SQL clauses.
+  - **Dashboard quick actions**: the `quick_actions` widget is now Add expense · Add income · Transfer ·
+    **Import**; `ensureQuickActionsWidget()` (one-time, respects deliberate layouts) puts it directly under the
+    hero and above Safe-to-spend, and `ensureSafeToSpendWidget` anchors after it when present.
+  - **Performance**: stale-while-revalidate `useQuery` (no loading flicker on writes/focus refresh, `null`
+    still a real result via a `resolved` flag), coalesced `notifyDbChanged` (one revision bump per tick),
+    memoized Home widget tree + `GreetingLine` clock, memoized chart components.
+  - **Verification**: `tsc --noEmit` clean, 173 tests (8 new), lint clean on touched files, web export rebuilt;
+    `scripts/verify-statement.mjs` (17 checks) + screenshots (`home-pass21`, `statement-review`,
+    `statement-edit`, `inbox-statement`, `transactions-imported`, `transactions-imported-badge`).
+  - **Still needs a device pass**: nothing here is native-only, but the APK predates Pass 19/20/21 — rebuild
+    (`scripts/build-apk.ps1`) before judging animations/scroll on the phone.
+
+- **Pass 22 — Home polish: scope bar, blobs, charts, long-press fixes**:
+  - Removed the Home top tabs; rebuilt the account scope bar (balance per pill, account-coloured, All-accounts
+    total, in-place Add account, long-press quick actions with haptics); added the `GradientBlobs` backdrop;
+    donut round caps/gaps + gradient bars; fixed the double long-press wiring on Records rows (+ memoized the
+    per-row pan gesture, tuned the FlatList); cached widget config parsing; header menu privacy long-press now
+    toasts. Full detail in §4 and §8 (Pass 21/22 entries). Screenshots: `home-pass22`, `scope-actions`,
+    `scope-add-account`, `analytics-via-nav`, `records-longpress`.
+
 ### Verification commands
-`npm run typecheck` · `npm test` · `npx expo export --platform web` · `node scripts/serve-web.mjs 8081` · `node scripts/verify-web.mjs http://localhost:8081 home 390 844 "Assets"` · `node scripts/verify-web.mjs http://localhost:8081/quick-entry quick-entry 390 844 "Quick Entry"` · `node scripts/verify-web.mjs http://localhost:8081/settings/widgets settings-widgets 390 844 "Widgets enabled"` · `node scripts/capture-screens.mjs http://localhost:8081 390 844` · `node scripts/verify-lock.mjs http://localhost:8081` · `node scripts/verify-shopping.mjs http://localhost:8081` · `node scripts/verify-shared.mjs http://localhost:8081` · `node scripts/verify-trip.mjs http://localhost:8081` · `node scripts/verify-inbox.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/transactions transactions 390 844 "Transactions"` · `node scripts/verify-web.mjs http://localhost:8081/analytics insights 390 844 "Total spending"` · `node scripts/verify-web.mjs http://localhost:8081/category-trends trends 390 844 "MONTH ON MONTH"` · `node scripts/verify-web.mjs http://localhost:8081/settings/dashboard widgets 390 844 "Widgets"`
+`npm run typecheck` · `npm test` · `npx expo export --platform web` · `node scripts/serve-web.mjs 8081` · `node scripts/verify-web.mjs http://localhost:8081 home 390 844 "Assets"` · `node scripts/verify-statement.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/quick-entry quick-entry 390 844 "Quick Entry"` · `node scripts/verify-web.mjs http://localhost:8081/settings/widgets settings-widgets 390 844 "Widgets enabled"` · `node scripts/capture-screens.mjs http://localhost:8081 390 844` · `node scripts/verify-lock.mjs http://localhost:8081` · `node scripts/verify-shopping.mjs http://localhost:8081` · `node scripts/verify-shared.mjs http://localhost:8081` · `node scripts/verify-trip.mjs http://localhost:8081` · `node scripts/verify-inbox.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/transactions transactions 390 844 "Transactions"` · `node scripts/verify-web.mjs http://localhost:8081/analytics insights 390 844 "Total spending"` · `node scripts/verify-web.mjs http://localhost:8081/category-trends trends 390 844 "MONTH ON MONTH"` · `node scripts/verify-web.mjs http://localhost:8081/settings/dashboard widgets 390 844 "Widgets"`
 
 > Widgets are native: verify them only in a real build (`npx expo prebuild --platform android` then `scripts/build-apk.ps1`), never in Expo Go or the web preview.
 
@@ -561,7 +856,7 @@ Notes:
 - Release keystore: `android/app/wallnut-release.keystore` (alias `wallnut`, passwords in `android/gradle.properties`)
 - Gradle JVM memory raised to 4096m for the New Architecture release build
 - Network note: adoptium.net is throttled here (~65 KB/s); use the Azul CDN or Google's dl.google.com (both >1 MB/s)
-- **Latest APK: `wallnut-2026-10-07.apk` (74.5 MB, Pass 16: AI quick entry + Android widgets)** — warm build 4 m 13 s; package `com.wallnut.app`, versionCode 1, signed with the existing keystore so `adb install -r` updates in place and keeps app data (migration 0009 `widget_snapshots` applies on first launch). Verified with `aapt2`: 4 widget receivers + `home_screen` category + 30-minute updates + `wallnut://` scheme + Inter widget fonts. Note: `expo prebuild` clears `android/` — back up `android/app/wallnut-release.keystore` first and restore it before building.
+- **Latest APK: `wallnut-2026-10-07.apk` (74.5 MB, Pass 16: AI quick entry + Android widgets)** — warm build 4 m 13 s; package `com.wallnut.app`, versionCode 1, signed with the existing keystore so `adb install -r` updates in place and keeps app data (migration 0009 `widget_snapshots` applies on first launch). Verified with `aapt2`: 4 widget receivers + `home_screen` category + 30-minute updates + `wallnut://` scheme + Inter widget fonts. Note: `expo prebuild` clears `android/` — back up `android/app/wallnut-release.keystore` first and restore it before building. **Passes 17–21 are JS-only, but the release embeds the bundle at build time — rebuild (`scripts/build-apk.ps1`) before judging the new theme/statement-import/perf work on the phone (migration 0010 applies on first launch).**
 
 ---
 

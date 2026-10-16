@@ -476,6 +476,8 @@ export async function seedDemoData(): Promise<void> {
         description: d.description,
       }),
       isReviewed: !d.unreviewed,
+      captureSource: 'manual',
+      importBatchId: null,
       createdAt,
       updatedAt: createdAt,
     };
@@ -630,15 +632,18 @@ export async function ensureSafeToSpendWidget(): Promise<boolean> {
     return false;
   }
 
-  const netWorthPosition = netWorth[0]!.position ?? 0;
-  const position = netWorthPosition + 1;
+  // The hero and the quick actions both belong at the very top; the flagship
+  // card follows them when the quick actions row is present.
+  const quickActions = await db.select().from(dashboardWidgets).where(eq(dashboardWidgets.type, 'quick_actions')).limit(1);
+  const anchorPosition = quickActions[0]?.position ?? netWorth[0]!.position ?? 0;
+  const position = anchorPosition + 1;
   const existing = await db.select().from(dashboardWidgets).where(eq(dashboardWidgets.type, 'safe_to_spend')).limit(1);
 
-  // Make room so the flagship card sits immediately after the hero.
+  // Make room so the flagship card sits immediately after the anchor.
   await db
     .update(dashboardWidgets)
     .set({ position: sql`${dashboardWidgets.position} + 1` })
-    .where(gt(dashboardWidgets.position, netWorthPosition));
+    .where(gt(dashboardWidgets.position, anchorPosition));
 
   if (existing.length > 0) {
     await db.update(dashboardWidgets).set({ position }).where(eq(dashboardWidgets.id, existing[0]!.id));
@@ -702,6 +707,72 @@ export async function ensureCategoryMonthlyWidget(): Promise<boolean> {
   });
 
   useSettingsStore.getState().update('dashboard', { categoryTrendsPlaced: true });
+  notifyDbChanged();
+  return true;
+}
+
+/**
+ * One-time placement of the Quick Actions row: inserted immediately after the
+ * net-worth hero when a dashboard (customised before Pass 19) is missing it.
+ * Marked as placed so a deliberate removal is never undone.
+ */
+export async function ensureQuickActionsWidget(): Promise<boolean> {
+  const dashboardSettings = useSettingsStore.getState().dashboard;
+  if (dashboardSettings.quickActionsPlaced) return false;
+
+  const db = getDb();
+  const existing = await db.select().from(dashboardWidgets).where(eq(dashboardWidgets.type, 'quick_actions')).limit(1);
+  if (existing.length > 0) {
+    // Already present. One curated fix-up: when the Safe-to-Spend card was
+    // auto-placed between the hero and this row (the old Pass 11 order), the
+    // reference layout wants the actions immediately under the hero — move the
+    // row above it, once. A deliberately rearranged dashboard keeps its order.
+    const all = await db.select().from(dashboardWidgets).orderBy(asc(dashboardWidgets.position));
+    const netWorth = all.find((widget) => widget.type === 'net_worth');
+    const safeToSpend = all.find((widget) => widget.type === 'safe_to_spend');
+    const quickActions = existing[0]!;
+    const between =
+      netWorth && safeToSpend &&
+      (netWorth.position ?? 0) < (safeToSpend.position ?? 0) &&
+      (safeToSpend.position ?? 0) < (quickActions.position ?? 0);
+    const adjacent = netWorth && (netWorth.position ?? -1) + 1 === (quickActions.position ?? -2);
+    if (between && !adjacent && netWorth) {
+      await db
+        .update(dashboardWidgets)
+        .set({ position: sql`${dashboardWidgets.position} + 1` })
+        .where(gt(dashboardWidgets.position, netWorth.position ?? 0));
+      await db.update(dashboardWidgets).set({ position: (netWorth.position ?? 0) + 1 }).where(eq(dashboardWidgets.id, quickActions.id));
+    }
+    useSettingsStore.getState().update('dashboard', { quickActionsPlaced: true });
+    return false;
+  }
+
+  const all = await db.select().from(dashboardWidgets).orderBy(asc(dashboardWidgets.position));
+  if (all.length === 0) {
+    // A brand-new database gets the default set (which already includes it).
+    useSettingsStore.getState().update('dashboard', { quickActionsPlaced: true });
+    return false;
+  }
+
+  const anchor = all.find((widget) => widget.type === 'net_worth');
+  const position = anchor ? (anchor.position ?? 0) + 1 : all.reduce((max, widget) => Math.max(max, widget.position), -1) + 1;
+
+  await db
+    .update(dashboardWidgets)
+    .set({ position: sql`${dashboardWidgets.position} + 1` })
+    .where(gt(dashboardWidgets.position, position - 1));
+
+  await db.insert(dashboardWidgets).values({
+    id: createId('wid'),
+    type: 'quick_actions',
+    position,
+    width: 'full',
+    height: 'compact',
+    configuration: '{}',
+    isVisible: true,
+  });
+
+  useSettingsStore.getState().update('dashboard', { quickActionsPlaced: true });
   notifyDbChanged();
   return true;
 }

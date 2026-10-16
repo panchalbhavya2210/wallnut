@@ -1,5 +1,5 @@
 import { getSqlite } from '@/db/client';
-import { USER_DATA_DELETE_ORDER, USER_DATA_TABLES } from '@/db/tables';
+import { USER_DATA_DELETE_ORDER, USER_DATA_TABLES, VOLATILE_TABLES } from '@/db/tables';
 import { listAccounts, recalculateAllBalances } from '@/services/accounts.service';
 import { notifyDbChanged } from '@/stores/db.store';
 import { toCsv } from '@/utils/csv';
@@ -118,11 +118,13 @@ export interface BackupFile {
 
 /**
  * Every table that carries user data, in dependency-safe insert order.
- * `ai_cache` is derived, machine-specific and deliberately excluded.
+ * `ai_cache` is derived and deliberately excluded, and so are staged import
+ * drafts — transient raw statement text never belongs in a backup file.
  *
  * v1 backups only contained a subset — restore handles both.
  */
-const BACKUP_TABLES = USER_DATA_TABLES;
+const VOLATILE = new Set<string>(VOLATILE_TABLES);
+const BACKUP_TABLES = USER_DATA_TABLES.filter((table) => !VOLATILE.has(table));
 
 /** Reverse dependency order for wiping before a replace-restore. */
 const BACKUP_DELETE_ORDER = USER_DATA_DELETE_ORDER;

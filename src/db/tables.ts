@@ -35,9 +35,19 @@ export const USER_DATA_TABLES = [
   'saved_reports',
   'shopping_lists',
   'shopping_list_items',
+  'import_batches',
+  'import_drafts',
 ] as const;
 
 export type UserDataTable = (typeof USER_DATA_TABLES)[number];
+
+/**
+ * Tables that are cleared on wipe/restore but deliberately NOT exported:
+ * staged statement drafts are transient, sensitive raw bank text and should
+ * never travel inside a backup file. (Deleting them on restore is still
+ * required — a restored ledger must not be paired with stale drafts.)
+ */
+export const VOLATILE_TABLES = ['import_batches', 'import_drafts'] as const;
 
 /** Reverse dependency order for wiping. */
 export const USER_DATA_DELETE_ORDER = [...USER_DATA_TABLES].reverse();

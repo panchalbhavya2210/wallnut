@@ -16,8 +16,7 @@ import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
 import { useSettingsStore } from '@/stores/settings.store';
 import { getPeriodRange, daysInRange, formatDayMonth, previousRange, type PeriodPreset } from '@/utils/date';
-import { percentageChange } from '@/utils/money';
-import { formatPercent } from '@/utils/money';
+import { percentageChange, formatPercent } from '@/utils/money';
 import { shortCategoryLabel } from '@/utils/format';
 import {
   getAccountBalanceTrend,
@@ -406,7 +405,7 @@ const QuickActionsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
     { label: 'Add expense', icon: 'add', href: '/transaction/new?type=expense', filled: true },
     { label: 'Add income', icon: 'arrow-down', href: '/transaction/new?type=income' },
     { label: 'Transfer', icon: 'swap-horizontal', href: '/transaction/new?type=transfer' },
-    { label: 'Budgets', icon: 'stats-chart', href: '/budgets' },
+    { label: 'Import', icon: 'cloud-upload-outline', href: '/data' },
   ];
   return (
     <Card style={{ paddingVertical: theme.spacing.lg }}>
@@ -1705,7 +1704,7 @@ const CategoryMonthlyWidget: React.FC<WidgetProps> = ({ config, onNavigate }) =>
 
 const REGISTRY: Record<string, WidgetDefinition> = {
   net_worth: { type: 'net_worth', title: 'Net Worth', description: 'Your wealth with month-over-month change', icon: 'trending-up-outline', defaultWidth: 'full', defaultHeight: 'tall', Component: NetWorthWidget },
-  quick_actions: { type: 'quick_actions', title: 'Quick Actions', description: 'Add expense, income, transfer, budgets', icon: 'flash-outline', defaultWidth: 'full', defaultHeight: 'compact', Component: QuickActionsWidget },
+  quick_actions: { type: 'quick_actions', title: 'Quick Actions', description: 'Add expense, income, transfer, import', icon: 'flash-outline', defaultWidth: 'full', defaultHeight: 'compact', Component: QuickActionsWidget },
   safe_to_spend: { type: 'safe_to_spend', title: 'Safe to Spend', description: 'Cash minus bills, savings and budget commitments', icon: 'shield-checkmark-outline', defaultWidth: 'full', defaultHeight: 'medium', Component: SafeToSpendWidget },
   total_balance: { type: 'total_balance', title: 'Total Balance', description: 'Spendable balance across accounts', icon: 'wallet-outline', defaultWidth: 'half', defaultHeight: 'compact', Component: TotalBalanceWidget },
   income_expense: { type: 'income_expense', title: 'Cash Flow', description: 'Income vs expenses this period', icon: 'swap-vertical-outline', defaultWidth: 'full', defaultHeight: 'medium', Component: IncomeExpenseWidget },
@@ -1750,16 +1749,23 @@ export function renderWidget(
 ): React.ReactNode {
   const definition = getWidgetDefinition(widget.type);
   if (!definition) return null;
-  let config: WidgetConfig = {};
-  try {
-    config = JSON.parse(widget.configuration || '{}') as WidgetConfig;
-  } catch {
-    config = {};
+  // Parsing is cached per widget row (rows keep identity between renders), so
+  // re-renders never re-parse JSON on the dashboard hot path.
+  let config = configCache.get(widget);
+  if (!config) {
+    try {
+      config = JSON.parse(widget.configuration || '{}') as WidgetConfig;
+    } catch {
+      config = {};
+    }
+    configCache.set(widget, config);
   }
   // A Home account scope overrides (never silences) each widget's own filter.
   const scopedConfig: WidgetConfig = scopeAccountId ? { ...config, accountIds: [scopeAccountId] } : config;
   return <definition.Component widget={widget} config={scopedConfig} onNavigate={onNavigate} />;
 }
+
+const configCache = new WeakMap<DashboardWidget, WidgetConfig>();
 
 export const WIDGET_PRESETS: Record<string, { label: string; description: string; widgets: string[] }> = {
   overview: {
