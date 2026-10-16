@@ -666,7 +666,11 @@ export default function AnalyticsScreen() {
         visible={customOpen}
         onClose={() => setCustomOpen(false)}
         value={customRange}
-        onApply={(next) => setCustomRange(next)}
+        onApply={(next) => {
+          setCustomRange(next);
+          // Without this the applied range stayed inert (range memo keys off period).
+          setPeriod('custom');
+        }}
       />
     </ScrollScreen>
   );

@@ -8,11 +8,13 @@ import {
   daysInRange,
   eachDayInRange,
   getPeriodRange,
+  monthCycleBuckets,
   pickTrendGranularity,
   previousRange,
   toISODate,
   type DateRange,
   type PeriodPreset,
+  type TrendBucket,
   type TrendGranularity,
 } from '@/utils/date';
 import { percentageChange } from '@/utils/money';
@@ -883,6 +885,166 @@ export async function getMonthlyComparison(params: RangeParams): Promise<Monthly
       change: percentageChange(row.total, prevTotal),
     };
   });
+}
+
+/* --------------------------- Month-on-month trends -------------------------- */
+
+export interface CategoryMonthlyRow {
+  categoryId: string | null;
+  name: string;
+  icon: string;
+  color: string;
+  /** Aligned with the returned buckets, oldest → newest; positive, net of refunds. */
+  totals: number[];
+  /** Sum across the whole window. */
+  total: number;
+  /** Newest bucket (the current cycle). */
+  current: number;
+  /** The bucket before that (the previous cycle). */
+  previous: number;
+  change: number | null;
+  /** Average per bucket across the window. */
+  average: number;
+  count: number;
+}
+
+export interface CategoryMonthlyTrends {
+  /** Oldest → newest. */
+  months: TrendBucket[];
+  rows: CategoryMonthlyRow[];
+  /** Grand total per bucket across all categories. */
+  totals: number[];
+}
+
+export interface CategoryMonthlyOptions {
+  months?: number;
+  accountIds?: string[];
+  categoryIds?: string[];
+  monthStartDay?: number;
+  anchor?: Date;
+}
+
+interface CategoryMonthAgg {
+  id: string | null;
+  name: string;
+  icon: string;
+  color: string;
+  months: Map<string, number>;
+  count: number;
+}
+
+/**
+ * Category totals grouped by month. The group key shifts the transaction date
+ * back by `monthStartDay - 1` days, so a custom cycle that runs Oct 5 → Nov 4
+ * is still grouped and labelled as October. Honours the Home account scope.
+ */
+async function categoryMonthAggregates(
+  params: RangeParams,
+  monthExpr: string,
+  kind: 'expense' | 'refund',
+): Promise<Map<string, CategoryMonthAgg>> {
+  const sqlite = getSqlite();
+  const { clause, values } = ledgerWhere(params, [{ sql: `el.type = ?`, params: [kind] }]);
+  const rows = await sqlite.getAllAsync<{
+    id: string | null;
+    name: string | null;
+    icon: string | null;
+    color: string | null;
+    month: string;
+    total: number;
+    count: number;
+  }>(
+    `SELECT
+       COALESCE(p.id, c.id) AS id,
+       COALESCE(p.name, c.name) AS name,
+       COALESCE(p.icon, c.icon) AS icon,
+       COALESCE(p.color, c.color) AS color,
+       ${monthExpr} AS month,
+       sum(abs(el.amount)) AS total,
+       count(DISTINCT el.transaction_id) AS count
+     FROM effective_ledger el
+     LEFT JOIN categories c ON c.id = el.category_id
+     LEFT JOIN categories p ON p.id = c.parent_id
+     ${clause}
+     GROUP BY COALESCE(p.id, c.id), month`,
+    values,
+  );
+
+  const map = new Map<string, CategoryMonthAgg>();
+  for (const row of rows) {
+    const key = row.id ?? '__uncategorised__';
+    const entry = map.get(key) ?? {
+      id: row.id,
+      name: row.name ?? 'Uncategorised',
+      icon: row.icon ?? 'help-circle-outline',
+      color: row.color ?? '#929AA8',
+      months: new Map<string, number>(),
+      count: 0,
+    };
+    entry.months.set(String(row.month), (entry.months.get(String(row.month)) ?? 0) + Number(row.total));
+    entry.count += Number(row.count);
+    map.set(key, entry);
+  }
+  return map;
+}
+
+/**
+ * Spending per category per month — the month-on-month view. Refunds net
+ * against the month they landed in, and the newest bucket is the current cycle.
+ */
+export async function getCategoryMonthlyTrends(options: CategoryMonthlyOptions = {}): Promise<CategoryMonthlyTrends> {
+  const months = Math.min(Math.max(options.months ?? 6, 2), 24);
+  const anchor = options.anchor ?? new Date();
+  const monthStartDay = options.monthStartDay ?? 1;
+  const buckets = monthCycleBuckets(anchor, months, monthStartDay);
+
+  const range: DateRange = {
+    start: buckets[0]!.start,
+    end: buckets[buckets.length - 1]!.end,
+    label: 'Month on month',
+  };
+  const params: RangeParams = { range, accountIds: options.accountIds, categoryIds: options.categoryIds };
+
+  // Shift dates back so every cycle lands in the calendar month it is labelled
+  // with, then group on the resulting year-month string.
+  const shift = Math.max(0, Math.min(27, monthStartDay - 1));
+  const monthExpr = shift > 0 ? `substr(date(el.date, '-${shift} days'), 1, 7)` : `substr(el.date, 1, 7)`;
+
+  const [expenses, refunds] = await Promise.all([
+    categoryMonthAggregates(params, monthExpr, 'expense'),
+    categoryMonthAggregates(params, monthExpr, 'refund'),
+  ]);
+
+  const rows: CategoryMonthlyRow[] = [];
+  for (const [key, entry] of expenses) {
+    const refundMonths = refunds.get(key)?.months;
+    const totals = buckets.map(
+      (bucket) => (entry.months.get(bucket.key) ?? 0) - (refundMonths?.get(bucket.key) ?? 0),
+    );
+    const total = totals.reduce((sum, value) => sum + value, 0);
+    const current = totals[totals.length - 1] ?? 0;
+    const previous = totals[totals.length - 2] ?? 0;
+    rows.push({
+      categoryId: entry.id,
+      name: entry.name,
+      icon: entry.icon,
+      color: entry.color,
+      totals,
+      total,
+      current,
+      previous,
+      change: percentageChange(current, previous),
+      average: Math.round(total / months),
+      count: entry.count,
+    });
+  }
+
+  // Biggest current-cycle spend first, then the biggest window — the list reads
+  // like "where the money went this month".
+  rows.sort((a, b) => b.current - a.current || b.total - a.total);
+
+  const totals = buckets.map((_, index) => rows.reduce((sum, row) => sum + (row.totals[index] ?? 0), 0));
+  return { months: buckets, rows, totals };
 }
 
 /* ------------------------------ Account detail ------------------------------ */

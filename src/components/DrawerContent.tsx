@@ -63,6 +63,7 @@ const GROUPS: DestinationGroup[] = [
       { label: 'Financial Inbox', detail: 'What needs your attention', icon: 'mail-unread-outline', href: '/inbox', keywords: 'inbox attention review duplicates subscriptions suggestions unrestored' },
       { label: 'Financial Intelligence', detail: 'Ask about your money', icon: 'sparkles-outline', href: '/ai', keywords: 'ai assistant deepseek ask question intelligence' },
       { label: 'Calendar', icon: 'calendar-outline', href: '/calendar', keywords: 'day month schedule bills' },
+      { label: 'Category trends', detail: 'Month-on-month by category', icon: 'bar-chart-outline', href: '/category-trends', keywords: 'category month over month monthly compare trends spending growth' },
       { label: 'Reports', icon: 'document-text-outline', href: '/reports', keywords: 'cash flow monthly review health summary' },
       { label: 'Transaction rules', icon: 'git-branch-outline', href: '/rules', keywords: 'automation categorise rules' },
       { label: 'Quick templates', icon: 'flash-outline', href: '/templates', keywords: 'reuse frequent transaction shortcut' },

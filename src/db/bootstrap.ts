@@ -5,7 +5,7 @@ import { postDueRecurring } from '@/services/recurring.service';
 import { syncReminderNotifications } from '@/services/notifications.service';
 import { seedDefaultCategories } from '@/services/categories.service';
 import { seedDefaultMerchantAliases } from '@/services/merchant.service';
-import { isDatabaseEmpty, migrateDashboardLayout, ensureSafeToSpendWidget, seedDefaultDashboardWidgets, seedDemoData } from '@/services/seed.service';
+import { isDatabaseEmpty, migrateDashboardLayout, ensureSafeToSpendWidget, ensureCategoryMonthlyWidget, seedDefaultDashboardWidgets, seedDemoData } from '@/services/seed.service';
 import { hydrateSettings, useSettingsStore } from '@/stores/settings.store';
 import { useBootstrapStore } from '@/stores/bootstrap.store';
 
@@ -112,6 +112,10 @@ async function runBootstrap(): Promise<BootstrapResult> {
   // Add the Safe-to-Spend flagship card for dashboards created before it.
   const addedSafeToSpend = await ensureSafeToSpendWidget();
   if (addedSafeToSpend) stage('safe-to-spend widget added');
+
+  // Add the month-on-month Category Trends card for existing dashboards.
+  const addedCategoryTrends = await ensureCategoryMonthlyWidget();
+  if (addedCategoryTrends) stage('category trends widget added');
 
   // Hand the "we posted things for you" facts to the UI so it can say so.
   useBootstrapStore.getState().setResult({

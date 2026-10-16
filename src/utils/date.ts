@@ -75,6 +75,7 @@ export function nowMs(): number {
 export type PeriodPreset =
   | '7d'
   | '30d'
+  | '12w'
   | '3m'
   | '6m'
   | '1y'
@@ -111,6 +112,7 @@ export function startOfCycleMonthCount(date: Date, monthStartDay: number, months
 export const PERIOD_LABELS: Record<PeriodPreset, string> = {
   '7d': 'Last 7 days',
   '30d': 'Last 30 days',
+  '12w': 'Last 12 weeks',
   '3m': 'Last 3 months',
   '6m': 'Last 6 months',
   '1y': 'Last 12 months',
@@ -133,6 +135,8 @@ export function getPeriodRange(
       return { start: startOfDay(subDays(anchor, 6)), end: anchor, label: PERIOD_LABELS['7d'] };
     case '30d':
       return { start: startOfDay(subDays(anchor, 29)), end: anchor, label: PERIOD_LABELS['30d'] };
+    case '12w':
+      return { start: startOfDay(subDays(anchor, 83)), end: anchor, label: PERIOD_LABELS['12w'] };
     case '3m':
       return {
         start: startOfDay(addMonths(anchor, -3) ),
@@ -269,6 +273,27 @@ export function buildTrendBuckets(range: DateRange, granularity: TrendGranularit
 }
 
 /* ------------------------------- Formatting ------------------------------ */
+
+/**
+ * Month buckets for month-on-month views, newest last. Each bucket respects the
+ * user's month-start day, so a cycle that runs Oct 5 → Nov 4 is labelled "Oct".
+ */
+export function monthCycleBuckets(anchor: Date, count: number, monthStartDay = 1): TrendBucket[] {
+  const buckets: TrendBucket[] = [];
+  const currentStart = startOfCycle(anchor, monthStartDay);
+  for (let index = count - 1; index >= 0; index--) {
+    const start = addMonths(currentStart, -index);
+    const end = subDays(addMonths(start, 1), 1);
+    buckets.push({
+      key: format(start, 'yyyy-MM'),
+      label: format(start, 'MMM'),
+      fullLabel: format(start, 'MMMM yyyy'),
+      start,
+      end,
+    });
+  }
+  return buckets;
+}
 
 export function formatDayLabel(date: Date, now = new Date()): string {
   if (isSameDay(date, now)) return 'Today';
