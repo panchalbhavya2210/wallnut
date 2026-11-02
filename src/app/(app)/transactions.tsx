@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -70,7 +70,14 @@ export default function TransactionsScreen() {
   const theme = useTheme();
   const money = useMoney();
   const now = useNow();
-  const params = useLocalSearchParams<{ search?: string }>();
+  const params = useLocalSearchParams<{
+    search?: string;
+    categoryId?: string;
+    categoryName?: string;
+    merchantCanonical?: string;
+    merchantName?: string;
+    uncategorised?: string;
+  }>();
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
   const confirmDeletion = useSettingsStore((state) => state.transactions.confirmDeletion);
   const showIcons = useSettingsStore((state) => state.transactions.showIcons);
@@ -91,9 +98,45 @@ export default function TransactionsScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const [showPeriod, setShowPeriod] = useState(false);
   const [showViewOptions, setShowViewOptions] = useState(false);
-  const [filters, setFilters] = useState<TransactionFilters>({});
+  const [filters, setFilters] = useState<TransactionFilters>(() => ({
+    categoryIds: params.categoryId ? [String(params.categoryId)] : undefined,
+    merchantCanonical: params.merchantCanonical ? String(params.merchantCanonical) : undefined,
+    uncategorisedOnly: params.uncategorised === '1' ? true : undefined,
+  }));
   const [page, setPage] = useState(1);
   const [searchOpen, setSearchOpen] = useState(params.search === '1');
+
+  // Drill-downs from Insights/category/merchant detail arrive as route params.
+  // Apply them once per distinct route scope, so clearing the filter afterwards
+  // is not undone by a re-render.
+  const appliedScope = useRef('');
+  useFocusEffect(
+    useCallback(() => {
+      if (!params.categoryId && !params.merchantCanonical && params.uncategorised !== '1') return;
+      const key = `${params.categoryId ?? ''}|${params.merchantCanonical ?? ''}|${params.uncategorised ?? ''}`;
+      if (appliedScope.current === key) return;
+      appliedScope.current = key;
+      setFilters((current) => ({
+        ...current,
+        categoryIds: params.categoryId ? [String(params.categoryId)] : current.categoryIds,
+        merchantCanonical: params.merchantCanonical ? String(params.merchantCanonical) : current.merchantCanonical,
+        uncategorisedOnly: params.uncategorised === '1' ? true : current.uncategorisedOnly,
+      }));
+      setPage(1);
+    }, [params.categoryId, params.merchantCanonical, params.uncategorised]),
+  );
+
+  const scopeLabel = filters.uncategorisedOnly
+    ? 'Uncategorised'
+    : filters.categoryIds?.length
+      ? params.categoryName
+        ? String(params.categoryName)
+        : 'Category filter'
+      : filters.merchantCanonical
+        ? params.merchantName
+          ? String(params.merchantName)
+          : filters.merchantCanonical
+        : null;
 
   const period = recordsPeriod;
   const range = useMemo(() => getPeriodRange(period, { monthStartDay }), [period, monthStartDay]);
@@ -328,6 +371,22 @@ export default function TransactionsScreen() {
               }}
             />
           ))}
+          {scopeLabel ? (
+            <Chip
+              label={scopeLabel}
+              icon="pricetag-outline"
+              selected
+              onPress={() => {
+                setFilters((current) => ({
+                  ...current,
+                  categoryIds: undefined,
+                  merchantCanonical: undefined,
+                  uncategorisedOnly: undefined,
+                }));
+                setPage(1);
+              }}
+            />
+          ) : null}
           {activeFilterCount > 0 ? (
             <Chip
               label={`${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'}`}
@@ -466,20 +525,22 @@ export default function TransactionsScreen() {
         />
       ) : null}
 
-      <FilterSheet
-        visible={showFilters}
-        onClose={() => setShowFilters(false)}
-        filters={filters}
-        onApply={(next) => {
-          setFilters(next);
-          setPage(1);
-          setShowFilters(false);
-        }}
-        onClear={() => {
-          setFilters({});
-          setPage(1);
-        }}
-      />
+      {showFilters ? (
+        <FilterSheet
+          visible
+          onClose={() => setShowFilters(false)}
+          filters={filters}
+          onApply={(next) => {
+            setFilters(next);
+            setPage(1);
+            setShowFilters(false);
+          }}
+          onClear={() => {
+            setFilters({});
+            setPage(1);
+          }}
+        />
+      ) : null}
 
       <CompactPeriodSheet
         visible={showPeriod}
@@ -897,6 +958,8 @@ function countActiveFilters(filters: TransactionFilters): number {
   if (filters.tagIds?.length) count++;
   if (filters.minAmount !== undefined || filters.maxAmount !== undefined) count++;
   if (filters.merchant) count++;
+  if (filters.merchantCanonical) count++;
+  if (filters.uncategorisedOnly) count++;
   if (filters.onlyRecurring) count++;
   if (filters.includeTransfers === false) count++;
   if (filters.includeRefunds === false) count++;
@@ -920,10 +983,6 @@ function FilterSheet({
   const theme = useTheme();
   const [draft, setDraft] = useState<TransactionFilters>(filters);
   const [sheet, setSheet] = useState<'none' | 'accounts' | 'categories' | 'tags' | 'from' | 'to'>('none');
-
-  React.useEffect(() => {
-    if (visible) setDraft(filters);
-  }, [visible, filters]);
 
   const accounts = useQuery(() => listAccounts(), []);
   const categories = useQuery(() => listCategories(), []);
@@ -997,6 +1056,11 @@ function FilterSheet({
             {(draft.categoryIds ?? []).map((id) => (
               <Chip key={id} label={categoryName(id)} selected onPress={() => setDraft({ ...draft, categoryIds: draft.categoryIds?.filter((x) => x !== id) })} />
             ))}
+            <Chip
+              label="Uncategorised"
+              selected={draft.uncategorisedOnly === true}
+              onPress={() => setDraft({ ...draft, uncategorisedOnly: draft.uncategorisedOnly ? undefined : true })}
+            />
             <Chip label="Choose categories" icon="add" onPress={() => setSheet('categories')} />
           </View>
         </FilterBlock>

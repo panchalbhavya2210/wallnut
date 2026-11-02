@@ -78,35 +78,35 @@ export interface ThemeColors {
 }
 
 export const darkColors: ThemeColors = {
-  // Deep botanical charcoal — a green-tinted canvas so the brand colour reads
-  // as the app's own, not as a painting on top of a neutral shell. Surfaces
-  // step up in luminance so filled cards read as Material containers.
-  background: '#0B120F',
-  surface: '#131C17',
-  surfaceElevated: '#1A251E',
-  surfaceTranslucent: 'rgba(19, 28, 23, 0.98)',
-  border: '#253129',
-  borderStrong: '#35453B',
+  // The Wallnut 2.0 canvas: near-black neutral surfaces with carefully stepped
+  // elevation. The accent carries identity; the chrome stays quiet so the
+  // financial data is the brightest thing on screen.
+  background: '#090B0F',
+  surface: '#11141A',
+  surfaceElevated: '#171B22',
+  surfaceTranslucent: 'rgba(17, 20, 26, 0.98)',
+  border: '#232833',
+  borderStrong: '#343B4A',
 
-  text: '#F4F8F5',
-  textSecondary: '#A8B5AC',
-  muted: '#74827A',
-  textInverse: '#0A120D',
+  text: '#F5F7FA',
+  textSecondary: '#A6ADBB',
+  muted: '#6F7787',
+  textInverse: '#0A0C12',
 
-  positive: '#34D399',
-  positiveSoft: 'rgba(52, 211, 153, 0.15)',
-  negative: '#FF6B6B',
-  negativeSoft: 'rgba(255, 107, 107, 0.15)',
-  warning: '#F0B34B',
-  warningSoft: 'rgba(240, 179, 75, 0.15)',
-  neutralSoft: 'rgba(168, 181, 172, 0.12)',
+  positive: '#22C55E',
+  positiveSoft: 'rgba(34, 197, 94, 0.14)',
+  negative: '#EF4444',
+  negativeSoft: 'rgba(239, 68, 68, 0.14)',
+  warning: '#F59E0B',
+  warningSoft: 'rgba(245, 158, 11, 0.14)',
+  neutralSoft: 'rgba(166, 173, 187, 0.11)',
   onNegative: '#FFFFFF',
 
-  ripple: 'rgba(255, 255, 255, 0.10)',
-  chartGrid: 'rgba(37, 49, 41, 0.9)',
-  overlay: 'rgba(3, 6, 4, 0.66)',
-  inputBackground: '#0F1712',
-  pressed: 'rgba(255, 255, 255, 0.05)',
+  ripple: 'rgba(255, 255, 255, 0.09)',
+  chartGrid: 'rgba(35, 40, 51, 0.92)',
+  overlay: 'rgba(2, 4, 7, 0.72)',
+  inputBackground: '#0D1015',
+  pressed: 'rgba(255, 255, 255, 0.055)',
 };
 
 export const lightColors: ThemeColors = {

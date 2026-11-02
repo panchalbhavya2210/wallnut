@@ -80,7 +80,7 @@ export default function AppLayout() {
     <Drawer drawerContent={drawerContent} screenLayout={screenLayout} screenOptions={screenOptions}>
       <Drawer.Screen name="index" options={{ title: 'Home' }} />
       <Drawer.Screen name="transactions" options={{ title: 'Transactions' }} />
-      <Drawer.Screen name="analytics" options={{ title: 'Analytics' }} />
+      <Drawer.Screen name="analytics" options={{ title: 'Insights' }} />
       <Drawer.Screen name="budgets" options={{ title: 'Budgets' }} />
     </Drawer>
   );

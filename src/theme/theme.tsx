@@ -82,7 +82,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useMemo<Theme>(() => {
     const system: 'light' | 'dark' = systemScheme === 'dark' ? 'dark' : 'light';
     const mode = modePreference === 'system' ? system : modePreference;
-    const resolvedAccent = (accentName as AccentName) ?? 'magenta';
+    const resolvedAccent = (accentName as AccentName) ?? 'indigo';
     const colors = buildThemeColors({
       mode,
       accent: resolvedAccent,

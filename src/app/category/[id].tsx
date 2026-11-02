@@ -22,6 +22,7 @@ import {
 } from '@/services/analytics.service';
 import { listTransactions } from '@/services/transactions.service';
 import { getCategory } from '@/services/categories.service';
+import { getBudgetProgressList } from '@/services/budgets.service';
 import { addMonths, formatDayMonth, formatMonthYear, getPeriodRange, toISODate, type DateRange, type PeriodPreset } from '@/utils/date';
 import { MonthCyclePicker } from '@/components/MonthCyclePicker';
 import { formatPercent } from '@/utils/money';
@@ -57,17 +58,39 @@ export default function CategoryDetailScreen() {
 
   const query = useQuery(async () => {
     if (!id) return null;
-    const [category, breakdown, stats, merchants, trend, transactions, monthly] = await Promise.all([
-      getCategory(id),
-      getCategoryBreakdown({ range, categoryIds: [id] }),
+    // Resolve the category first: a child's page must aggregate only that child,
+    // while a parent rolls its children up. Doing this in one query used to
+    // show the parent total on a child's page.
+    const category = await getCategory(id);
+    if (!category) return null;
+    const grouping = category.parentId ? ('exact' as const) : ('root' as const);
+    const [breakdown, stats, merchants, trend, transactions, monthly, budgets] = await Promise.all([
+      getCategoryBreakdown({ range, categoryIds: [id] }, { grouping }),
       getCategoryStats({ range, categoryIds: [id] }),
       getTopMerchants({ range, categoryIds: [id] }, 6),
       getTrend({ range, categoryIds: [id] }, undefined, ['expense', 'refund']),
-      listTransactions({ categoryIds: [id], from: undefined, limit: 40, includeRefunds: true, sort: 'date_desc' }),
+      listTransactions({
+        categoryIds: [id],
+        from: toISODate(range.start),
+        to: toISODate(range.end),
+        limit: 200,
+        includeRefunds: true,
+        sort: 'date_desc',
+      }),
       // Month-on-month history is deliberately wider than the selected period.
-      getCategoryMonthlyTrends({ months: 12, monthStartDay, categoryIds: [id], anchor }),
+      getCategoryMonthlyTrends({ months: 12, monthStartDay, categoryIds: [id], anchor, grouping }),
+      getBudgetProgressList(),
     ]);
-    return { category, breakdown, stats, merchants, trend, transactions, monthly };
+    return {
+      category,
+      breakdown,
+      stats,
+      merchants,
+      trend,
+      transactions,
+      monthly,
+      budget: budgets.find((entry) => entry.budget.categoryId === id) ?? null,
+    };
   }, [id, range.start.getTime(), range.end.getTime(), monthStartDay, cycleOffset]);
 
   if (query.loading) return <ScrollScreen><LoadingBlock label="Loading category…" /></ScrollScreen>;
@@ -80,7 +103,7 @@ export default function CategoryDetailScreen() {
     );
   }
 
-  const { category, breakdown, stats, merchants, trend, transactions, monthly } = query.data;
+  const { category, breakdown, stats, merchants, trend, transactions, monthly, budget } = query.data;
 
   const monthlyRow = monthly.rows[0] ?? null;
   const currentCycle = monthly.months[monthly.months.length - 1] ?? null;
@@ -131,10 +154,10 @@ export default function CategoryDetailScreen() {
             {money.format(stats.total)}
           </AppText>
           <Row gap="sm" style={{ marginTop: theme.spacing.sm }}>
-            {breakdown.rows[0]?.change !== null && breakdown.rows[0]?.previousTotal ? (
-              <AppText variant="caption" tone={(breakdown.rows[0]?.change ?? 0) > 0 ? 'negative' : 'positive'}>
-                {(breakdown.rows[0]?.change ?? 0) > 0 ? '+' : '−'}
-                {formatPercent(Math.abs(breakdown.rows[0]?.change ?? 0), 1)} vs {formatPercent(100, 0).replace('100%', 'previous period')}
+            {stats.change !== null && stats.previousTotal > 0 ? (
+              <AppText variant="caption" tone={stats.change > 0 ? 'negative' : 'positive'}>
+                {stats.change > 0 ? '+' : '−'}
+                {formatPercent(Math.abs(stats.change), 1)} vs previous period
               </AppText>
             ) : (
               <AppText variant="caption" tone="muted">
@@ -152,6 +175,28 @@ export default function CategoryDetailScreen() {
               value={stats.lastDate ? formatDayMonth(new Date(stats.lastDate)) : '—'}
             />
           </View>
+          {budget ? (
+            <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.sm }}>
+              <Row justify="space-between">
+                <AppText variant="captionMedium" tone="secondary">
+                  Budget this period
+                </AppText>
+                <AppText variant="numericCaption" tone={budget.remaining >= 0 ? 'secondary' : 'negative'}>
+                  {money.format(budget.spent)} / {money.format(budget.budget.amount)}
+                </AppText>
+              </Row>
+              <ProgressBar
+                progress={budget.percent}
+                height={7}
+                color={budget.percent >= 100 ? theme.colors.negative : budget.percent >= 85 ? theme.colors.warning : theme.colors.positive}
+              />
+              <AppText variant="caption" tone="muted">
+                {budget.remaining >= 0
+                  ? `${money.format(budget.remaining)} left · ${money.format(budget.safeToSpendPerDay)}/day safe to spend`
+                  : `${money.format(Math.abs(budget.remaining))} over budget`}
+              </AppText>
+            </View>
+          ) : null}
         </Card>
 
         {monthlyRow && monthlyRow.total > 0 ? (
@@ -330,6 +375,27 @@ export default function CategoryDetailScreen() {
               ))}
             </View>
           )}
+          <Pressable
+            onPress={() =>
+              router.push(
+                `/transactions?categoryId=${encodeURIComponent(id ?? '')}&categoryName=${encodeURIComponent(category.name)}` as never,
+              )
+            }
+            accessibilityRole="button"
+            accessibilityLabel={`Open all ${category.name} transactions`}
+            style={({ pressed }) => ({
+              marginTop: theme.spacing.md,
+              paddingVertical: theme.spacing.md,
+              borderRadius: theme.radius.full,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: theme.colors.border,
+              alignItems: 'center',
+              backgroundColor: pressed ? theme.colors.pressed : 'transparent',
+            })}>
+            <AppText variant="captionMedium" tone="accent">
+              View all in Transactions
+            </AppText>
+          </Pressable>
         </View>
       </View>
 

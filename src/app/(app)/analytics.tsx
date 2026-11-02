@@ -1,74 +1,75 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
-import { Card, HeaderScrollScreen, IconName, Row, SectionHeader, KeyValueRow } from '@/components/ui/layout';
+import { Card, HeaderScrollScreen, IconName, KeyValueRow, Row, SectionHeader } from '@/components/ui/layout';
 import { AppText, MoneyText } from '@/components/ui/text';
 import { ProgressBar, SegmentedControl } from '@/components/ui/controls';
 import { EmptyState, LoadingBlock } from '@/components/ui/feedback';
 import { AppHeader, TopTabs } from '@/components/AppHeader';
 import { GradientBlobs } from '@/components/ui/backdrop';
-import { ScreenHint } from '@/components/ScreenHint';
-import { BarChart, DonutChart, FlowBars, LineChart } from '@/components/charts';
-import { Gauge } from '@/components/Gauge';
+import { BarChart, DonutChart, LineChart } from '@/components/charts';
 import { CustomRangeSheet, PeriodPill, shortPeriodLabel } from '@/components/PeriodPicker';
 import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
-import { useChartColors } from '@/hooks/useChartColors';
 import { useSettingsStore } from '@/stores/settings.store';
 import {
   getAccountBreakdown,
   getCategoryBreakdown,
   getDailySpendingStats,
+  getMerchantOverview,
   getNetWorthChanges,
+  getNetWorthRangeChange,
   getNetWorthTrend,
   getPeriodSummary,
   getSpendingVelocity,
-  getTopMerchants,
   getTrend,
   getWeekdaySpending,
   type CategoryBreakdownRow,
+  type MerchantRow,
 } from '@/services/analytics.service';
 import { getBudgetProgressList } from '@/services/budgets.service';
-import { listAccounts } from '@/services/accounts.service';
 import { getSubscriptionSummary } from '@/services/recurring.service';
-import { formatDayMonth, getPeriodRange, previousRange, type DateRange, type PeriodPreset } from '@/utils/date';
-import { formatPercent } from '@/utils/money';
+import {
+  daysInRange,
+  formatDayMonth,
+  getPeriodRange,
+  pickTrendGranularity,
+  previousRange,
+  type DateRange,
+  type PeriodPreset,
+} from '@/utils/date';
+import { formatPercent, percentageChange } from '@/utils/money';
 
 /**
- * Insights — four questions about the numbers, four tabs:
- * where the money went (Spending), what came in (Income), what it's worth
- * (Net worth) and how behaviour is changing (Trends). Everything is real SQL
- * aggregation and everything is tappable: categories → category detail,
- * merchants → merchant detail, months → monthly review.
+ * Insights — four questions, four tabs:
+ *  Overview   → what came in, what went out, and what changed
+ *  Categories → where the money went, with budgets and drill-down
+ *  Trends     → spending over time, compared with the previous period
+ *  Merchants  → which businesses received the money
+ *
+ * Every number on the screen comes from the same selected range and the same
+ * SQL aggregation rules: transfers excluded, refunds netting against spending,
+ * adjustments/debt movements never treated as income or expense.
  */
 
-type InsightTab = 'spending' | 'income' | 'netWorth' | 'trends';
-type AmountMode = 'amount' | 'percent';
+type InsightTab = 'overview' | 'categories' | 'trends' | 'merchants';
+type CategoryKind = 'expense' | 'income';
 
-const RANGE_SEGMENTS: { value: PeriodPreset; label: string }[] = [
-  { value: '7d', label: '7D' },
-  { value: '30d', label: '1M' },
-  { value: '3m', label: '3M' },
-  { value: '1y', label: '1Y' },
-];
-
-/** Presets the pill offers, including the custom-range escape hatch. */
-const INSIGHT_PERIODS: PeriodPreset[] = ['7d', '30d', '3m', '6m', '1y', 'thisMonth', 'lastMonth', 'thisYear', 'custom'];
+const INSIGHT_PERIODS: PeriodPreset[] = ['thisWeek', 'thisMonth', 'lastMonth', '3m', '6m', '1y', 'custom'];
 
 export default function InsightsScreen() {
   const theme = useTheme();
   const money = useMoney();
-  const chart = useChartColors();
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
-  const [tab, setTab] = useState<InsightTab>('spending');
-  const [period, setPeriod] = useState<PeriodPreset>('30d');
+  const [tab, setTab] = useState<InsightTab>('overview');
+  const [period, setPeriod] = useState<PeriodPreset>('thisMonth');
   const [customRange, setCustomRange] = useState<DateRange | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
-  const [categoryMode, setCategoryMode] = useState<AmountMode>('amount');
-  const [incomeMode, setIncomeMode] = useState<AmountMode>('amount');
+  const [categoryKind, setCategoryKind] = useState<CategoryKind>('expense');
+  const [merchantSearch, setMerchantSearch] = useState('');
 
   const range = useMemo(
     () => (period === 'custom' && customRange ? customRange : getPeriodRange(period, { monthStartDay })),
@@ -80,123 +81,99 @@ export default function InsightsScreen() {
     async () => {
       const [
         summary,
-        previousSummary,
         categories,
         incomeCategories,
-        merchants,
+        merchantOverview,
         trend,
+        previousTrend,
         velocity,
         daily,
         weekday,
         budgets,
         netWorthChanges,
+        netWorthRange,
         netWorthTrend,
-        subscriptions,
-        accounts,
         accountsBreakdown,
+        subscriptions,
       ] = await Promise.all([
         getPeriodSummary({ range }),
-        getPeriodSummary({ range: previous }),
-        getCategoryBreakdown({ range }),
+        getCategoryBreakdown({ range }, { kind: 'expense' }),
         getCategoryBreakdown({ range }, { kind: 'income' }),
-        getTopMerchants({ range }, 8),
+        getMerchantOverview({ range }, 100),
         getTrend({ range }),
+        getTrend({ range: previous }),
         getSpendingVelocity({ range }),
         getDailySpendingStats({ range }),
         getWeekdaySpending({ range }),
         getBudgetProgressList(),
         getNetWorthChanges(monthStartDay),
-        getNetWorthTrend(getPeriodRange('1y', { monthStartDay }), 'month'),
-        getSubscriptionSummary(),
-        listAccounts(),
+        getNetWorthRangeChange(range),
+        getNetWorthTrend(range, pickTrendGranularity(range)),
         getAccountBreakdown({ range }),
+        getSubscriptionSummary(),
       ]);
       return {
         summary,
-        previousSummary,
         categories,
         incomeCategories,
-        merchants,
+        merchantOverview,
         trend,
+        previousTrend,
         velocity,
         daily,
         weekday,
         budgets,
         netWorthChanges,
+        netWorthRange,
         netWorthTrend,
-        subscriptions,
-        accounts,
         accountsBreakdown,
+        subscriptions,
       };
     },
     [range.start.getTime(), range.end.getTime(), monthStartDay],
   );
 
   const data = query.data;
+  const spendingChange = data ? percentageChange(data.summary.totals.netExpense, data.summary.previous.netExpense) : null;
+  const incomeChange = data ? percentageChange(data.summary.totals.income, data.summary.previous.income) : null;
+  const netWorthRangeChange = data ? data.netWorthRange.change : null;
 
-  const budgetUsage = useMemo(() => {
-    if (!data || data.budgets.length === 0) return 0;
-    return Math.min(150, data.budgets.reduce((sum, entry) => sum + entry.percent, 0) / data.budgets.length);
-  }, [data]);
-
-  const cardUsage = useMemo(() => {
-    const cards = (data?.accounts ?? []).filter((account) => account.type === 'credit_card' && account.creditLimit);
-    if (cards.length === 0) return 0;
-    const total = cards.reduce(
-      (sum, account) => sum + (Math.abs(Math.min(0, account.currentBalance)) / (account.creditLimit ?? 1)) * 100,
-      0,
-    );
-    return Math.min(150, total / cards.length);
-  }, [data]);
-
-  const gaugeTone = (value: number, good: number, warn: number) =>
-    value <= good ? 'positive' : value <= warn ? 'warning' : 'negative';
-
-  const changes = useMemo(() => {
-    if (!data) return [] as { label: string; change: number; invert?: boolean }[];
-    const pct = (current: number, previousValue: number) => (previousValue > 0 ? ((current - previousValue) / previousValue) * 100 : null);
-    const rows: { label: string; change: number; invert?: boolean }[] = [];
-    const income = pct(data.summary.totals.income, data.previousSummary.totals.income);
-    const spend = pct(data.summary.totals.netExpense, data.previousSummary.totals.netExpense);
-    const saved = pct(data.summary.totals.savings, data.previousSummary.totals.savings);
-    if (income !== null) rows.push({ label: 'Income', change: income });
-    if (spend !== null) rows.push({ label: 'Spending', change: spend, invert: true });
-    if (saved !== null) rows.push({ label: 'Saved', change: saved });
-    const categories = data.categories.rows
-      .filter((row) => row.change !== null && Math.abs(row.change) >= 3)
-      .sort((a, b) => Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0))
-      .slice(0, 3)
-      .map((row) => ({ label: row.name, change: row.change as number, invert: true }));
-    return [...rows, ...categories].slice(0, 6);
-  }, [data]);
-
-  const periodLabel = useMemo(() => shortPeriodLabel(period).toLowerCase(), [period]);
-  const percentChange = (current: number, prior: number) => (prior > 0 ? ((current - prior) / prior) * 100 : null);
-  const spendingChange = data ? percentChange(data.summary.totals.netExpense, data.previousSummary.totals.netExpense) : null;
-  const incomeChange = data ? percentChange(data.summary.totals.income, data.previousSummary.totals.income) : null;
-
-  /** The one-line story at the top of the Spending tab. */
   const insight = useMemo(() => {
     if (!data) return null;
-    const delta = spendingChange;
-    const driver = data.categories.rows.find((row) => (row.change ?? 0) > 5) ?? data.categories.rows[0] ?? null;
-    if (delta === null || Math.abs(delta) < 1) {
-      return {
-        icon: 'information-circle-outline' as const,
-        text: `Spending is steady versus the previous ${periodLabel}.${driver ? ` Biggest category: ${driver.name} at ${money.format(driver.total)}.` : ''}`,
-      };
+    const rows = data.categories.rows;
+    if (rows.length === 0) {
+      return 'No spending is recorded in this period. Record a transaction and this view will explain where it went.';
     }
-    if (delta > 0) {
-      return {
-        icon: 'trending-up' as const,
-        text: `You spent ${formatPercent(Math.abs(delta), 0)} more than the previous ${periodLabel}.${driver ? ` Mainly due to higher ${driver.name}.` : ''}`,
-      };
+    const driver = [...rows].sort((a, b) => Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0))[0];
+    if (spendingChange === null) {
+      return `Spending was ${money.format(data.summary.totals.netExpense)}. There is no previous period with spending to compare against yet.`;
     }
-    return {
-      icon: 'trending-down' as const,
-      text: `You spent ${formatPercent(Math.abs(delta), 0)} less than the previous ${periodLabel}.${driver ? ` Largest category: ${driver.name} at ${money.format(driver.total)}.` : ''}`,
-    };
-  }, [data, spendingChange, periodLabel, money]);
+    if (Math.abs(spendingChange) < 2) {
+      return `Spending is broadly steady versus the previous ${shortPeriodLabel(period).toLowerCase()}. Biggest category: ${rows[0]!.name} at ${money.format(rows[0]!.total)}.`;
+    }
+    if (spendingChange > 0) {
+      return driver?.change !== null && driver?.change !== undefined && driver.change > 0
+        ? `Spending is up ${formatPercent(spendingChange, 0)} versus the previous period, led by ${driver.name} (${formatPercent(driver.change, 0)} higher).`
+        : `Spending is up ${formatPercent(spendingChange, 0)} versus the previous period.`;
+    }
+    return `Spending is down ${formatPercent(Math.abs(spendingChange), 0)} versus the previous period. Biggest category: ${rows[0]!.name} at ${money.format(rows[0]!.total)}.`;
+  }, [data, money, period, spendingChange]);
+
+  const categoryBudget = useMemo(() => {
+    const map = new Map<string, (typeof data extends null ? never : NonNullable<typeof data>['budgets'][number])>();
+    for (const budget of data?.budgets ?? []) {
+      if (budget.budget.categoryId) map.set(budget.budget.categoryId, budget);
+    }
+    return map;
+  }, [data?.budgets]);
+
+  const visibleMerchants = useMemo(() => {
+    const needle = merchantSearch.trim().toLowerCase();
+    const rows = data?.merchantOverview.rows ?? [];
+    return needle ? rows.filter((row) => row.name.toLowerCase().includes(needle)) : rows;
+  }, [data?.merchantOverview.rows, merchantSearch]);
+
+  const overviewEmpty = data ? data.summary.totals.transactionCount === 0 && data.summary.totals.income === 0 : false;
 
   return (
     <HeaderScrollScreen
@@ -207,13 +184,12 @@ export default function InsightsScreen() {
             subtitle={`${formatDayMonth(range.start)} – ${formatDayMonth(range.end)}`}
             onSearch={() => router.push('/transactions?search=1' as never)}
           />
-
           <TopTabs
             tabs={[
-              { value: 'spending', label: 'Spending' },
-              { value: 'income', label: 'Income' },
-              { value: 'netWorth', label: 'Net worth' },
+              { value: 'overview', label: 'Overview' },
+              { value: 'categories', label: 'Categories' },
               { value: 'trends', label: 'Trends' },
+              { value: 'merchants', label: 'Merchants' },
             ]}
             value={tab}
             onChange={setTab}
@@ -222,9 +198,7 @@ export default function InsightsScreen() {
       }>
       <GradientBlobs />
 
-      {/* Period: a named pill for every preset, a segmented control for the
-          four windows people actually flip between. */}
-      <Row gap="sm" style={{ marginTop: theme.spacing.md }}>
+      <Row justify="space-between" style={{ marginTop: theme.spacing.md, marginBottom: theme.spacing.sm }}>
         <PeriodPill
           value={period}
           onChange={(next) => {
@@ -237,50 +211,71 @@ export default function InsightsScreen() {
           options={INSIGHT_PERIODS}
           monthStartDay={monthStartDay}
         />
-        <SegmentedControl
-          options={RANGE_SEGMENTS}
-          value={RANGE_SEGMENTS.some((segment) => segment.value === period) ? period : null}
-          onChange={setPeriod}
-          style={{ flex: 1 }}
-        />
+        <AppText variant="caption" tone="muted">
+          {daysInRange(range)} days · both dates included
+        </AppText>
       </Row>
       {period === 'custom' && customRange ? (
-        <Pressable onPress={() => setCustomOpen(true)} style={{ marginTop: theme.spacing.sm, alignSelf: 'flex-start' }}>
+        <Pressable onPress={() => setCustomOpen(true)} style={{ marginBottom: theme.spacing.md, alignSelf: 'flex-start' }}>
           <AppText variant="captionMedium" tone="accent">
             {formatDayMonth(customRange.start)} → {formatDayMonth(customRange.end)} · edit
           </AppText>
         </Pressable>
       ) : null}
 
-      <ScreenHint
-        id="analytics"
-        message="Every tab follows the period above. Tap a category, merchant or account to drill into the full report."
-      />
-
       {query.loading && !data ? (
-        <LoadingBlock label="Crunching numbers…" />
+        <LoadingBlock label="Crunching your numbers…" />
       ) : !data ? (
-        <EmptyState title="No data yet" message="Add transactions to unlock insights." icon="analytics-outline" />
+        <EmptyState icon="analytics-outline" title="No data yet" message="Add transactions to unlock insights." />
+      ) : overviewEmpty ? (
+        <EmptyState
+          icon="analytics-outline"
+          title="Nothing recorded in this period"
+          message="Choose a wider date range, or add your first transaction. Insights will build themselves from the ledger."
+          actionLabel="Add transaction"
+          onAction={() => router.push('/transaction/new' as never)}
+        />
       ) : (
         <View style={{ gap: theme.spacing.xl }}>
-          {tab === 'spending' ? (
+          {tab === 'overview' ? (
             <>
-              <TrendHeroCard
-                title="Total spending"
-                amount={data.summary.totals.netExpense}
-                amountTone="neutral"
-                change={spendingChange}
-                invert
-                rangeCaption={`${formatDayMonth(range.start)} – ${formatDayMonth(range.end)} · ${data.summary.totals.transactionCount} transactions`}
-                points={data.trend.points.map((point) => ({
-                  key: point.key,
-                  label: point.label,
-                  fullLabel: point.fullLabel,
-                  value: point.net,
-                }))}
-                barColor={theme.colors.accent.base}
-                emptyMessage="No spending recorded in this period yet."
-              />
+              <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
+                <MetricTile
+                  label="Total spending"
+                  amount={data.summary.totals.netExpense}
+                  change={spendingChange}
+                  invert
+                  tone="negative"
+                />
+                <MetricTile
+                  label="Total income"
+                  amount={data.summary.totals.income}
+                  change={incomeChange}
+                  tone="positive"
+                />
+              </View>
+
+              <Card>
+                <Row justify="space-between" align="flex-end">
+                  <View style={{ gap: 3, flex: 1, minWidth: 0 }}>
+                    <AppText variant="caption" tone="muted">
+                      Net cash flow
+                    </AppText>
+                    <MoneyText amount={data.summary.totals.savings} variant="numericMedium" tone="positive-negative" showSign />
+                    <AppText variant="caption" tone="muted">
+                      Income minus spending in this period
+                    </AppText>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                    <AppText variant="caption" tone="muted">
+                      Savings rate
+                    </AppText>
+                    <AppText variant="numericSmall" tone={data.summary.totals.savings >= 0 ? 'positive' : 'negative'}>
+                      {formatPercent(data.summary.totals.savingsRate, 0)}
+                    </AppText>
+                  </View>
+                </Row>
+              </Card>
 
               {insight ? (
                 <View
@@ -288,86 +283,143 @@ export default function InsightsScreen() {
                     flexDirection: 'row',
                     gap: theme.spacing.sm,
                     alignItems: 'flex-start',
-                    padding: theme.spacing.md,
+                    padding: theme.spacing.lg,
                     borderRadius: theme.radius.lg,
                     backgroundColor: theme.colors.accent.soft,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: `${theme.colors.accent.base}33`,
                   }}>
-                  <Ionicons name={insight.icon} size={18} color={theme.colors.accent.base} />
+                  <Ionicons name="sparkles-outline" size={18} color={theme.colors.accent.base} />
                   <AppText variant="bodySmall" tone="secondary" style={{ flex: 1 }}>
-                    {insight.text}
+                    {insight}
                   </AppText>
                 </View>
               ) : null}
 
-              <Section title="Categories" actionLabel="View all" onPress={() => router.push('/transactions')}>
-                <CategoryCard
-                  rows={data.categories.rows}
-                  total={data.categories.total}
-                  mode={categoryMode}
-                  onModeChange={setCategoryMode}
-                  emptyTitle="No spending yet"
-                  emptyMessage="Add a few transactions to see your spending breakdown."
-                />
-              </Section>
-
-              <Section title="Top merchants">
-                <MerchantList merchants={data.merchants.slice(0, 5)} />
-              </Section>
-            </>
-          ) : null}
-
-          {tab === 'income' ? (
-            <>
-              <TrendHeroCard
-                title="Total income"
-                amount={data.summary.totals.income}
-                amountTone="positive"
-                change={incomeChange}
-                rangeCaption={`${formatDayMonth(range.start)} – ${formatDayMonth(range.end)}`}
-                points={data.trend.points.map((point) => ({
-                  key: point.key,
-                  label: point.label,
-                  fullLabel: point.fullLabel,
-                  value: point.income,
-                }))}
-                barColor={theme.colors.positive}
-                emptyMessage="No income recorded in this period yet."
-              />
-
-              <Section title="Income sources">
-                <CategoryCard
-                  rows={data.incomeCategories.rows}
-                  total={data.incomeCategories.total}
-                  mode={incomeMode}
-                  onModeChange={setIncomeMode}
-                  emptyTitle="No income yet"
-                  emptyMessage="Income shows up here once you record it, grouped by category."
-                />
-              </Section>
-
-              <Section title="Income vs expenses">
+              <Section title="Spending trend">
                 <Card>
-                  {data.trend.points.some((point) => point.income > 0 || point.expense > 0) ? (
+                  {data.trend.points.some((point) => point.net > 0) ? (
                     <>
-                      <BarChart
-                        points={data.trend.points.map((point) => ({ key: `e-${point.key}`, label: point.label, fullLabel: point.fullLabel, value: point.net }))}
-                        secondary={data.trend.points.map((point) => ({ key: `i-${point.key}`, label: point.label, fullLabel: point.fullLabel, value: point.income }))}
-                        height={150}
-                        compactLabels
-                      />
-                      <View style={{ flexDirection: 'row', gap: theme.spacing.lg, marginTop: theme.spacing.md }}>
-                        <Legend color={theme.colors.accent.base} label="Spending" />
-                        <Legend color={theme.colors.positive} label="Income" />
+                      <View
+                        accessible
+                        accessibilityLabel={`Spending trend by ${data.trend.granularity} from ${formatDayMonth(range.start)} to ${formatDayMonth(range.end)}`}>
+                        <BarChart
+                          points={data.trend.points.map((point) => ({
+                            key: point.key,
+                            label: point.label,
+                            fullLabel: point.fullLabel,
+                            value: point.net,
+                          }))}
+                          height={132}
+                          color={theme.colors.accent.base}
+                          compactLabels
+                        />
                       </View>
+                      <Row justify="space-between" style={{ marginTop: theme.spacing.md }}>
+                        <AppText variant="caption" tone="muted">
+                          {data.trend.granularity === 'day' ? 'Daily' : data.trend.granularity === 'week' ? 'Weekly' : 'Monthly'} spending
+                        </AppText>
+                        <AppText variant="caption" tone="muted">
+                          Highest {money.format(data.trend.max, { compact: true })}
+                        </AppText>
+                      </Row>
                     </>
                   ) : (
-                    <EmptyState compact icon="bar-chart-outline" title="No activity yet" message="Add a few transactions to see income and expenses over time." />
+                    <EmptyState compact icon="bar-chart-outline" title="No spending yet" message="No expenses were recorded in this range." />
                   )}
                 </Card>
               </Section>
 
+              <Section title="Net worth" actionLabel="Health report" onPress={() => router.push('/reports/health' as never)}>
+                <Card>
+                  <View style={{ gap: theme.spacing.md }}>
+                    <Row justify="space-between" align="flex-end">
+                      <View style={{ gap: 3 }}>
+                        <AppText variant="caption" tone="muted">
+                          Current net worth
+                        </AppText>
+                        <MoneyText amount={data.netWorthChanges.current} variant="numericMedium" tone="neutral" showSign={false} />
+                      </View>
+                      {netWorthRangeChange !== null ? (
+                        <AppText variant="caption" tone={netWorthRangeChange >= 0 ? 'positive' : 'negative'}>
+                          {netWorthRangeChange >= 0 ? '+' : '−'}
+                          {money.format(Math.abs(netWorthRangeChange), { compact: true })} in this period
+                        </AppText>
+                      ) : null}
+                    </Row>
+                    {data.netWorthTrend.length > 1 ? (
+                      <View style={{ marginHorizontal: -8 }} accessible accessibilityLabel="Net worth trend for the selected period">
+                        <LineChart
+                          points={data.netWorthTrend.map((point) => ({
+                            key: point.key,
+                            label: point.label,
+                            fullLabel: point.fullLabel,
+                            value: point.value,
+                          }))}
+                          height={128}
+                          baseline="auto"
+                          showArea
+                        />
+                      </View>
+                    ) : (
+                      <AppText variant="caption" tone="muted">
+                        Add another account or transaction to see the trend.
+                      </AppText>
+                    )}
+                  </View>
+                </Card>
+              </Section>
+
+              <Section title="Budgets in focus" actionLabel="All budgets" onPress={() => router.push('/budgets' as never)}>
+                {data.budgets.length === 0 ? (
+                  <Card>
+                    <EmptyState
+                      compact
+                      icon="wallet-outline"
+                      title="No budgets yet"
+                      message="Set a category limit to see progress and remaining money here."
+                      actionLabel="Create a budget"
+                      onAction={() => router.push('/budgets' as never)}
+                    />
+                  </Card>
+                ) : (
+                  <Card>
+                    <View style={{ gap: theme.spacing.lg }}>
+                      {[...data.budgets]
+                        .sort((a, b) => b.percent - a.percent)
+                        .slice(0, 4)
+                        .map((budget) => (
+                          <Pressable
+                            key={budget.budget.id}
+                            onPress={() => router.push(`/budget/${budget.budget.id}` as never)}
+                            style={{ gap: 6 }}>
+                            <Row justify="space-between">
+                              <AppText variant="bodySmall" numberOfLines={1} style={{ flex: 1, marginRight: 8 }}>
+                                {budget.categoryName}
+                              </AppText>
+                              <AppText variant="numericCaption" tone="secondary">
+                                {money.format(budget.spent)} / {money.format(budget.budget.amount)}
+                              </AppText>
+                            </Row>
+                            <ProgressBar
+                              progress={budget.percent}
+                              height={6}
+                              color={budget.percent >= 100 ? theme.colors.negative : budget.percent >= 85 ? theme.colors.warning : theme.colors.positive}
+                            />
+                            <AppText variant="caption" tone={budget.remaining < 0 ? 'negative' : 'muted'}>
+                              {budget.remaining >= 0
+                                ? `${money.format(budget.remaining)} left · ${money.format(budget.safeToSpendPerDay)}/day safe`
+                                : `${money.format(Math.abs(budget.remaining))} over budget`}
+                            </AppText>
+                          </Pressable>
+                        ))}
+                    </View>
+                  </Card>
+                )}
+              </Section>
+
               {data.subscriptions.activeCount > 0 ? (
-                <Section title="Subscriptions" onPress={() => router.push('/recurring')}>
+                <Section title="Subscriptions" onPress={() => router.push('/recurring' as never)}>
                   <Card>
                     <Row justify="space-between">
                       <View>
@@ -389,262 +441,225 @@ export default function InsightsScreen() {
             </>
           ) : null}
 
-          {tab === 'netWorth' ? (
+          {tab === 'categories' ? (
             <>
-              <Section title="Net worth" onPress={() => router.push('/reports/health')}>
-                <Card>
-                  <View style={{ gap: theme.spacing.md }}>
-                    <View style={{ gap: 4 }}>
-                      <AppText variant="caption" tone="muted">
-                        Net worth
-                      </AppText>
-                      <MoneyText amount={data.netWorthChanges.current} variant="numericLarge" tone="neutral" showSign={false} />
-                      <AppText variant="caption" tone="muted">
-                        {data.netWorthChanges.changeThisMonth >= 0 ? 'Up ' : 'Down '}
-                        {money.format(Math.abs(data.netWorthChanges.changeThisMonth))} this month ·{' '}
-                        {data.accounts.length} account{data.accounts.length === 1 ? '' : 's'}
-                      </AppText>
-                    </View>
-                    <View style={{ marginHorizontal: -8 }}>
-                      <LineChart
-                        points={data.netWorthTrend.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.value }))}
-                        height={140}
-                        showArea
-                        baseline="auto"
-                      />
-                    </View>
-                    <Row justify="space-between">
-                      <View>
-                        <AppText variant="caption" tone="muted">
-                          This month
-                        </AppText>
-                        <MoneyText amount={data.netWorthChanges.changeThisMonth} variant="numericSmall" tone="positive-negative" showSign />
-                      </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <AppText variant="caption" tone="muted">
-                          vs last year
-                        </AppText>
-                        <MoneyText amount={data.netWorthChanges.changeThisYear} variant="numericSmall" tone="positive-negative" showSign />
-                      </View>
-                    </Row>
-                  </View>
-                </Card>
-              </Section>
+              <SegmentedControl
+                options={[
+                  { value: 'expense', label: 'Spending' },
+                  { value: 'income', label: 'Income' },
+                ]}
+                value={categoryKind}
+                onChange={setCategoryKind}
+              />
 
-              <Section title="Health check">
-                <Card>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <View style={{ alignItems: 'center', flex: 1 }}>
-                      <Gauge
-                        progress={Math.max(0, Math.min(100, data.summary.totals.savingsRate))}
-                        size={104}
-                        thickness={10}
-                        tone={(data.summary.totals.savingsRate >= 20 ? 'positive' : data.summary.totals.savingsRate >= 0 ? 'accent' : 'negative') as never}
-                        label={`${Math.round(data.summary.totals.savingsRate)}%`}
-                        caption="Saved"
+              {(() => {
+                const breakdown = categoryKind === 'expense' ? data.categories : data.incomeCategories;
+                const rows = breakdown.rows;
+                if (rows.length === 0) {
+                  return (
+                    <Card>
+                      <EmptyState
+                        icon="pie-chart-outline"
+                        title={categoryKind === 'expense' ? 'No spending yet' : 'No income yet'}
+                        message={
+                          categoryKind === 'expense'
+                            ? 'Expense categories appear here once you record spending in this period.'
+                            : 'Income categories appear here once you record income in this period.'
+                        }
+                        actionLabel="Add transaction"
+                        onAction={() => router.push('/transaction/new' as never)}
                       />
-                    </View>
-                    <View style={{ alignItems: 'center', flex: 1 }}>
-                      <Gauge
-                        progress={Math.max(0, Math.min(100, budgetUsage))}
-                        size={104}
-                        thickness={10}
-                        tone={gaugeTone(budgetUsage, 85, 100) as never}
-                        label={`${Math.round(budgetUsage)}%`}
-                        caption="Budgets used"
+                    </Card>
+                  );
+                }
+                const top = rows.slice(0, 6);
+                const otherTotal = rows.slice(6).reduce((sum, row) => sum + row.total, 0);
+                return (
+                  <>
+                    <Card>
+                      <AppText variant="caption" tone="muted">
+                        {categoryKind === 'expense' ? 'Total spending' : 'Total income'}
+                      </AppText>
+                      <MoneyText
+                        amount={breakdown.total}
+                        variant="numericLarge"
+                        tone={categoryKind === 'expense' ? 'neutral' : 'positive'}
+                        showSign={false}
                       />
-                    </View>
-                    <View style={{ alignItems: 'center', flex: 1 }}>
-                      <Gauge
-                        progress={Math.max(0, Math.min(100, cardUsage))}
-                        size={104}
-                        thickness={10}
-                        tone={gaugeTone(cardUsage, 50, 80) as never}
-                        label={`${Math.round(cardUsage)}%`}
-                        caption="Card used"
-                      />
-                    </View>
-                  </View>
-                </Card>
-              </Section>
-
-              <Section title="Accounts" actionLabel="View all" onPress={() => router.push('/accounts')}>
-                <Card>
-                  {data.accountsBreakdown.rows.filter((row) => row.spent > 0).length === 0 ? (
-                    <EmptyState compact icon="wallet-outline" title="No account activity" message="Record spending to see which accounts it came from." />
-                  ) : (
-                    <View style={{ gap: theme.spacing.lg }}>
-                      <Row gap="lg">
+                      <AppText variant="caption" tone="muted">
+                        {rows.length} {categoryKind === 'expense' ? 'spending' : 'income'} categor{rows.length === 1 ? 'y' : 'ies'} · 100% reconciled with the transactions in this range
+                      </AppText>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.lg, marginTop: theme.spacing.lg }}>
                         <DonutChart
-                          size={150}
-                          thickness={20}
-                          slices={data.accountsBreakdown.rows
-                            .filter((row) => row.spent > 0)
-                            .slice(0, 6)
-                            .map((row) => ({
-                              id: row.accountId,
+                          size={146}
+                          thickness={19}
+                          slices={[
+                            ...top.map((row) => ({
+                              id: row.categoryId ?? 'uncategorised',
                               label: row.name,
-                              value: row.spent,
-                              color: row.color ?? theme.colors.accent.base,
-                            }))}
-                          centerTop="Spent"
-                          centerBottom={money.format(
-                            data.accountsBreakdown.rows.reduce((sum, row) => sum + row.spent, 0),
-                            { compact: true },
-                          )}
-                          onSlicePress={(slice) => router.push(`/account/${slice.id}` as never)}
+                              value: row.total,
+                              color: row.color,
+                            })),
+                            ...(otherTotal > 0
+                              ? [{ id: 'others', label: 'Others', value: otherTotal, color: theme.colors.muted }]
+                              : []),
+                          ]}
+                          centerTop="Total"
+                          centerBottom={money.format(breakdown.total, { compact: true })}
                         />
-                        <View style={{ flex: 1, gap: 10 }}>
-                          {data.accountsBreakdown.rows
-                            .filter((row) => row.spent > 0)
-                            .slice(0, 5)
-                            .map((row) => (
-                              <Pressable
-                                key={row.accountId}
-                                onPress={() => router.push(`/account/${row.accountId}` as never)}
-                                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: row.color ?? theme.colors.accent.base }} />
-                                <AppText variant="caption" numberOfLines={1} style={{ flex: 1 }}>
-                                  {row.name}
-                                </AppText>
-                                <AppText variant="numericCaption" tone="secondary">
-                                  {formatPercent(row.share, 0)}
-                                </AppText>
-                              </Pressable>
-                            ))}
-                        </View>
-                      </Row>
-
-                      <View style={{ gap: 2 }}>
-                        {data.accountsBreakdown.rows.slice(0, 10).map((row) => {
-                          const rowColor = row.color ?? theme.colors.accent.base;
-                          return (
+                        <View style={{ flex: 1, gap: 9 }}>
+                          {[...top, ...(otherTotal > 0 ? [{ categoryId: null, name: 'Others', color: theme.colors.muted, icon: 'ellipsis-horizontal', total: otherTotal, share: breakdown.total > 0 ? (otherTotal / breakdown.total) * 100 : 0, count: 0, gross: otherTotal, refunds: 0, previousTotal: 0, change: null, children: [] } as CategoryBreakdownRow] : [])].map((row) => (
                             <Pressable
-                              key={row.accountId}
-                              onPress={() => router.push(`/account/${row.accountId}` as never)}
-                              style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: 10 }}>
-                              <View
-                                style={{
-                                  width: 36,
-                                  height: 36,
-                                  borderRadius: theme.radius.full,
-                                  backgroundColor: `${rowColor}22`,
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                }}>
-                                <Ionicons
-                                  name={
-                                    (row.icon as IconName | null) ??
-                                    (row.type === 'credit_card'
-                                      ? 'card-outline'
-                                      : row.type === 'cash' || row.type === 'wallet'
-                                        ? 'wallet-outline'
-                                        : 'business-outline')
-                                  }
-                                  size={17}
-                                  color={rowColor}
-                                />
-                              </View>
-                              <View style={{ flex: 1, gap: 2 }}>
-                                <AppText variant="bodySmall" numberOfLines={1}>
-                                  {row.name}
-                                </AppText>
-                                <AppText variant="caption" tone="muted">
-                                  {row.count} transaction{row.count === 1 ? '' : 's'}
-                                  {row.spent > 0 ? ` · ${formatPercent(row.share, 1)} of spending` : ''}
-                                  {row.income > 0 ? ` · +${money.format(row.income, { compact: true })} received` : ''}
-                                </AppText>
-                              </View>
-                              <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                                <MoneyText amount={row.spent} variant="numericCaption" tone="neutral" showSign={false} />
-                                <AppText variant="caption" tone="muted">
-                                  {money.format(row.balance, { compact: true })} bal
-                                </AppText>
-                              </View>
+                              key={row.categoryId ?? row.name}
+                              onPress={() => openCategory(row, categoryKind)}
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: row.color }} />
+                              <AppText variant="caption" numberOfLines={1} style={{ flex: 1 }}>
+                                {row.name}
+                              </AppText>
+                              <AppText variant="numericCaption" tone="secondary">
+                                {formatPercent(row.share, 0)}
+                              </AppText>
                             </Pressable>
-                          );
-                        })}
+                          ))}
+                        </View>
                       </View>
-                    </View>
-                  )}
-                </Card>
-              </Section>
+                    </Card>
+
+                    <Card padded={false}>
+                      {rows.map((row, index) => {
+                        const budget = categoryKind === 'expense' && row.categoryId ? categoryBudget.get(row.categoryId) : undefined;
+                        return (
+                          <Pressable
+                            key={row.categoryId ?? 'uncategorised'}
+                            onPress={() => openCategory(row, categoryKind)}
+                            android_ripple={{ color: theme.colors.ripple }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${row.name}, ${money.format(row.total)}, ${formatPercent(row.share, 0)} of total`}
+                            style={{
+                              paddingHorizontal: theme.spacing.lg,
+                              paddingVertical: theme.spacing.md,
+                              borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
+                              borderTopColor: theme.colors.border,
+                              gap: 7,
+                            }}>
+                            <Row justify="space-between" gap="sm">
+                              <Row gap="sm" style={{ flex: 1, minWidth: 0 }}>
+                                <View
+                                  style={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: theme.radius.full,
+                                    backgroundColor: `${row.color}24`,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}>
+                                  <Ionicons name={(row.icon as IconName) ?? 'pricetag-outline'} size={16} color={row.color} />
+                                </View>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <AppText variant="bodySmall" numberOfLines={1}>
+                                    {row.name}
+                                  </AppText>
+                                  <AppText variant="caption" tone="muted" numberOfLines={1}>
+                                    {row.count} transaction{row.count === 1 ? '' : 's'} · {formatPercent(row.share, 1)} of {categoryKind === 'expense' ? 'spending' : 'income'}
+                                  </AppText>
+                                </View>
+                              </Row>
+                              <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                                <MoneyText amount={row.total} variant="numericCaption" tone="neutral" showSign={false} />
+                                <ChangePill change={row.change} invert={categoryKind === 'expense'} compact />
+                              </View>
+                            </Row>
+                            <ProgressBar progress={row.share} height={5} color={row.color} />
+                            {budget ? (
+                              <AppText variant="caption" tone={budget.remaining < 0 ? 'negative' : 'muted'}>
+                                Budget {formatPercent(budget.percent, 0)} used ·{' '}
+                                {budget.remaining >= 0 ? `${money.format(budget.remaining)} left` : `${money.format(Math.abs(budget.remaining))} over`}
+                              </AppText>
+                            ) : null}
+                          </Pressable>
+                        );
+                      })}
+                    </Card>
+                    <AppText variant="caption" tone="muted">
+                      Percentages use total {categoryKind === 'expense' ? 'spending' : 'income'} for this period. Refunds reduce the category they belong to; transfers are excluded.
+                    </AppText>
+                  </>
+                );
+              })()}
             </>
           ) : null}
 
           {tab === 'trends' ? (
             <>
-              <Section title="What changed" onPress={() => router.push('/reports/monthly')}>
+              <Card>
+                <AppText variant="caption" tone="muted">
+                  Spending over time · {data.trend.granularity === 'day' ? 'daily' : data.trend.granularity === 'week' ? 'weekly' : 'monthly'}
+                </AppText>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: theme.spacing.sm, marginTop: 2 }}>
+                  <MoneyText amount={data.summary.totals.netExpense} variant="numericMedium" tone="neutral" showSign={false} />
+                  <ChangePill change={spendingChange} invert />
+                </View>
+                {data.trend.points.some((point) => point.net > 0 || (data.previousTrend.points ?? []).some((p) => p.net > 0)) ? (
+                  <>
+                    <View
+                      style={{ marginTop: theme.spacing.md }}
+                      accessible
+                      accessibilityLabel={`Spending this period compared with the previous period, by ${data.trend.granularity}`}>
+                      <LineChart
+                        points={data.trend.points.map((point) => ({
+                          key: point.key,
+                          label: point.label,
+                          fullLabel: point.fullLabel,
+                          value: point.net,
+                        }))}
+                        comparison={data.previousTrend.points.map((point, index) => ({
+                          key: `previous-${point.key}`,
+                          label: data.trend.points[index]?.label ?? point.label,
+                          fullLabel: point.fullLabel,
+                          value: point.net,
+                        }))}
+                        height={178}
+                        showAverage
+                      />
+                    </View>
+                    <Row gap="lg" style={{ marginTop: theme.spacing.sm }}>
+                      <Legend color={theme.colors.accent.base} label="This period" />
+                      <Legend color={theme.colors.muted} label="Previous period" dashed />
+                    </Row>
+                  </>
+                ) : (
+                  <EmptyState compact icon="analytics-outline" title="No trend yet" message="There is no spending in either this period or the previous one." />
+                )}
+              </Card>
+
+              <Section title="What changed">
                 <Card>
-                  {changes.length === 0 ? (
-                    <EmptyState compact icon="swap-vertical-outline" title="Nothing to compare yet" message="Once there is a previous period with activity, the notable changes appear here." />
+                  {data.categories.rows.filter((row) => row.change !== null && Math.abs(row.change) >= 3).length === 0 ? (
+                    <EmptyState compact icon="swap-vertical-outline" title="No notable changes" message="Category changes of 3% or more will appear here once a previous period has activity." />
                   ) : (
-                    <View style={{ gap: 12 }}>
-                      {changes.map((row) => {
-                        const up = row.change >= 0;
-                        const positive = row.invert ? !up : up;
-                        const tone = positive ? 'positive' : 'negative';
-                        return (
-                          <Row key={row.label} justify="space-between">
-                            <AppText variant="bodySmall" tone="secondary" numberOfLines={1} style={{ flex: 1, marginRight: 8 }}>
-                              {row.label}
+                    <View style={{ gap: theme.spacing.md }}>
+                      {data.categories.rows
+                        .filter((row) => row.change !== null && Math.abs(row.change) >= 3)
+                        .sort((a, b) => Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0))
+                        .slice(0, 6)
+                        .map((row) => (
+                          <Pressable
+                            key={row.categoryId ?? row.name}
+                            onPress={() => openCategory(row, 'expense')}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: row.color }} />
+                            <AppText variant="bodySmall" numberOfLines={1} style={{ flex: 1 }}>
+                              {row.name}
                             </AppText>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                              <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={positive ? theme.colors.positive : theme.colors.negative} />
-                              <AppText variant="numericSmall" tone={tone}>
-                                {Math.abs(row.change).toFixed(0)}%
-                              </AppText>
-                            </View>
-                          </Row>
-                        );
-                      })}
-                      <AppText variant="caption" tone="muted">
-                        Compared with the previous {periodLabel} period
-                      </AppText>
+                            <AppText variant="caption" tone="muted">
+                              {money.format(row.previousTotal, { compact: true })} → {money.format(row.total, { compact: true })}
+                            </AppText>
+                            <ChangePill change={row.change} invert compact />
+                          </Pressable>
+                        ))}
                     </View>
                   )}
-                </Card>
-              </Section>
-
-              <Section title="Cash flow" onPress={() => router.push('/reports/cashflow')}>
-                <Card>
-                  <View style={{ gap: theme.spacing.lg }}>
-                    <Row justify="space-between">
-                      <View>
-                        <AppText variant="caption" tone="muted">
-                          Income
-                        </AppText>
-                        <MoneyText amount={data.summary.totals.income} variant="numericMedium" tone="positive" />
-                      </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <AppText variant="caption" tone="muted">
-                          Expenses
-                        </AppText>
-                        <MoneyText amount={-data.summary.totals.netExpense} variant="numericMedium" tone="negative" />
-                      </View>
-                    </Row>
-                    <ProgressBar
-                      progress={
-                        Math.max(data.summary.totals.income, data.summary.totals.netExpense) > 0
-                          ? (data.summary.totals.netExpense / Math.max(data.summary.totals.income, data.summary.totals.netExpense)) * 100
-                          : 0
-                      }
-                      height={8}
-                      color={data.summary.totals.savings >= 0 ? theme.colors.positive : theme.colors.negative}
-                    />
-                    <KeyValueRow
-                      label="Saved"
-                      value={<MoneyText amount={data.summary.totals.savings} variant="numericBody" tone="positive-negative" showSign />}
-                    />
-                    <KeyValueRow label="Savings rate" value={formatPercent(data.summary.totals.savingsRate, 1)} />
-                    <KeyValueRow
-                      label="Transfers (excluded from spending)"
-                      value={<MoneyText amount={-data.summary.totals.transfers} variant="numericBody" tone="muted" absolute />}
-                    />
-                    {data.summary.totals.refunds > 0 ? (
-                      <KeyValueRow label="Refunds" value={<MoneyText amount={data.summary.totals.refunds} variant="numericBody" tone="positive" />} />
-                    ) : null}
-                  </View>
                 </Card>
               </Section>
 
@@ -658,19 +673,12 @@ export default function InsightsScreen() {
                       <AppText variant="numericBody">{money.format(data.velocity.currentPerDay)}/day</AppText>
                     </Row>
                     <ProgressBar
-                      progress={
-                        data.velocity.previousPerDay > 0
-                          ? Math.min(200, (data.velocity.currentPerDay / data.velocity.previousPerDay) * 100) / 2
-                          : 50
-                      }
+                      progress={data.velocity.previousPerDay > 0 ? Math.min(200, (data.velocity.currentPerDay / data.velocity.previousPerDay) * 100) / 2 : 50}
                       height={8}
                       color={data.velocity.change !== null && data.velocity.change > 0 ? theme.colors.negative : theme.colors.positive}
                     />
                     <KeyValueRow label="Previous pace" value={`${money.format(data.velocity.previousPerDay)}/day`} />
-                    <KeyValueRow
-                      label="Projection"
-                      value={`${money.format(data.velocity.projectedTotal)} by ${formatDayMonth(range.end)}`}
-                    />
+                    <KeyValueRow label="Projected by period end" value={money.format(data.velocity.projectedTotal)} />
                     <KeyValueRow label="Today" value={money.format(data.daily.today)} />
                     <KeyValueRow label="7-day average" value={money.format(data.daily.average7)} />
                     <KeyValueRow label="30-day average" value={money.format(data.daily.average30)} />
@@ -678,65 +686,139 @@ export default function InsightsScreen() {
                       label="Heaviest day"
                       value={data.daily.highest ? `${money.format(data.daily.highest.amount)} · ${formatDayMonth(new Date(data.daily.highest.date))}` : '—'}
                     />
-                    <WeekdayChart weekday={data.weekday} />
+                    <WeekdayBars weekday={data.weekday} />
                   </View>
                 </Card>
               </Section>
 
-              <Section title="Money flow" onPress={() => router.push('/reports/cashflow')}>
+              <Section title="Spending by account" actionLabel="Accounts" onPress={() => router.push('/accounts' as never)}>
                 <Card>
-                  {data.categories.rows.length === 0 ? (
-                    <EmptyState compact icon="git-branch-outline" title="Nothing to flow yet" message="Record spending to see where money goes." />
+                  {data.accountsBreakdown.rows.filter((row) => row.spent > 0).length === 0 ? (
+                    <EmptyState compact icon="wallet-outline" title="No account activity" message="Record spending to see which account it came from." />
                   ) : (
-                    <FlowBars
-                      totalLabel="Outflow"
-                      totalValue={data.categories.total}
-                      items={data.categories.rows.slice(0, 6).map((row, index) => ({
-                        id: row.categoryId ?? 'none',
-                        label: row.name,
-                        value: row.total,
-                        color: chart.slice(index, row.color),
-                        onPress: row.categoryId ? () => router.push(`/category/${row.categoryId}` as never) : undefined,
-                      }))}
-                    />
-                  )}
-                </Card>
-              </Section>
-
-              <Section title="Merchants" actionLabel="View all" onPress={() => router.push('/merchants')}>
-                <MerchantList merchants={data.merchants} showChange />
-              </Section>
-
-              <Section title="Budget performance" onPress={() => router.push('/budgets')}>
-                <Card>
-                  {data.budgets.length === 0 ? (
-                    <EmptyState compact icon="wallet-outline" title="No budgets" message="Create budgets to track category limits." />
-                  ) : (
-                    <View style={{ gap: theme.spacing.lg }}>
-                      {data.budgets.slice(0, 5).map((budget) => (
-                        <Pressable key={budget.budget.id} onPress={() => router.push(`/budget/${budget.budget.id}` as never)} style={{ gap: 7 }}>
-                          <Row justify="space-between">
-                            <AppText variant="bodySmall">{budget.categoryName}</AppText>
-                            <AppText variant="numericCaption" tone="secondary">
-                              {money.format(budget.spent)} / {money.format(budget.budget.amount)}
+                    <View style={{ gap: theme.spacing.md }}>
+                      {[...data.accountsBreakdown.rows]
+                        .filter((row) => row.spent > 0)
+                        .sort((a, b) => b.spent - a.spent)
+                        .slice(0, 6)
+                        .map((row) => (
+                          <Pressable
+                            key={row.accountId}
+                            onPress={() => router.push(`/account/${row.accountId}` as never)}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: row.color ?? theme.colors.accent.base }} />
+                            <AppText variant="bodySmall" numberOfLines={1} style={{ flex: 1 }}>
+                              {row.name}
                             </AppText>
-                          </Row>
-                          <ProgressBar
-                            progress={budget.percent}
-                            height={6}
-                            color={budget.percent >= 100 ? theme.colors.negative : budget.percent >= 85 ? theme.colors.warning : theme.colors.positive}
-                          />
-                          <AppText variant="caption" tone="muted">
-                            {budget.projected > budget.budget.amount
-                              ? `Projected ${money.format(budget.projected)} — over by ${money.format(budget.projected - budget.budget.amount)}`
-                              : `Projected ${money.format(budget.projected)} · on track`}
-                          </AppText>
-                        </Pressable>
-                      ))}
+                            <AppText variant="numericCaption" tone="secondary">
+                              {money.format(row.spent)}
+                            </AppText>
+                            <AppText variant="caption" tone="muted" style={{ width: 42, textAlign: 'right' }}>
+                              {formatPercent(row.share, 0)}
+                            </AppText>
+                          </Pressable>
+                        ))}
                     </View>
                   )}
                 </Card>
               </Section>
+            </>
+          ) : null}
+
+          {tab === 'merchants' ? (
+            <>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: theme.spacing.sm,
+                  backgroundColor: theme.colors.inputBackground,
+                  borderRadius: theme.radius.full,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: theme.colors.border,
+                  paddingHorizontal: theme.spacing.md,
+                  height: 42,
+                }}>
+                <Ionicons name="search-outline" size={16} color={theme.colors.muted} />
+                <TextInput
+                  value={merchantSearch}
+                  onChangeText={setMerchantSearch}
+                  placeholder="Search merchants…"
+                  placeholderTextColor={theme.colors.muted}
+                  autoCorrect={false}
+                  style={{ flex: 1, color: theme.colors.text, fontFamily: theme.typography.body.fontFamily, fontSize: 15, paddingVertical: 0 }}
+                />
+                {merchantSearch ? (
+                  <Pressable onPress={() => setMerchantSearch('')} hitSlop={8} accessibilityLabel="Clear merchant search">
+                    <Ionicons name="close-circle" size={16} color={theme.colors.muted} />
+                  </Pressable>
+                ) : null}
+              </View>
+
+              <Card>
+                <Row justify="space-between">
+                  <View style={{ gap: 2 }}>
+                    <AppText variant="caption" tone="muted">
+                      Merchant spending
+                    </AppText>
+                    <MoneyText amount={data.merchantOverview.attributedSpending} variant="numericMedium" tone="neutral" showSign={false} />
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                    <AppText variant="caption" tone="muted">
+                      Merchants
+                    </AppText>
+                    <AppText variant="numericSmall">{data.merchantOverview.merchantCount}</AppText>
+                  </View>
+                </Row>
+                <AppText variant="caption" tone="muted" style={{ marginTop: theme.spacing.xs }}>
+                  A merchant is where you spent (Amazon); a category is what you bought (shopping). Shares use all spending in this period.
+                </AppText>
+              </Card>
+
+              {visibleMerchants.length === 0 ? (
+                <Card>
+                  <EmptyState
+                    icon="storefront-outline"
+                    title={merchantSearch ? 'No matching merchants' : 'No merchant data yet'}
+                    message={
+                      merchantSearch
+                        ? 'Try a different name or clear the search.'
+                        : 'Add a merchant when recording a transaction to see where your money goes.'
+                    }
+                    actionLabel={merchantSearch ? undefined : 'Add transaction'}
+                    onAction={merchantSearch ? undefined : () => router.push('/transaction/new' as never)}
+                  />
+                </Card>
+              ) : (
+                <Card padded={false}>
+                  {visibleMerchants.map((merchant, index) => (
+                    <MerchantListRow key={merchant.name} merchant={merchant} rank={index + 1} />
+                  ))}
+                </Card>
+              )}
+
+              {data.merchantOverview.unattributedSpending > 0 ? (
+                <AppText variant="caption" tone="muted">
+                  {money.format(data.merchantOverview.unattributedSpending)} of spending has no merchant name. Those transactions still count in every total; they simply cannot be ranked here.
+                </AppText>
+              ) : null}
+
+              <Pressable
+                onPress={() => router.push('/merchants' as never)}
+                accessibilityRole="button"
+                accessibilityLabel="Open merchant names and aliases"
+                style={({ pressed }) => ({
+                  paddingVertical: theme.spacing.md,
+                  borderRadius: theme.radius.full,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: theme.colors.border,
+                  alignItems: 'center',
+                  backgroundColor: pressed ? theme.colors.pressed : 'transparent',
+                })}>
+                <AppText variant="captionMedium" tone="accent">
+                  Merchant names & aliases
+                </AppText>
+              </Pressable>
             </>
           ) : null}
         </View>
@@ -748,7 +830,6 @@ export default function InsightsScreen() {
         value={customRange}
         onApply={(next) => {
           setCustomRange(next);
-          // Without this the applied range stayed inert (range memo keys off period).
           setPeriod('custom');
         }}
       />
@@ -756,74 +837,63 @@ export default function InsightsScreen() {
   );
 }
 
-/* ------------------------------- Pieces ----------------------------------- */
+/* ------------------------------- Components -------------------------------- */
+
+function openCategory(row: CategoryBreakdownRow, kind: CategoryKind) {
+  if (!row.categoryId) {
+    router.push('/transactions?uncategorised=1' as never);
+    return;
+  }
+  if (kind === 'income') {
+    router.push(
+      `/transactions?categoryId=${encodeURIComponent(row.categoryId)}&categoryName=${encodeURIComponent(row.name)}` as never,
+    );
+    return;
+  }
+  router.push(`/category/${row.categoryId}` as never);
+}
 
 function Section({ title, children, onPress, actionLabel }: { title: string; children: React.ReactNode; onPress?: () => void; actionLabel?: string }) {
   return (
     <View>
-      <SectionHeader title={title} actionLabel={actionLabel ?? (onPress ? 'View' : undefined)} onAction={onPress} />
+      <SectionHeader title={title} actionLabel={actionLabel} onAction={onPress} />
       {children}
     </View>
   );
 }
 
-/** The big-number card at the top of Spending / Income. */
-function TrendHeroCard({
-  title,
+function MetricTile({
+  label,
   amount,
-  amountTone,
   change,
+  tone,
   invert,
-  rangeCaption,
-  points,
-  barColor,
-  emptyMessage,
 }: {
-  title: string;
+  label: string;
   amount: number;
-  amountTone: 'neutral' | 'positive' | 'negative';
   change: number | null;
+  tone: 'positive' | 'negative';
   invert?: boolean;
-  rangeCaption: string;
-  points: { key: string; label: string; fullLabel?: string; value: number }[];
-  barColor: string;
-  emptyMessage: string;
 }) {
-  const theme = useTheme();
   return (
-    <Card>
-      <View style={{ gap: theme.spacing.md }}>
-        <Row justify="space-between" align="flex-start">
-          <View style={{ gap: 4, flex: 1, minWidth: 0 }}>
-            <AppText variant="caption" tone="muted">
-              {title}
-            </AppText>
-            <MoneyText amount={amount} variant="numericLarge" tone={amountTone} showSign={false} />
-            <AppText variant="caption" tone="muted">
-              {rangeCaption}
-            </AppText>
-          </View>
-          <ChangePill change={change} invert={invert} />
-        </Row>
-        {points.some((point) => point.value > 0) ? (
-          <BarChart points={points} height={120} color={barColor} compactLabels />
-        ) : (
-          <AppText variant="caption" tone="muted">
-            {emptyMessage}
-          </AppText>
-        )}
+    <Card style={{ flex: 1 }}>
+      <View style={{ gap: 4 }}>
+        <AppText variant="caption" tone="muted" numberOfLines={1}>
+          {label}
+        </AppText>
+        <MoneyText amount={amount} variant="numericMedium" tone={tone} showSign={false} numberOfLines={1} adjustsFontSizeToFit />
+        <ChangePill change={change} invert={invert} compact />
       </View>
     </Card>
   );
 }
 
-/** Percent delta versus the previous period — arrow first, colour second. */
-function ChangePill({ change, invert = false }: { change: number | null; invert?: boolean }) {
+function ChangePill({ change, invert = false, compact }: { change: number | null; invert?: boolean; compact?: boolean }) {
   const theme = useTheme();
   if (change === null) {
     return (
-      <View style={{ paddingHorizontal: theme.spacing.sm, paddingVertical: 4, borderRadius: theme.radius.full, backgroundColor: theme.colors.pressed }}>
-        <AppText variant="caption" tone="muted">
+      <View style={{ paddingHorizontal: compact ? 6 : theme.spacing.sm, paddingVertical: 3, borderRadius: theme.radius.full, backgroundColor: theme.colors.pressed, alignSelf: 'flex-start' }}>
+        <AppText variant="caption" tone="muted" style={{ fontSize: compact ? 10 : 12 }}>
           No prior period
         </AppText>
       </View>
@@ -837,230 +907,105 @@ function ChangePill({ change, invert = false }: { change: number | null; invert?
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: theme.spacing.sm,
-        paddingVertical: 4,
+        gap: 3,
+        paddingHorizontal: compact ? 6 : theme.spacing.sm,
+        paddingVertical: compact ? 2 : 4,
         borderRadius: theme.radius.full,
         backgroundColor: `${color}1A`,
+        alignSelf: 'flex-start',
       }}>
-      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={12} color={color} />
-      <AppText variant="numericCaption" style={{ color }}>
+      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={compact ? 10 : 12} color={color} />
+      <AppText variant="numericCaption" style={{ color, fontSize: compact ? 10 : 12 }}>
         {Math.abs(change) < 10 ? `${Math.abs(change).toFixed(1)}%` : `${Math.round(Math.abs(change))}%`}
       </AppText>
     </View>
   );
 }
 
-/** Amount / percentage toggle plus top categories with share bars. */
-function CategoryCard({
-  rows,
-  total,
-  mode,
-  onModeChange,
-  emptyTitle,
-  emptyMessage,
-}: {
-  rows: CategoryBreakdownRow[];
-  total: number;
-  mode: AmountMode;
-  onModeChange: (mode: AmountMode) => void;
-  emptyTitle: string;
-  emptyMessage: string;
-}) {
+function Legend({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
   const theme = useTheme();
-  const money = useMoney();
-  const visible = rows.slice(0, 5);
-  const rest = rows.slice(5);
-  const restTotal = rest.reduce((sum, row) => sum + row.total, 0);
-  const restCount = rest.reduce((sum, row) => sum + row.count, 0);
-  const restShare = total > 0 ? (restTotal / total) * 100 : 0;
-
   return (
-    <Card>
-      <View style={{ gap: theme.spacing.lg }}>
-        <Row justify="space-between">
-          <AppText variant="caption" tone="muted">
-            {mode === 'amount' ? 'Amount' : 'Percentage'} view
-          </AppText>
-          <SegmentedControl
-            options={[
-              { value: 'amount', label: 'Amount' },
-              { value: 'percent', label: '%' },
-            ]}
-            value={mode}
-            onChange={onModeChange}
-            style={{ minWidth: 150 }}
-          />
-        </Row>
-
-        {rows.length === 0 ? (
-          <EmptyState compact icon="pie-chart-outline" title={emptyTitle} message={emptyMessage} />
-        ) : (
-          <View style={{ gap: theme.spacing.lg }}>
-            {visible.map((row) => (
-              <CategoryRow key={row.categoryId ?? 'none'} row={row} total={total} mode={mode} />
-            ))}
-            {rest.length > 0 ? (
-              <View style={{ gap: 8 }}>
-                <Row gap="sm">
-                  <View
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: theme.radius.full,
-                      backgroundColor: theme.colors.pressed,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>
-                    <Ionicons name="ellipsis-horizontal" size={17} color={theme.colors.muted} />
-                  </View>
-                  <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
-                    <AppText variant="bodySmall" numberOfLines={1}>
-                      Others
-                    </AppText>
-                    <AppText variant="caption" tone="muted">
-                      {restCount} transaction{restCount === 1 ? '' : 's'} · {rest.length} categories
-                    </AppText>
-                  </View>
-                  <AppText variant="numericSmall" tone="secondary">
-                    {mode === 'amount' ? money.format(restTotal, { absolute: true }) : formatPercent(restShare, 0)}
-                  </AppText>
-                </Row>
-                <ProgressBar progress={restShare} height={6} color={theme.colors.muted} />
-              </View>
-            ) : null}
-          </View>
-        )}
-      </View>
-    </Card>
-  );
-}
-
-function CategoryRow({ row, total, mode }: { row: CategoryBreakdownRow; total: number; mode: AmountMode }) {
-  const theme = useTheme();
-  const money = useMoney();
-  const share = total > 0 ? (row.total / total) * 100 : row.share;
-  return (
-    <Pressable
-      onPress={row.categoryId ? () => router.push(`/category/${row.categoryId}` as never) : undefined}
-      style={{ gap: 8 }}>
-      <Row gap="sm">
-        <View
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: theme.radius.full,
-            backgroundColor: `${row.color}22`,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-          <Ionicons name={row.icon as IconName} size={17} color={row.color} />
-        </View>
-        <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
-          <AppText variant="bodySmall" numberOfLines={1}>
-            {row.name}
-          </AppText>
-          <AppText variant="caption" tone="muted">
-            {row.count} transaction{row.count === 1 ? '' : 's'} · {formatPercent(share, 0)}
-          </AppText>
-        </View>
-        <AppText variant="numericSmall" tone="secondary">
-          {mode === 'amount' ? money.format(row.total, { absolute: true }) : formatPercent(row.share, 0)}
-        </AppText>
-      </Row>
-      <ProgressBar progress={share} height={6} color={row.color} />
-    </Pressable>
-  );
-}
-
-/** Compact merchant list used by Spending (top 5) and Trends (all + deltas). */
-function MerchantList({
-  merchants,
-  showChange,
-}: {
-  merchants: { name: string; total: number; count: number; average: number; change: number | null }[];
-  showChange?: boolean;
-}) {
-  const theme = useTheme();
-  const money = useMoney();
-  if (merchants.length === 0) {
-    return (
-      <Card>
-        <EmptyState compact icon="storefront-outline" title="No merchant data" message="Merchants appear once you record merchant names." />
-      </Card>
-    );
-  }
-  return (
-    <Card>
-      {merchants.map((merchant, index) => (
-        <View key={merchant.name}>
-          {index > 0 ? (
-            <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border }} />
-          ) : null}
-          <Pressable
-            onPress={() => router.push(`/merchant/${encodeURIComponent(merchant.name)}` as never)}
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11 }}>
-            <View style={{ flex: 1, gap: 2, marginRight: 12, minWidth: 0 }}>
-              <AppText variant="bodySmall" numberOfLines={1}>
-                {merchant.name}
-              </AppText>
-              <AppText variant="caption" tone="muted">
-                {merchant.count}× · avg {money.format(merchant.average)}
-                {showChange && merchant.change !== null
-                  ? ` · ${merchant.change > 0 ? '+' : '−'}${formatPercent(Math.abs(merchant.change), 0)}`
-                  : ''}
-              </AppText>
-            </View>
-            <MoneyText amount={merchant.total} variant="numericSmall" tone="neutral" showSign={false} />
-          </Pressable>
-        </View>
-      ))}
-    </Card>
-  );
-}
-
-function Legend({ color, label }: { color: string; label: string }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <View style={{ width: 14, height: 3, borderRadius: 2, backgroundColor: color }} />
+    <Row gap="xs" align="center">
+      <View style={{ width: 18, height: 2, borderRadius: 1, backgroundColor: color, opacity: dashed ? 0.7 : 1 }} />
       <AppText variant="caption" tone="muted">
         {label}
       </AppText>
-    </View>
+      <View style={{ width: StyleSheet.hairlineWidth, height: 1, backgroundColor: theme.colors.border }} />
+    </Row>
   );
 }
 
-function WeekdayChart({ weekday }: { weekday: { weekday: number; total: number }[] }) {
+function WeekdayBars({ weekday }: { weekday: { weekday: number; total: number }[] }) {
   const theme = useTheme();
-  const money = useMoney();
-  const max = Math.max(...weekday.map((day) => day.total), 1);
   const labels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const max = Math.max(1, ...weekday.map((day) => day.total));
+  const money = useMoney();
   return (
-    <View style={{ gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
+    <View style={{ gap: theme.spacing.sm }}>
       <AppText variant="caption" tone="muted">
-        Spending by weekday
+        Day of week
       </AppText>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 70 }}>
-        {weekday.map((day) => (
-          <View key={day.weekday} style={{ flex: 1, alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-            <View
-              style={{
-                width: '100%',
-                height: Math.max(3, (day.total / max) * 52),
-                borderRadius: 4,
-                backgroundColor: theme.chart.series[0],
-                opacity: 0.85,
-              }}
-            />
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 58 }}>
+        {weekday.map((day, index) => (
+          <View key={day.weekday} style={{ flex: 1, alignItems: 'center', gap: 4 }} accessibilityLabel={`${labels[index]}: ${money.format(day.total)}`}>
+            <View style={{ width: '100%', height: Math.max(3, (day.total / max) * 40), borderRadius: 4, backgroundColor: day.total === max && max > 1 ? theme.colors.accent.base : theme.colors.accent.soft }} />
             <AppText variant="caption" tone="muted" style={{ fontSize: 10 }}>
-              {labels[day.weekday]}
+              {labels[index]}
             </AppText>
           </View>
         ))}
       </View>
-      <AppText variant="caption" tone="muted">
-        Peak day: {money.format(Math.max(...weekday.map((d) => d.total)))}
-      </AppText>
     </View>
+  );
+}
+
+function MerchantListRow({ merchant, rank }: { merchant: MerchantRow; rank: number }) {
+  const theme = useTheme();
+  const money = useMoney();
+  return (
+    <Pressable
+      onPress={() => router.push(`/merchant/${encodeURIComponent(merchant.name)}` as never)}
+      android_ripple={{ color: theme.colors.ripple }}
+      accessibilityRole="button"
+      accessibilityLabel={`${merchant.name}, ${money.format(merchant.total)}, ${merchant.count} transactions`}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: theme.spacing.md,
+        paddingHorizontal: theme.spacing.lg,
+        paddingVertical: theme.spacing.md,
+        borderTopWidth: rank === 1 ? 0 : StyleSheet.hairlineWidth,
+        borderTopColor: theme.colors.border,
+      }}>
+      <View
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: theme.radius.full,
+          backgroundColor: theme.colors.accent.soft,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+        <AppText variant="numericCaption" tone="accent">
+          {rank}
+        </AppText>
+      </View>
+      <View style={{ flex: 1, gap: 3, minWidth: 0 }}>
+        <Row justify="space-between">
+          <AppText variant="bodySmall" numberOfLines={1} style={{ flex: 1, marginRight: 8 }}>
+            {merchant.name}
+          </AppText>
+          <AppText variant="numericCaption">{money.format(merchant.total)}</AppText>
+        </Row>
+        <ProgressBar progress={merchant.share} height={4} color={theme.colors.accent.base} />
+        <Row justify="space-between">
+          <AppText variant="caption" tone="muted" numberOfLines={1} style={{ flex: 1 }}>
+            {merchant.count}× · avg {money.format(merchant.average)} · {formatPercent(merchant.share, 1)} of spending
+          </AppText>
+          <ChangePill change={merchant.change} invert compact />
+        </Row>
+      </View>
+      <Ionicons name="chevron-forward" size={15} color={theme.colors.muted} />
+    </Pressable>
   );
 }

@@ -46,28 +46,80 @@ export async function ensureNotificationPermission(): Promise<boolean> {
 export interface SyncResult {
   scheduled: number;
   permission: boolean;
+  /** Whether the repeating daily check-in was queued. */
+  daily: boolean;
+}
+
+function parseReminderTime(value: string): { hour: number; minute: number } {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  const hour = match ? Number(match[1]) : 21;
+  const minute = match ? Number(match[2]) : 0;
+  return {
+    hour: Number.isFinite(hour) ? Math.max(0, Math.min(23, hour)) : 21,
+    minute: Number.isFinite(minute) ? Math.max(0, Math.min(59, minute)) : 0,
+  };
 }
 
 /** Cancels and re-schedules every reminder notification. Safe to call often. */
 export async function syncReminderNotifications(): Promise<SyncResult> {
-  if (Platform.OS === 'web') return { scheduled: 0, permission: false };
+  if (Platform.OS === 'web') return { scheduled: 0, permission: false, daily: false };
   installHandler();
 
   const notificationSettings = useSettingsStore.getState().notifications;
-  const anyEnabled = Object.values(notificationSettings).some(Boolean);
+  const anyEnabled =
+    notificationSettings.budgetAlerts ||
+    notificationSettings.debtReminders ||
+    notificationSettings.recurringReminders ||
+    notificationSettings.goalReminders ||
+    notificationSettings.cardReminders ||
+    notificationSettings.installmentReminders ||
+    notificationSettings.sharedReminders ||
+    notificationSettings.dailyReminder;
 
   await Notifications.cancelAllScheduledNotificationsAsync().catch(() => undefined);
-  if (!anyEnabled) return { scheduled: 0, permission: true };
+  if (!anyEnabled) return { scheduled: 0, permission: true, daily: false };
 
-  const granted = await ensureNotificationPermission();
-  if (!granted) return { scheduled: 0, permission: false };
-
+  // Android 13 only shows the notification permission prompt after at least
+  // one channel exists. Creating it after requesting permission was the root
+  // cause of "notifications never appear" on newer devices.
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('reminders', {
       name: 'Reminders',
+      description: 'Daily check-ins and upcoming payments',
       importance: Notifications.AndroidImportance.DEFAULT,
-      lightColor: '#FF3D8B',
+      lightColor: '#8B8CFF',
     }).catch(() => undefined);
+  }
+
+  const granted = await ensureNotificationPermission();
+  if (!granted) return { scheduled: 0, permission: false, daily: false };
+
+  let scheduled = 0;
+  let dailyScheduled = false;
+
+  // The daily "log today's spending" nudge is independent of the ledger
+  // reminder engine: a failure there must not silently remove it.
+  if (notificationSettings.dailyReminder) {
+    const { hour, minute } = parseReminderTime(notificationSettings.dailyReminderTime);
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Log today's spending",
+          body: 'A 20-second check-in keeps your budgets and insights accurate.',
+          data: { href: '/transaction/new?type=expense' },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour,
+          minute,
+          channelId: 'reminders',
+        },
+      });
+      scheduled++;
+      dailyScheduled = true;
+    } catch {
+      // Permission or platform limitation — reported honestly in Settings.
+    }
   }
 
   let reminders;
@@ -82,13 +134,12 @@ export async function syncReminderNotifications(): Promise<SyncResult> {
       shared: notificationSettings.sharedReminders,
     });
   } catch {
-    return { scheduled: 0, permission: true };
+    return { scheduled, permission: true, daily: dailyScheduled };
   }
 
-  let scheduled = 0;
   const now = Date.now();
   // iOS keeps only 64 pending notifications; stay well below.
-  for (const reminder of reminders.slice(0, 48)) {
+  for (const reminder of reminders.slice(0, 47)) {
     if (!reminder.date) continue;
     const day = fromISODate(reminder.date);
     if (!day) continue;
@@ -116,5 +167,5 @@ export async function syncReminderNotifications(): Promise<SyncResult> {
     }
   }
 
-  return { scheduled, permission: true };
+  return { scheduled, permission: true, daily: dailyScheduled };
 }

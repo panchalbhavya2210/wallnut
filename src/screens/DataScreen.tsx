@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -7,12 +7,13 @@ import { router } from 'expo-router';
 import { useTheme } from '@/theme/theme';
 import { Card, IconName, ListGroup, ListRow, Row, ScreenHeader, ScrollScreen } from '@/components/ui/layout';
 import { AppText, MoneyText } from '@/components/ui/text';
-import { Button } from '@/components/ui/controls';
+import { Button, Chip, SegmentedControl } from '@/components/ui/controls';
 import { EmptyState, InfoBanner, LoadingBlock } from '@/components/ui/feedback';
-import { BottomSheet, PickerSheet } from '@/components/ui/sheets';
+import { BottomSheet, DatePickerSheet, PickerSheet } from '@/components/ui/sheets';
 import { confirm } from '@/components/ui/confirm';
 import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
+import { useSettingsStore } from '@/stores/settings.store';
 import { toast } from '@/stores/ui.store';
 import { ACCOUNT_TYPE_LABELS, listAccounts } from '@/services/accounts.service';
 import { listCategories } from '@/services/categories.service';
@@ -23,11 +24,23 @@ import {
   type ImportContext,
 } from '@/services/import';
 import { listStagedImportBatches, stageImportPreview } from '@/services/import/staging.service';
-import { createBackup, describeBackup, exportTransactionsCsv, exportMonthlySummaryCsv, restoreBackup, validateBackup, type BackupFile } from '@/services/import/export.service';
+import {
+  countTransactionExportRows,
+  createBackup,
+  describeBackup,
+  exportMonthlySummaryCsv,
+  exportTransactionsCsv,
+  exportTransactionsJson,
+  restoreBackup,
+  validateBackup,
+  type BackupFile,
+  type ExportOptions,
+} from '@/services/import/export.service';
 import type { ImportMapping, ImportPreview } from '@/services/import/pipeline';
 import { clearAllData, isDatabaseEmpty, seedDemoData } from '@/services/seed.service';
 import { saveAndShareFile } from '@/utils/files';
 import { formatCount } from '@/utils/format';
+import { addDays, formatDayMonth, fromISODate, getPeriodRange, toISODate } from '@/utils/date';
 
 /**
  * Import, export, backup and restore. Every import runs through the shared
@@ -48,6 +61,26 @@ export default function DataScreen() {
   const [includeDuplicates, setIncludeDuplicates] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sheet, setSheet] = useState<'none' | 'account' | 'category' | 'mapping'>('none');
+  const busyRef = useRef(false);
+  const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
+
+  /* ------------------------------- Export setup ------------------------------ */
+  const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
+  const [exportRange, setExportRange] = useState<'all' | 'thisMonth' | 'lastMonth' | '30d' | 'custom'>('all');
+  const [customFrom, setCustomFrom] = useState(() => toISODate(addDays(new Date(), -29)));
+  const [customTo, setCustomTo] = useState(() => toISODate(new Date()));
+  const [datePicker, setDatePicker] = useState<'none' | 'from' | 'to'>('none');
+
+  const exportOptions = useMemo<ExportOptions>(() => {
+    if (exportRange === 'custom') {
+      return { from: customFrom, to: customTo, includeTransfers: true };
+    }
+    if (exportRange === 'all') return { includeTransfers: true };
+    const range = getPeriodRange(exportRange, { monthStartDay });
+    return { from: toISODate(range.start), to: toISODate(range.end), includeTransfers: true };
+  }, [exportRange, customFrom, customTo, monthStartDay]);
+
+  const exportCount = useQuery(() => countTransactionExportRows(exportOptions), [JSON.stringify(exportOptions)]);
 
   const accounts = useQuery(() => listAccounts(), []);
   const categories = useQuery(() => listCategories(), []);
@@ -63,46 +96,79 @@ export default function DataScreen() {
 
   /* --------------------------------- Export -------------------------------- */
 
-  const exportCsv = async () => {
+  const exportTransactions = async () => {
+    if (busyRef.current) return;
+    const count = exportCount.data ?? 0;
+    if (count === 0) {
+      toast.show('No transactions in the selected range. Choose another range or add a transaction first.', 'neutral', {
+        title: 'Nothing to export',
+      });
+      return;
+    }
+    busyRef.current = true;
     setBusy(true);
     try {
-      const csv = await exportTransactionsCsv();
-      await saveAndShareFile(`wallnut-transactions-${Date.now()}.csv`, csv, 'text/csv', 'Export transactions');
-      toast.success('Transactions exported');
+      const content =
+        exportFormat === 'csv'
+          ? await exportTransactionsCsv(exportOptions)
+          : await exportTransactionsJson(exportOptions);
+      const filename = `wallnut-transactions-${toISODate(new Date())}.${exportFormat}`;
+      const saved = await saveAndShareFile(
+        filename,
+        content,
+        exportFormat === 'csv' ? 'text/csv' : 'application/json',
+        exportFormat === 'csv' ? 'Export transactions as CSV' : 'Export transactions as JSON',
+      );
+      if (!saved.shared) {
+        toast.show('The file is ready on this device, but this platform has no share sheet.', 'neutral', {
+          title: 'Export ready',
+        });
+      } else {
+        toast.success(`${count} transaction${count === 1 ? '' : 's'} · ${fileSize(saved.bytes)} written`, {
+          title: 'Export ready',
+        });
+      }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Export failed');
+      toast.error(error instanceof Error ? error.message : 'Export failed', { title: 'Export failed' });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   const exportSummary = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
-      const csv = await exportMonthlySummaryCsv(1, money.currency);
-      await saveAndShareFile(`wallnut-monthly-summary-${Date.now()}.csv`, csv, 'text/csv', 'Export summary');
-      toast.success('Summary exported');
+      const csv = await exportMonthlySummaryCsv(monthStartDay, money.currency);
+      await saveAndShareFile(`wallnut-monthly-summary-${toISODate(new Date())}.csv`, csv, 'text/csv', 'Export summary');
+      toast.success('Monthly summary is ready', { title: 'Export ready' });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Export failed');
+      toast.error(error instanceof Error ? error.message : 'Export failed', { title: 'Export failed' });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   const exportBackup = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       const backup = await createBackup();
-      await saveAndShareFile(
-        `wallnut-backup-${new Date().toISOString().slice(0, 10)}.json`,
+      const saved = await saveAndShareFile(
+        `wallnut-backup-${toISODate(new Date())}.json`,
         JSON.stringify(backup, null, 2),
         'application/json',
         'Save backup',
       );
-      toast.success('Backup created');
+      toast.success(`${fileSize(saved.bytes)} backup is ready`, { title: 'Backup ready' });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Backup failed');
+      toast.error(error instanceof Error ? error.message : 'Backup failed', { title: 'Backup failed' });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -326,15 +392,96 @@ export default function DataScreen() {
       />
 
       <View style={{ gap: theme.spacing.lg }}>
-        <ListGroup title="Export">
-          <ListRow
-            title="Transactions (CSV)"
-            subtitle="Every transaction with account, category, tags and reference"
-            icon="document-text-outline"
-            onPress={exportCsv}
-            disabled={busy}
-            chevron
-          />
+        <Card>
+          <View style={{ gap: theme.spacing.lg }}>
+            <View style={{ gap: 4 }}>
+              <AppText variant="titleSmall">Export transactions</AppText>
+              <AppText variant="caption" tone="muted">
+                Choose a format and period. Every amount stays signed; transfers are included but never counted as spending.
+              </AppText>
+            </View>
+
+            <SegmentedControl
+              options={[
+                { value: 'csv', label: 'CSV' },
+                { value: 'json', label: 'JSON' },
+              ]}
+              value={exportFormat}
+              onChange={setExportFormat}
+            />
+
+            <View style={{ gap: theme.spacing.sm }}>
+              <AppText variant="captionMedium" tone="secondary">
+                Date range
+              </AppText>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+                {(
+                  [
+                    ['all', 'All time'],
+                    ['thisMonth', 'This month'],
+                    ['lastMonth', 'Last month'],
+                    ['30d', 'Last 30 days'],
+                    ['custom', 'Custom'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Chip key={value} label={label} selected={exportRange === value} onPress={() => setExportRange(value)} />
+                ))}
+              </View>
+              {exportRange === 'custom' ? (
+                <View style={{ flexDirection: 'row', gap: theme.spacing.sm, alignItems: 'center' }}>
+                  <Chip label={`From ${formatDayMonth(fromISODate(customFrom) ?? new Date())}`} onPress={() => setDatePicker('from')} />
+                  <Chip label={`To ${formatDayMonth(fromISODate(customTo) ?? new Date())}`} onPress={() => setDatePicker('to')} />
+                </View>
+              ) : null}
+            </View>
+
+            {exportRange === 'custom' && customFrom > customTo ? (
+              <InfoBanner tone="negative" message="The start date is after the end date. Choose a valid range before exporting." />
+            ) : null}
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: theme.spacing.md,
+                borderRadius: theme.radius.md,
+                backgroundColor: theme.colors.inputBackground,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.colors.border,
+              }}>
+              <View style={{ gap: 2, flex: 1 }}>
+                <AppText variant="bodySmall">
+                  {exportCount.loading && exportCount.data === null
+                    ? 'Counting records…'
+                    : `${formatCount(exportCount.data ?? 0)} transaction${(exportCount.data ?? 0) === 1 ? '' : 's'}`}
+                </AppText>
+                <AppText variant="caption" tone="muted">
+                  {exportFormat === 'csv'
+                    ? 'Date, type, amount, account, category, merchant, notes, tags'
+                    : 'Structured records with split allocations and minor-unit amounts'}
+                </AppText>
+              </View>
+              <Ionicons name={exportFormat === 'csv' ? 'grid-outline' : 'code-slash-outline'} size={20} color={theme.colors.accent.base} />
+            </View>
+
+            <Button
+              label={
+                exportRange === 'custom' && customFrom > customTo
+                  ? 'Choose a valid range'
+                  : `Export ${formatCount(exportCount.data ?? 0)} transactions`
+              }
+              icon="share-outline"
+              size="lg"
+              fullWidth
+              loading={busy}
+              disabled={busy || exportRange === 'custom' && customFrom > customTo}
+              onPress={exportTransactions}
+            />
+          </View>
+        </Card>
+
+        <ListGroup title="Other exports">
           <ListRow
             title="Monthly summary (CSV)"
             subtitle="Income, expenses, refunds and net savings per month"
@@ -414,7 +561,28 @@ export default function DataScreen() {
         />
       </View>
 
-      {busy ? <LoadingBlock /> : null}
+      {busy ? <LoadingBlock label="Preparing your file…" /> : null}
+
+      <DatePickerSheet
+        visible={datePicker === 'from'}
+        onClose={() => setDatePicker('none')}
+        value={fromISODate(customFrom) ?? new Date()}
+        title="Export from"
+        onSelect={(date) => {
+          setCustomFrom(toISODate(date));
+          setDatePicker('none');
+        }}
+      />
+      <DatePickerSheet
+        visible={datePicker === 'to'}
+        onClose={() => setDatePicker('none')}
+        value={fromISODate(customTo) ?? new Date()}
+        title="Export to"
+        onSelect={(date) => {
+          setCustomTo(toISODate(date));
+          setDatePicker('none');
+        }}
+      />
     </ScrollScreen>
   );
 }
@@ -743,6 +911,12 @@ function StatPill({ label, value, tone }: { label: string; value: number; tone: 
       </AppText>
     </View>
   );
+}
+
+function fileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** Parses just the header row so the wizard can offer column choices. */

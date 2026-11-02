@@ -1,19 +1,24 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
-import { Card, ListGroup, ListRow, Row, ScrollScreen, ScreenHeader } from '@/components/ui/layout';
+import { Card, Row, ScrollScreen, ScreenHeader } from '@/components/ui/layout';
 import { AppText } from '@/components/ui/text';
-import { Button, Chip } from '@/components/ui/controls';
+import { Button } from '@/components/ui/controls';
 import { EmptyState, InfoBanner, LoadingBlock } from '@/components/ui/feedback';
 import { Field, FormSheet } from '@/components/ui/sheets';
 import { confirm } from '@/components/ui/confirm';
+import { PeriodChips } from '@/components/PeriodPicker';
 import { useQuery } from '@/hooks/useQuery';
+import { useMoney } from '@/hooks/useMoney';
+import { useSettingsStore } from '@/stores/settings.store';
 import { toast } from '@/stores/ui.store';
 import { deleteMerchantAlias, listMerchantAliases, upsertMerchantAlias } from '@/services/merchant.service';
-import { getTopMerchants } from '@/services/analytics.service';
-import { getPeriodRange } from '@/utils/date';
+import { getMerchantOverview } from '@/services/analytics.service';
+import { getPeriodRange, type PeriodPreset } from '@/utils/date';
+import { formatPercent } from '@/utils/money';
 import type { MerchantAlias } from '@/db/schema';
 
 /**
@@ -23,18 +28,30 @@ import type { MerchantAlias } from '@/db/schema';
  */
 export default function MerchantsScreen() {
   const theme = useTheme();
+  const money = useMoney();
+  const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
+  const [period, setPeriod] = useState<PeriodPreset>('6m');
+  const [search, setSearch] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<MerchantAlias | null>(null);
   const [pattern, setPattern] = useState('');
   const [displayName, setDisplayName] = useState('');
 
+  const range = useMemo(() => getPeriodRange(period, { monthStartDay }), [period, monthStartDay]);
+
   const query = useQuery(async () => {
     const [aliases, merchants] = await Promise.all([
       listMerchantAliases(),
-      getTopMerchants({ range: getPeriodRange('6m', {}) }, 25),
+      getMerchantOverview({ range }, 100),
     ]);
     return { aliases, merchants };
-  }, []);
+  }, [range.start.getTime(), range.end.getTime()]);
+
+  const visibleMerchants = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const rows = query.data?.merchants.rows ?? [];
+    return needle ? rows.filter((row) => row.name.toLowerCase().includes(needle)) : rows;
+  }, [query.data?.merchants.rows, search]);
 
   const save = async () => {
     try {
@@ -57,8 +74,8 @@ export default function MerchantsScreen() {
     <ScrollScreen>
       <ScreenHeader
         title="Merchants"
-        subtitle="One canonical name per shop, no matter how the bank writes it"
-        hint={{ id: 'merchants', message: 'Banks write the same shop ten ways. Map messy names to one canonical merchant — aliases apply to imports and history.' }}
+        subtitle="Where your money goes — and how bank names are cleaned up"
+        hint={{ id: 'merchants', message: 'A merchant is the shop or recipient (Amazon, Swiggy). A category is what the money was for (groceries, dining). Merchant aliases merge messy bank descriptions into one name.' }}
         right={
           <Button
             label="Add alias"
@@ -74,86 +91,166 @@ export default function MerchantsScreen() {
         }
       />
 
+      <PeriodChips value={period} onChange={setPeriod} options={['30d', '3m', '6m', '1y', 'all']} style={{ marginBottom: theme.spacing.md }} />
+
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: theme.spacing.sm,
+          backgroundColor: theme.colors.inputBackground,
+          borderRadius: theme.radius.full,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: theme.colors.border,
+          paddingHorizontal: theme.spacing.md,
+          height: 42,
+          marginBottom: theme.spacing.lg,
+        }}>
+        <Ionicons name="search-outline" size={16} color={theme.colors.muted} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search merchants…"
+          placeholderTextColor={theme.colors.muted}
+          autoCorrect={false}
+          style={{ flex: 1, color: theme.colors.text, fontFamily: theme.typography.body.fontFamily, fontSize: 15, paddingVertical: 0 }}
+        />
+        {search ? (
+          <Pressable onPress={() => setSearch('')} hitSlop={8} accessibilityLabel="Clear search">
+            <Ionicons name="close-circle" size={16} color={theme.colors.muted} />
+          </Pressable>
+        ) : null}
+      </View>
+
       {query.loading && !query.data ? (
         <LoadingBlock label="Loading merchants…" />
       ) : (
         <View style={{ gap: theme.spacing.lg }}>
-          <InfoBanner message="Patterns match anywhere in the raw merchant string (case-insensitive). The longest matching pattern wins, so add specific patterns for tricky names." />
-
-          <ListGroup title="Aliases">
-            {(query.data?.aliases ?? []).map((alias) => (
-              <ListRow
-                key={alias.id}
-                title={alias.displayName}
-                subtitle={`matches "${alias.pattern}"`}
+          <View style={{ gap: theme.spacing.sm }}>
+            <Row justify="space-between">
+              <AppText variant="titleSmall">Spending by merchant</AppText>
+              <AppText variant="caption" tone="muted">
+                {formatPercent(
+                  (query.data?.merchants.attributedSpending ?? 0) / Math.max(1, query.data?.merchants.totalSpending ?? 1) * 100,
+                  0,
+                )}{' '}
+                attributed
+              </AppText>
+            </Row>
+            {visibleMerchants.length === 0 ? (
+              <EmptyState
                 icon="storefront-outline"
-                iconColor={theme.colors.accent.base}
-                onPress={() => {
-                  setEditing(alias);
-                  setPattern(alias.pattern);
-                  setDisplayName(alias.displayName);
-                  setEditorOpen(true);
-                }}
-                right={
-                  <Pressable onPress={() => remove(alias)} hitSlop={8}>
-                    <Ionicons name="trash-outline" size={16} color={theme.colors.muted} />
-                  </Pressable>
+                title={search ? 'No matching merchants' : 'No merchant data yet'}
+                message={
+                  search
+                    ? 'Try a different name or clear the search.'
+                    : 'Add a merchant name when you record a transaction, then it appears here with its spending history.'
                 }
               />
-            ))}
-            {(query.data?.aliases.length ?? 0) === 0 ? (
-              <View style={{ padding: theme.spacing.lg }}>
-                <AppText variant="bodySmall" tone="muted">
-                  No aliases yet — add one to group messy merchant strings.
-                </AppText>
-              </View>
-            ) : null}
-          </ListGroup>
-
-          <View>
-            <AppText variant="label" tone="muted" style={{ marginBottom: theme.spacing.sm }}>
-              TOP MERCHANTS (AFTER GROUPING)
-            </AppText>
-            {(query.data?.merchants ?? []).length === 0 ? (
-              <EmptyState icon="storefront-outline" title="No merchant data" message="Record a few merchant names to see them here." />
             ) : (
               <Card padded={false}>
-                {(query.data?.merchants ?? []).map((merchant, index) => (
-                  <View
+                {visibleMerchants.map((merchant, index) => (
+                  <Pressable
                     key={merchant.name}
+                    onPress={() => router.push(`/merchant/${encodeURIComponent(merchant.name)}` as never)}
+                    android_ripple={{ color: theme.colors.ripple }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${merchant.name}, ${money.format(merchant.total)} across ${merchant.count} transactions`}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
+                      gap: theme.spacing.md,
                       paddingHorizontal: theme.spacing.lg,
                       paddingVertical: theme.spacing.md,
                       borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
                       borderTopColor: theme.colors.border,
                     }}>
-                    <View style={{ flex: 1, marginRight: 12 }}>
+                    <View
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: theme.radius.full,
+                        backgroundColor: theme.colors.accent.soft,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                      <AppText variant="numericCaption" tone="accent">
+                        {index + 1}
+                      </AppText>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                       <AppText variant="bodySmall" numberOfLines={1}>
                         {merchant.name}
                       </AppText>
-                      <AppText variant="caption" tone="muted">
-                        {merchant.count}× · avg {formatAvg(merchant.average)}
+                      <AppText variant="caption" tone="muted" numberOfLines={1}>
+                        {merchant.count} transaction{merchant.count === 1 ? '' : 's'} · avg {money.format(merchant.average)} ·{' '}
+                        {formatPercent(merchant.share, 1)} of spending
                       </AppText>
                     </View>
-                    <Button
-                      label="Alias"
-                      size="sm"
-                      variant="ghost"
-                      onPress={() => {
-                        setEditing(null);
-                        setPattern(merchant.name.toLowerCase());
-                        setDisplayName(merchant.name);
-                        setEditorOpen(true);
-                      }}
-                    />
-                  </View>
+                    <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                      <AppText variant="numericCaption">{money.format(merchant.total)}</AppText>
+                      <Ionicons name="chevron-forward" size={14} color={theme.colors.muted} />
+                    </View>
+                  </Pressable>
                 ))}
               </Card>
             )}
+            {query.data && query.data.merchants.unattributedSpending > 0 ? (
+              <AppText variant="caption" tone="muted">
+                {money.format(query.data.merchants.unattributedSpending)} of spending has no merchant name. Add a merchant when recording those transactions to include them here.
+              </AppText>
+            ) : null}
           </View>
+
+          <Card>
+            <AppText variant="titleSmall" style={{ marginBottom: theme.spacing.xs }}>
+              Merchant name cleanup
+            </AppText>
+            <AppText variant="caption" tone="muted" style={{ marginBottom: theme.spacing.md }}>
+              Banks write the same shop many ways. An alias maps a raw pattern to one display name everywhere, including history.
+            </AppText>
+            {(query.data?.aliases.length ?? 0) === 0 ? (
+              <AppText variant="bodySmall" tone="muted">
+                No aliases yet — add one to group messy merchant strings.
+              </AppText>
+            ) : (
+              (query.data?.aliases ?? []).map((alias, index) => (
+                <Pressable
+                  key={alias.id}
+                  onPress={() => {
+                    setEditing(alias);
+                    setPattern(alias.pattern);
+                    setDisplayName(alias.displayName);
+                    setEditorOpen(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit alias for ${alias.pattern}`}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: theme.spacing.md,
+                    paddingVertical: theme.spacing.md,
+                    borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
+                    borderTopColor: theme.colors.border,
+                  }}>
+                  <Ionicons name="pricetag-outline" size={16} color={theme.colors.muted} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <AppText variant="bodySmall" numberOfLines={1}>
+                      {alias.displayName}
+                    </AppText>
+                    <AppText variant="caption" tone="muted" numberOfLines={1}>
+                      matches “{alias.pattern}”
+                    </AppText>
+                  </View>
+                  <Pressable onPress={() => void remove(alias)} hitSlop={10} accessibilityLabel={`Delete alias ${alias.pattern}`}>
+                    <Ionicons name="trash-outline" size={16} color={theme.colors.muted} />
+                  </Pressable>
+                </Pressable>
+              ))
+            )}
+          </Card>
+
+          <InfoBanner message="Patterns match anywhere in the raw merchant string (case-insensitive). The longest matching pattern wins, so add specific patterns for tricky names." />
         </View>
       )}
 
@@ -168,15 +265,11 @@ export default function MerchantsScreen() {
         <Field label="Pattern (lowercase text to match)" value={pattern} onChangeText={setPattern} placeholder="e.g. amzn" autoFocus />
         <Field label="Display name" value={displayName} onChangeText={setDisplayName} placeholder="e.g. Amazon" />
         <AppText variant="caption" tone="muted">
-          Example: patterns "amzn", "amazon" and "amazon pay" can all display as “Amazon”.
+          Example: patterns “amzn”, “amazon” and “amazon pay” can all display as “Amazon”.
         </AppText>
       </FormSheet>
     </ScrollScreen>
   );
-}
-
-function formatAvg(minor: number): string {
-  return `₹${(minor / 100).toFixed(0)}`;
 }
 
 export const MerchantScreenStyles = StyleSheet.create({ hidden: { display: 'none' } });

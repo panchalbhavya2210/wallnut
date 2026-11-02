@@ -31,7 +31,7 @@ const SECONDARY_ACTIONS = [
   { label: 'Quick templates', subtitle: 'Reuse a frequent transaction', icon: 'flash-outline' as const, href: '/templates' },
 ];
 
-export function QuickAddFab() {
+export function QuickAddFab({ bottomOffset = 0 }: { bottomOffset?: number }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
@@ -48,7 +48,7 @@ export function QuickAddFab() {
             styles.fab,
             {
               right: Math.max(insets.right, 16) + 4,
-              bottom: Math.max(insets.bottom, 12) + 14,
+              bottom: Math.max(insets.bottom, 12) + 14 + bottomOffset,
               borderRadius: theme.radius.xxl,
             },
             theme.shadow('fab'),
@@ -66,8 +66,10 @@ export function QuickAddFab() {
         visible={open}
         onClose={() => setOpen(false)}
         onNavigate={(href) => {
+          // Push immediately: the sheet closes over the new screen instead of
+          // making the user wait for the modal animation first.
           setOpen(false);
-          setTimeout(() => router.push(href as never), 120);
+          router.push(href as never);
         }}
       />
     </>

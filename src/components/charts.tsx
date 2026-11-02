@@ -616,7 +616,9 @@ export const DonutChart = React.memo(function DonutChart({
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center', width: size, height: size }}>
       <Svg width={size} height={size}>
-        <G rotation={-90} origin={`${size / 2}, ${size / 2}`}>
+        {/* `rotation`/`origin` become invalid DOM attributes on web; an SVG
+            transform string works on every platform. */}
+        <G transform={`rotate(-90 ${size / 2} ${size / 2})`}>
           <Circle
             cx={size / 2}
             cy={size / 2}
