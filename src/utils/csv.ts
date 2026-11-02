@@ -88,6 +88,16 @@ export function parseCsv(text: string, delimiter?: string): ParsedCsv {
   };
 }
 
+/**
+ * Spreadsheet apps execute cells that begin with these characters. User-entered
+ * merchant/note text must never become a formula when a CSV is opened in Excel
+ * or Google Sheets. A leading apostrophe is the standard, visible-safe escape.
+ */
+export function sanitizeSpreadsheetCell(value: string | null | undefined): string {
+  const text = value ?? '';
+  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+}
+
 function escapeCell(value: string | number | null | undefined, delimiter: string): string {
   const text = value == null ? '' : String(value);
   const mustQuote = text.includes('"') || text.includes('\n') || text.includes('\r') || text.includes(delimiter);

@@ -76,6 +76,8 @@ export interface TransactionFilters {
   /** lending / borrowing / debt_payment rows. */
   includeDebtActivity?: boolean;
   includeUnreviewedOnly?: boolean;
+  /** Rows with no category (and no categorised splits). */
+  uncategorisedOnly?: boolean;
   onlyRecurring?: boolean;
   onlySubscriptions?: boolean;
   /** Imported rows (capture_source != 'manual'). */
@@ -506,6 +508,17 @@ function buildWhere(filters: TransactionFilters): { clause: string; params: (str
   if (filters.maxAmount !== undefined) {
     clauses.push('abs(t.amount) <= ?');
     params.push(Math.abs(filters.maxAmount));
+  }
+  if (filters.uncategorisedOnly) {
+    clauses.push(`(
+      t.category_id IS NULL
+      AND t.type <> 'transfer'
+      AND NOT EXISTS (
+        SELECT 1 FROM transaction_splits ts
+        JOIN categories sc ON sc.id = ts.category_id
+        WHERE ts.transaction_id = t.id
+      )
+    )`);
   }
   if (filters.onlyRecurring) clauses.push('t.is_recurring = 1');
   if (filters.isReviewed !== undefined) clauses.push(`t.is_reviewed = ${filters.isReviewed ? 1 : 0}`);

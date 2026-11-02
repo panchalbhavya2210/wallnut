@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useTheme } from '@/theme/theme';
 import { ListGroup, Row, ScreenHeader, ScrollScreen } from '@/components/ui/layout';
 import { AppText } from '@/components/ui/text';
-import { Button, SettingSwitch } from '@/components/ui/controls';
+import { Button, Chip, SettingSwitch } from '@/components/ui/controls';
 import { InfoBanner } from '@/components/ui/feedback';
 import { useSettingsStore } from '@/stores/settings.store';
 import { syncReminderNotifications, type SyncResult } from '@/services/notifications.service';
@@ -32,7 +32,10 @@ export default function NotificationSettings() {
 
   // Re-schedule whenever a category is toggled.
   useEffect(() => {
-    void runSync();
+    // Defer the permission/scheduling pass off the effect body so toggling a
+    // switch never causes a synchronous render cascade.
+    const timer = setTimeout(() => void runSync(), 0);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     notifications.budgetAlerts,
@@ -42,6 +45,8 @@ export default function NotificationSettings() {
     notifications.cardReminders,
     notifications.goalReminders,
     notifications.sharedReminders,
+    notifications.dailyReminder,
+    notifications.dailyReminderTime,
   ]);
 
   const toggle = (key: keyof typeof notifications) => (value: boolean) => update('notifications', { [key]: value });
@@ -53,8 +58,37 @@ export default function NotificationSettings() {
       <View style={{ gap: theme.spacing.lg }}>
         <InfoBanner
           icon="notifications-outline"
-          message="Wallnut posts a local notification at 9:00 on each reminder date (a day or two before the payment, per schedule). Everything is computed and delivered on this device — no push service, no network."
+          message="Wallnut posts local notifications at 9:00 on each reminder date, plus a daily check-in at the time you choose. Everything is scheduled on this device — no push service, no network."
         />
+
+        <ListGroup title="Daily check-in">
+          <SettingSwitch
+            title="Remind me to add expenses"
+            subtitle="One quiet nudge a day so today's spending does not get lost"
+            value={notifications.dailyReminder}
+            onValueChange={toggle('dailyReminder')}
+          />
+          {notifications.dailyReminder ? (
+            <View style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg, gap: theme.spacing.sm }}>
+              <AppText variant="captionMedium" tone="secondary">
+                Reminder time
+              </AppText>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+                {['09:00', '18:00', '20:00', '21:00', '22:00'].map((time) => (
+                  <Chip
+                    key={time}
+                    label={time}
+                    selected={notifications.dailyReminderTime === time}
+                    onPress={() => update('notifications', { dailyReminderTime: time })}
+                  />
+                ))}
+              </View>
+              <AppText variant="caption" tone="muted">
+                This is a repeating local notification. It does not depend on an internet connection.
+              </AppText>
+            </View>
+          ) : null}
+        </ListGroup>
 
         <ListGroup title="Notify me about">
           <SettingSwitch
@@ -108,6 +142,14 @@ export default function NotificationSettings() {
                 Notifications queued
               </AppText>
               <AppText variant="numericSmall">{sync ? sync.scheduled : '—'}</AppText>
+            </Row>
+            <Row justify="space-between">
+              <AppText variant="bodySmall" tone="secondary">
+                Daily check-in
+              </AppText>
+              <AppText variant="captionMedium" tone={sync?.daily ? 'positive' : notifications.dailyReminder ? 'warning' : 'muted'}>
+                {notifications.dailyReminder ? (sync?.daily ? `Scheduled · ${notifications.dailyReminderTime}` : 'Not scheduled') : 'Off'}
+              </AppText>
             </Row>
             {sync && !sync.permission ? (
               <AppText variant="caption" tone="warning">

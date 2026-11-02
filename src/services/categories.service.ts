@@ -1,7 +1,7 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 
 import { getDb } from '@/db/client';
-import { categories, transactions, type Category } from '@/db/schema';
+import { budgets, categories, transactionSplits, transactions, type Category } from '@/db/schema';
 import { notifyDbChanged } from '@/stores/db.store';
 import { buildCategoryTree as buildTree, rootCategoryId as resolveRootCategory } from '@/utils/categories';
 import { createId } from '@/utils/id';
@@ -180,7 +180,9 @@ export async function createCategory(input: CategoryInput): Promise<Category> {
     .from(categories)
     .where(
       and(
-        eq(categories.name, name),
+        // Case-insensitive duplicate detection: "Food" and "food" are the same
+        // category to a user even though SQLite stores them differently.
+        sql`lower(${categories.name}) = lower(${name})`,
         parentId ? eq(categories.parentId, parentId) : isNull(categories.parentId),
       ),
     )
@@ -220,6 +222,21 @@ export async function updateCategory(
   const db = getDb();
   const current = await getCategory(id);
   if (!current) throw new Error('Category not found.');
+
+  if (patch.parentId !== undefined && patch.parentId !== current.parentId) {
+    if (patch.parentId === id) throw new Error('A category cannot be its own parent.');
+    let cursor = patch.parentId;
+    let depth = 0;
+    while (cursor && depth < 20) {
+      const parent = await getCategory(cursor);
+      if (!parent) throw new Error('That parent category no longer exists.');
+      if (parent.id === id) throw new Error('A category cannot be moved inside its own child.');
+      if (parent.type !== current.type) throw new Error('Parent and child categories must have the same type.');
+      cursor = parent.parentId;
+      depth++;
+    }
+  }
+
   await db
     .update(categories)
     .set({
@@ -234,45 +251,70 @@ export async function updateCategory(
   notifyDbChanged();
 }
 
+/**
+ * Archives a category without losing history. Transactions (including split
+ * allocations) and budgets move to the parent category, or to a top-level
+ * "Other" category of the same type. If there is nowhere safe to move them the
+ * operation fails with an actionable message instead of leaving rows attached
+ * to an archived category.
+ */
 export async function deleteCategory(id: string): Promise<{ reassigned: number }> {
   const db = getDb();
   const category = await getCategory(id);
   if (!category) throw new Error('Category not found.');
 
   const children = await db.select({ id: categories.id }).from(categories).where(eq(categories.parentId, id));
-  const ids = [id, ...children.map((c) => c.id)];
+  const ids = [id, ...children.map((child) => child.id)];
 
-  // Reassign transactions to the parent (or Other) instead of orphaning them.
   let fallbackId = category.parentId;
   if (!fallbackId) {
     const other = await db
       .select({ id: categories.id })
       .from(categories)
-      .where(eq(categories.name, category.type === 'income' ? 'Other Income' : 'Other'))
+      .where(
+        and(
+          sql`lower(${categories.name}) = lower(${category.type === 'income' ? 'Other Income' : 'Other'})`,
+          notInArray(categories.id, ids),
+        ),
+      )
       .limit(1);
     fallbackId = other[0]?.id ?? null;
   }
-
-  const result = await db
-    .update(transactions)
-    .set({ categoryId: fallbackId, updatedAt: Date.now() })
-    .where(eq(transactions.categoryId, id));
-
-  if (fallbackId) {
-    await db
-      .update(categories)
-      .set({ parentId: fallbackId, updatedAt: Date.now() })
-      .where(eq(categories.parentId, id));
-    await db.update(categories).set({ isArchived: true, updatedAt: Date.now() }).where(eq(categories.id, id));
-  } else {
-    for (const childId of children.map((c) => c.id)) {
-      await db.update(categories).set({ isArchived: true, updatedAt: Date.now() }).where(eq(categories.id, childId));
-    }
-    await db.update(categories).set({ isArchived: true, updatedAt: Date.now() }).where(eq(categories.id, id));
+  if (!fallbackId) {
+    throw new Error('Create another category of the same type first — Wallnut never deletes financial history.');
   }
 
+  let reassigned = 0;
+  await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(transactions)
+      .set({ categoryId: fallbackId, updatedAt: Date.now() })
+      .where(inArray(transactions.categoryId, ids));
+    reassigned = updated.changes ?? 0;
+
+    // Split allocations are a second category reference. Missing them was the
+    // silent-history-loss bug: the parent transaction moved but its analytics
+    // split stayed on a category the user had deleted.
+    await tx
+      .update(transactionSplits)
+      .set({ categoryId: fallbackId })
+      .where(inArray(transactionSplits.categoryId, ids));
+
+    await tx
+      .update(budgets)
+      .set({ categoryId: fallbackId, updatedAt: Date.now() })
+      .where(inArray(budgets.categoryId, ids));
+
+    for (const childId of ids) {
+      await tx
+        .update(categories)
+        .set({ isArchived: true, updatedAt: Date.now() })
+        .where(eq(categories.id, childId));
+    }
+  });
+
   notifyDbChanged();
-  return { reassigned: result.changes ?? 0 };
+  return { reassigned };
 }
 
 export interface CategoryTreeWithChildren extends Category {

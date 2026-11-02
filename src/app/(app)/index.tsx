@@ -20,7 +20,7 @@ import { getDb } from '@/db/client';
 import { dashboardWidgets, transactions as transactionsTable, accounts as accountsTable } from '@/db/schema';
 import { asc, eq, sql } from 'drizzle-orm';
 import type { DashboardWidget } from '@/db/schema';
-import { getReviewQueue } from '@/services/review.service';
+import { reviewQueueCount } from '@/services/review.service';
 
 /**
  * Home — the financial command centre.
@@ -49,7 +49,9 @@ export default function HomeScreen() {
       .orderBy(asc(dashboardWidgets.position));
     const [accountsCount] = await db.select({ count: sql<number>`count(*)` }).from(accountsTable);
     const [transactionsCount] = await db.select({ count: sql<number>`count(*)` }).from(transactionsTable);
-    const reviewCount = (await getReviewQueue(50)).length;
+    // A badge count, not the full queue: the queue runs per-row duplicate
+    // lookups and used to run on every database revision on the Home screen.
+    const reviewCount = await reviewQueueCount();
     return {
       widgets: rows.filter((row) => row.type !== 'review_queue' || reviewCount > 0),
       isEmpty: Number(transactionsCount?.count ?? 0) === 0 && Number(accountsCount?.count ?? 0) === 0,

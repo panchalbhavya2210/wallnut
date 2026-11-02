@@ -27,8 +27,8 @@ export default function SettingsScreen() {
       <View style={{ gap: theme.spacing.lg }}>
         <ListGroup title="Personalise">
           <ListRow
-            title="Appearance"
-            subtitle="Theme, accent, shape, text and motion"
+            title="Theme & colours"
+            subtitle="Dark mode, primary colour, semantic colours, shape and text"
             icon="color-palette-outline"
             value={`${appearance.theme === 'system' ? 'System' : appearance.theme === 'dark' ? 'Dark' : 'Light'}`}
             onPress={() => router.push('/settings/appearance')}

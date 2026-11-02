@@ -238,7 +238,7 @@ const NetWorthWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
 
   if (loading || !data) {
     return (
-      <WidgetCard bare title="Total balance" right={periodControl}>
+      <WidgetCard bare title={scopeAccountId ? 'Account balance' : 'Net Worth'} right={periodControl}>
         <WidgetLoading />
       </WidgetCard>
     );
@@ -256,7 +256,7 @@ const NetWorthWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
   return (
     <WidgetCard
       bare
-      title={scoped ? (scoped.account?.name ?? 'Account') : 'Total balance'}
+      title={scoped ? (scoped.account?.name ?? 'Account') : 'Net Worth'}
       right={periodControl}
       onPress={() => onNavigate(scoped?.account ? `/account/${scoped.account.id}` : '/accounts')}>
       <View style={{ gap: theme.spacing.sm }}>
@@ -297,20 +297,9 @@ const NetWorthWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
           </AppText>
         </View>
 
-        <View style={{ marginTop: theme.spacing.xs, marginHorizontal: -6 }}>
-          {trend.length > 1 ? (
-            <LineChart
-              points={trend.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.value }))}
-              height={scoped ? 140 : 150}
-              showArea
-              baseline="auto"
-              color="#EAFBF0"
-              onDark
-            />
-          ) : null}
-        </View>
-
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+        {/* The reference home keeps the hero to a number + change. The full
+            trend lives in Insights, so the dashboard stays calm and fast. */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.spacing.sm }}>
           {scoped ? (
             <>
               <AppText variant="caption" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
@@ -1079,7 +1068,7 @@ const NetWorthTrendWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
   const change = percentageChange(last, first);
   return (
     <WidgetCard
-      title={scopeAccountId ? 'BALANCE TREND' : 'NET WORTH TREND'}
+      title={scopeAccountId ? 'Balance trend' : 'Net worth trend'}
       subtitle={change === null ? undefined : `${change >= 0 ? '+' : '−'}${formatPercent(Math.abs(change), 1)} over the period`}
       onPress={() => onNavigate(scopeAccountId ? `/account/${scopeAccountId}` : '/reports/health')}>
       <LineChart
@@ -1347,35 +1336,51 @@ const DebtSummaryWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   const { data, loading } = useQuery(() => getDebtOverview(), []);
   if (loading || !data) return <WidgetCard title="Money owed"><WidgetLoading /></WidgetCard>;
   const isEmpty = data.theyOweYou === 0 && data.youOwe === 0;
+  const net = data.theyOweYou - data.youOwe;
   return (
-    <WidgetCard title="Money owed" actionLabel={isEmpty ? 'Add' : undefined} onAction={isEmpty ? () => onNavigate('/debts') : undefined} onPress={() => onNavigate('/debts')}>
-      <Row gap="lg">
-        <View style={{ flex: 1 }}>
-          <AppText variant="caption" tone="muted">
-            They owe you
-          </AppText>
-          <AppText variant="numericSmall" tone={data.theyOweYou > 0 ? 'positive' : 'muted'}>
-            {money.format(data.theyOweYou)}
-          </AppText>
-        </View>
-        <View style={{ flex: 1 }}>
-          <AppText variant="caption" tone="muted">
-            You owe
-          </AppText>
-          <AppText variant="numericSmall" tone={data.youOwe > 0 ? 'negative' : 'muted'}>
-            {money.format(data.youOwe)}
-          </AppText>
-        </View>
-      </Row>
+    <WidgetCard
+      title="Money owed"
+      actionLabel={isEmpty ? 'Add' : undefined}
+      onAction={isEmpty ? () => onNavigate('/debts') : undefined}
+      onPress={() => onNavigate('/debts')}>
+      <View style={{ gap: 4 }}>
+        <AppText variant="numericMedium" tone={isEmpty ? 'muted' : net >= 0 ? 'positive' : 'negative'}>
+          {money.format(net)}
+        </AppText>
+        <AppText variant="caption" tone="muted">
+          {isEmpty ? 'Nothing owed right now' : net >= 0 ? 'Net due to you' : 'Net you owe'}
+        </AppText>
+      </View>
+
       {isEmpty ? (
         <AppText variant="caption" tone="muted" style={{ marginTop: 10 }}>
-          Track money you've lent or borrowed.
+          Track money you lend or borrow.
         </AppText>
-      ) : data.overdueCount > 0 ? (
-        <AppText variant="caption" tone="warning" style={{ marginTop: 10 }}>
-          {data.overdueCount} overdue
-        </AppText>
-      ) : null}
+      ) : (
+        <View style={{ gap: 4, marginTop: 10 }}>
+          <Row justify="space-between">
+            <AppText variant="caption" tone="muted">
+              They owe you
+            </AppText>
+            <AppText variant="numericCaption" tone={data.theyOweYou > 0 ? 'positive' : 'muted'}>
+              {money.format(data.theyOweYou)}
+            </AppText>
+          </Row>
+          <Row justify="space-between">
+            <AppText variant="caption" tone="muted">
+              You owe
+            </AppText>
+            <AppText variant="numericCaption" tone={data.youOwe > 0 ? 'negative' : 'muted'}>
+              {money.format(data.youOwe)}
+            </AppText>
+          </Row>
+          {data.overdueCount > 0 ? (
+            <AppText variant="caption" tone="warning">
+              {data.overdueCount} overdue
+            </AppText>
+          ) : null}
+        </View>
+      )}
     </WidgetCard>
   );
 };
@@ -1384,47 +1389,45 @@ const SubscriptionsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
   const money = useMoney();
   const { data, loading } = useQuery(() => getSubscriptionSummary(), []);
   if (loading || !data) return <WidgetCard title="Subscriptions"><WidgetLoading /></WidgetCard>;
-  if (data.activeCount === 0) {
-    return (
-      <WidgetCard title="Subscriptions" actionLabel="Manage" onAction={() => onNavigate('/recurring')} onPress={() => onNavigate('/recurring')}>
-        <AppText variant="numericMedium">{money.format(0)}<AppText variant="caption" tone="muted">/mo</AppText></AppText>
-        <AppText variant="bodySmall" tone="secondary" style={{ marginTop: 8 }}>
-          No recurring subscriptions yet.
-        </AppText>
-        <AppText variant="caption" tone="muted" style={{ marginTop: 4 }}>
-          Add recurring payments to track their annual cost.
-        </AppText>
-      </WidgetCard>
-    );
-  }
+  const isEmpty = data.activeCount === 0;
   return (
-    <WidgetCard title="Subscriptions" subtitle={`${data.activeCount} active`} actionLabel="Manage" onAction={() => onNavigate('/recurring')} onPress={() => onNavigate('/recurring')}>
-      <Row gap="lg">
-        <View style={{ flex: 1 }}>
-          <AppText variant="caption" tone="muted">
-            Monthly
+    <WidgetCard
+      title="Subscriptions"
+      actionLabel={isEmpty ? 'Add' : 'Manage'}
+      onAction={() => onNavigate('/recurring')}
+      onPress={() => onNavigate('/recurring')}>
+      <View style={{ gap: 4 }}>
+        <Row align="baseline" gap="xs">
+          <AppText variant="numericMedium" tone={isEmpty ? 'muted' : 'primary'}>
+            {money.format(data.monthlyTotal)}
           </AppText>
-          <AppText variant="numericSmall">{money.format(data.monthlyTotal)}</AppText>
-        </View>
-        <View style={{ flex: 1 }}>
           <AppText variant="caption" tone="muted">
-            Annualised
+            /mo
           </AppText>
-          <AppText variant="numericSmall">{money.format(data.annualTotal)}</AppText>
-        </View>
-      </Row>
-      <View style={{ gap: 8, marginTop: 12 }}>
-        {data.items.slice(0, 3).map((item) => (
-          <View key={item.recurring.id} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <AppText variant="caption" tone="secondary" numberOfLines={1} style={{ flex: 1, marginRight: 8 }}>
-              {item.recurring.merchant}
-            </AppText>
-            <AppText variant="numericCaption" tone="secondary">
-              {money.format(item.monthlyAmount)}/mo · {money.format(item.annualAmount)}/yr
-            </AppText>
-          </View>
-        ))}
+        </Row>
+        <AppText variant="caption" tone="muted">
+          {isEmpty ? 'No subscriptions yet' : `${data.activeCount} active · ${money.format(data.annualTotal)}/yr`}
+        </AppText>
       </View>
+
+      {isEmpty ? (
+        <AppText variant="caption" tone="muted" style={{ marginTop: 10 }}>
+          Add a recurring payment to track it.
+        </AppText>
+      ) : (
+        <View style={{ gap: 8, marginTop: 10 }}>
+          {data.items.slice(0, 2).map((item) => (
+            <Row key={item.recurring.id} justify="space-between">
+              <AppText variant="caption" tone="secondary" numberOfLines={1} style={{ flex: 1, marginRight: 8 }}>
+                {item.recurring.merchant}
+              </AppText>
+              <AppText variant="numericCaption" tone="secondary">
+                {money.format(item.monthlyAmount)}/mo
+              </AppText>
+            </Row>
+          ))}
+        </View>
+      )}
     </WidgetCard>
   );
 };

@@ -1,27 +1,37 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { router, usePathname } from 'expo-router';
+import { router, useNavigation, usePathname } from 'expo-router';
+import { useDrawerStatus } from 'expo-router/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/theme/theme';
 import { AppText } from './ui/text';
 import { PressableBounce } from './ui/bounce';
-import { QuickAddSheet } from './QuickAdd';
+import { QuickAddFab } from './QuickAdd';
+import { useUiStore } from '@/stores/ui.store';
 import type { IconName } from './ui/layout';
 
 /**
- * One-handed bottom navigation for the primary destinations, with the create
- * action in the thumb's natural centre position. The full destination drawer
- * stays reachable from the header avatar and the "More" destinations inside it.
+ * One-handed primary navigation. Five destinations match the product map
+ * (Home · Transactions · Budgets · Insights · More); creating a transaction
+ * lives in a raised action button so it is always one tap away without
+ * crowding the tab bar.
  */
-
 export function BottomNav() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
-  const [addOpen, setAddOpen] = useState(false);
+  const drawerStatus = useDrawerStatus();
+  const navigation = useNavigation() as unknown as { openDrawer?: () => void };
+
+  const openMore = () => {
+    if (typeof navigation.openDrawer === 'function') {
+      navigation.openDrawer();
+      return;
+    }
+    useUiStore.getState().openDrawer();
+  };
 
   const tabs: { key: string; label: string; icon: IconName; activeIcon: IconName; active: boolean; onPress: () => void }[] = [
     {
@@ -37,7 +47,7 @@ export function BottomNav() {
       label: 'Transactions',
       icon: 'receipt-outline',
       activeIcon: 'receipt',
-      active: pathname.startsWith('/transactions'),
+      active: pathname.startsWith('/transactions') || pathname.startsWith('/transaction/'),
       onPress: () => router.navigate('/transactions' as never),
     },
     {
@@ -53,39 +63,18 @@ export function BottomNav() {
       label: 'Insights',
       icon: 'stats-chart-outline',
       activeIcon: 'stats-chart',
-      active: pathname.startsWith('/analytics'),
+      active: pathname.startsWith('/analytics') || pathname.startsWith('/merchant/') || pathname.startsWith('/category/'),
       onPress: () => router.navigate('/analytics' as never),
     },
+    {
+      key: 'more',
+      label: 'More',
+      icon: 'grid-outline',
+      activeIcon: 'grid',
+      active: drawerStatus === 'open',
+      onPress: openMore,
+    },
   ];
-
-  const left = tabs.slice(0, 2);
-  const right = tabs.slice(2);
-
-  const renderTab = (tab: (typeof tabs)[number]) => (
-    <PressableBounce
-      key={tab.key}
-      onPress={tab.onPress}
-      accessibilityRole="button"
-      accessibilityLabel={tab.label}
-      accessibilityState={{ selected: tab.active }}
-      scaleTo={0.96}
-      style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 6 }}>
-      <Ionicons
-        name={tab.active ? tab.activeIcon : tab.icon}
-        size={22}
-        color={tab.active ? theme.colors.accent.base : theme.colors.muted}
-      />
-      <AppText
-        variant="caption"
-        style={{
-          fontSize: 10,
-          color: tab.active ? theme.colors.accent.base : theme.colors.muted,
-          fontFamily: tab.active ? theme.typography.captionMedium.fontFamily : theme.typography.caption.fontFamily,
-        }}>
-        {tab.label}
-      </AppText>
-    </PressableBounce>
-  );
 
   return (
     <>
@@ -97,43 +86,42 @@ export function BottomNav() {
           bottom: 0,
           paddingBottom: Math.max(insets.bottom, 8),
           paddingTop: 6,
-          paddingHorizontal: 4,
+          paddingHorizontal: 2,
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: theme.colors.surfaceElevated,
+          backgroundColor: theme.colors.surfaceTranslucent,
           borderTopWidth: StyleSheet.hairlineWidth,
           borderTopColor: theme.colors.border,
         }}>
-        {left.map(renderTab)}
-
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        {tabs.map((tab) => (
           <PressableBounce
-            onPress={() => setAddOpen(true)}
+            key={tab.key}
+            onPress={tab.onPress}
             accessibilityRole="button"
-            accessibilityLabel="Add transaction"
-            scaleTo={0.95}
-            style={[{ width: 52, height: 52, borderRadius: theme.radius.xxl, marginTop: -28 }, theme.shadow('fab')]}>
-            <LinearGradient
-              colors={theme.gradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{ width: '100%', height: '100%', borderRadius: theme.radius.xxl, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="add" size={28} color="#FFFFFF" />
-            </LinearGradient>
+            accessibilityLabel={tab.label}
+            accessibilityState={{ selected: tab.active }}
+            scaleTo={0.96}
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 6 }}>
+            <Ionicons
+              name={tab.active ? tab.activeIcon : tab.icon}
+              size={21}
+              color={tab.active ? theme.colors.accent.base : theme.colors.muted}
+            />
+            <AppText
+              variant="caption"
+              numberOfLines={1}
+              style={{
+                fontSize: 10,
+                color: tab.active ? theme.colors.accent.base : theme.colors.muted,
+                fontFamily: tab.active ? theme.typography.captionMedium.fontFamily : theme.typography.caption.fontFamily,
+              }}>
+              {tab.label}
+            </AppText>
           </PressableBounce>
-        </View>
-
-        {right.map(renderTab)}
+        ))}
       </View>
 
-      <QuickAddSheet
-        visible={addOpen}
-        onClose={() => setAddOpen(false)}
-        onNavigate={(href) => {
-          setAddOpen(false);
-          setTimeout(() => router.push(href as never), 120);
-        }}
-      />
+      <QuickAddFab bottomOffset={48} />
     </>
   );
 }

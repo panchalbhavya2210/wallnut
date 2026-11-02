@@ -187,6 +187,31 @@ export interface NetWorthChanges {
   yearAgoValue: number;
 }
 
+export interface NetWorthRangeChange {
+  startValue: number;
+  endValue: number;
+  change: number;
+}
+
+/**
+ * Net-worth movement for an arbitrary selected range. `startValue` is the
+ * balance immediately before the first day, so a period change includes its
+ * first day and cannot disagree with the period label.
+ */
+export async function getNetWorthRangeChange(range: DateRange): Promise<NetWorthRangeChange> {
+  const startBalance = await netWorthOpeningBalance();
+  const deltas = await getDailyNetMovements(toISODate(range.end));
+  const startKey = toISODate(addDays(range.start, -1));
+  const endKey = toISODate(range.end);
+  let opening = startBalance;
+  let closing = startBalance;
+  for (const row of deltas) {
+    if (row.date <= startKey) opening += row.total;
+    if (row.date <= endKey) closing += row.total;
+  }
+  return { startValue: opening, endValue: closing, change: closing - opening };
+}
+
 export async function getNetWorthChanges(monthStartDay = 1): Promise<NetWorthChanges> {
   const startBalance = await netWorthOpeningBalance();
 
@@ -250,12 +275,34 @@ interface CategoryAgg {
   count: number;
 }
 
+type CategoryGrouping = 'root' | 'exact';
+
 async function categoryTotalsForRange(
   kind: 'expense' | 'income' | 'refund',
   params: RangeParams,
+  grouping: CategoryGrouping = 'root',
 ): Promise<Map<string, CategoryAgg>> {
   const sqlite = getSqlite();
   const { clause, values } = ledgerWhere(params, [{ sql: `el.type = ?`, params: [kind] }]);
+  // Analytics groups by the top-level category so a parent total includes its
+  // children. A child's own detail page asks for `exact`, otherwise it silently
+  // showed its parent's total.
+  const select =
+    grouping === 'exact'
+      ? {
+          id: 'c.id',
+          name: 'c.name',
+          icon: 'c.icon',
+          color: 'c.color',
+          group: 'c.id',
+        }
+      : {
+          id: 'COALESCE(p.id, c.id)',
+          name: 'COALESCE(p.name, c.name)',
+          icon: 'COALESCE(p.icon, c.icon)',
+          color: 'COALESCE(p.color, c.color)',
+          group: 'COALESCE(p.id, c.id)',
+        };
   const rows = await sqlite.getAllAsync<{
     id: string | null;
     name: string | null;
@@ -265,17 +312,17 @@ async function categoryTotalsForRange(
     count: number;
   }>(
     `SELECT
-       COALESCE(p.id, c.id) AS id,
-       COALESCE(p.name, c.name) AS name,
-       COALESCE(p.icon, c.icon) AS icon,
-       COALESCE(p.color, c.color) AS color,
+       ${select.id} AS id,
+       ${select.name} AS name,
+       ${select.icon} AS icon,
+       ${select.color} AS color,
        sum(abs(el.amount)) AS total,
        count(DISTINCT el.transaction_id) AS count
      FROM effective_ledger el
      LEFT JOIN categories c ON c.id = el.category_id
      LEFT JOIN categories p ON p.id = c.parent_id
      ${clause}
-     GROUP BY COALESCE(p.id, c.id)`,
+     GROUP BY ${select.group}`,
     values,
   );
   const map = new Map<string, CategoryAgg>();
@@ -299,17 +346,19 @@ async function categoryTotalsForRange(
  */
 export async function getCategoryBreakdown(
   params: RangeParams,
-  options: { kind?: 'expense' | 'income'; limit?: number } = {},
+  options: { kind?: 'expense' | 'income'; limit?: number; grouping?: CategoryGrouping } = {},
 ): Promise<{ rows: CategoryBreakdownRow[]; total: number }> {
   const kind = options.kind ?? 'expense';
+  const grouping = options.grouping ?? 'root';
   const prevRange = previousRange(params.range);
 
-  const current = await categoryTotalsForRange(kind, params);
-  const currentRefunds = kind === 'expense' ? await categoryTotalsForRange('refund', params) : new Map<string, CategoryAgg>();
-  const previous = await categoryTotalsForRange(kind, { ...params, range: prevRange });
+  const current = await categoryTotalsForRange(kind, params, grouping);
+  const currentRefunds =
+    kind === 'expense' ? await categoryTotalsForRange('refund', params, grouping) : new Map<string, CategoryAgg>();
+  const previous = await categoryTotalsForRange(kind, { ...params, range: prevRange }, grouping);
   const previousRefunds =
     kind === 'expense'
-      ? await categoryTotalsForRange('refund', { ...params, range: prevRange })
+      ? await categoryTotalsForRange('refund', { ...params, range: prevRange }, grouping)
       : new Map<string, CategoryAgg>();
 
   const rows: CategoryBreakdownRow[] = [];
@@ -341,48 +390,52 @@ export async function getCategoryBreakdown(
     row.share = total > 0 ? (row.total / total) * 100 : 0;
   }
 
-  // Child rows (one level of drill-down) for expense categories.
-  if (kind === 'expense') {
+  // Child rows (one level of drill-down) for expense categories. Comparisons
+  // use the same previous window as the parent, so a child's percentage change
+  // is never silently "new".
+  if (kind === 'expense' && grouping === 'root') {
     const sqlite = getSqlite();
-    const childClause = ledgerWhere(params, [
-      { sql: `el.type = ?`, params: ['expense'] },
-      { sql: 'c.parent_id IS NOT NULL' },
-    ]);
-    const childRows = await sqlite.getAllAsync<{
-      id: string;
-      parent_id: string;
-      name: string;
-      icon: string;
-      color: string;
-      total: number;
-      count: number;
-    }>(
-      `SELECT c.id AS id, c.parent_id AS parent_id, c.name AS name, c.icon AS icon, c.color AS color,
-              sum(abs(el.amount)) AS total, count(DISTINCT el.transaction_id) AS count
-       FROM effective_ledger el
-       JOIN categories c ON c.id = el.category_id
-       ${childClause.clause}
-       GROUP BY c.id`,
-      childClause.values,
-    );
+    const childQuery = async (kindName: 'expense' | 'refund', range: DateRange) => {
+      const { clause, values } = ledgerWhere(
+        { ...params, range },
+        [
+          { sql: `el.type = ?`, params: [kindName] },
+          { sql: 'c.parent_id IS NOT NULL' },
+        ],
+      );
+      return sqlite.getAllAsync<{ id: string; parent_id: string; name: string; icon: string; color: string; total: number; count: number }>(
+        `SELECT c.id AS id, c.parent_id AS parent_id, c.name AS name, c.icon AS icon, c.color AS color,
+                sum(abs(el.amount)) AS total, count(DISTINCT el.transaction_id) AS count
+         FROM effective_ledger el
+         JOIN categories c ON c.id = el.category_id
+         ${clause}
+         GROUP BY c.id`,
+        values,
+      );
+    };
 
-    const refundClause = ledgerWhere(params, [
-      { sql: `el.type = ?`, params: ['refund'] },
-      { sql: 'c.parent_id IS NOT NULL' },
+    const [childRows, refundRows, previousChildRows, previousRefundRows] = await Promise.all([
+      childQuery('expense', params.range),
+      childQuery('refund', params.range),
+      childQuery('expense', prevRange),
+      childQuery('refund', prevRange),
     ]);
-    const refundRows = await sqlite.getAllAsync<{ id: string; parent_id: string; total: number }>(
-      `SELECT c.id AS id, c.parent_id AS parent_id, sum(abs(el.amount)) AS total
-       FROM effective_ledger el
-       JOIN categories c ON c.id = el.category_id
-       ${refundClause.clause}
-       GROUP BY c.id`,
-      refundClause.values,
-    );
     const refundByChild = new Map(refundRows.map((r) => [r.id, Number(r.total)]));
+    const previousByChild = new Map<string, { total: number; refunds: number }>();
+    for (const row of previousChildRows) {
+      previousByChild.set(row.id, { total: Number(row.total), refunds: 0 });
+    }
+    for (const row of previousRefundRows) {
+      const entry = previousByChild.get(row.id) ?? { total: 0, refunds: 0 };
+      entry.refunds = Number(row.total);
+      previousByChild.set(row.id, entry);
+    }
 
     const byParent = new Map<string, CategoryBreakdownRow[]>();
     for (const child of childRows) {
       const net = Number(child.total) - (refundByChild.get(child.id) ?? 0);
+      const previousEntry = previousByChild.get(child.id);
+      const previousNet = previousEntry ? previousEntry.total - previousEntry.refunds : 0;
       const bucket = byParent.get(child.parent_id) ?? [];
       bucket.push({
         categoryId: child.id,
@@ -394,8 +447,8 @@ export async function getCategoryBreakdown(
         refunds: refundByChild.get(child.id) ?? 0,
         count: Number(child.count),
         share: 0,
-        previousTotal: 0,
-        change: null,
+        previousTotal: previousNet,
+        change: percentageChange(net, previousNet),
         children: [],
       });
       byParent.set(child.parent_id, bucket);
@@ -554,14 +607,61 @@ export async function getAccountBreakdown(params: RangeParams): Promise<{ rows: 
 
 export interface MerchantRow {
   name: string;
+  /** Net of refunds, positive minor units. */
   total: number;
   count: number;
   average: number;
   largest: number;
   lastUsed: string;
+  /** Share of ALL net spending in the period, including merchantless rows. */
   share: number;
   previousTotal: number;
   change: number | null;
+}
+
+export interface MerchantOverview {
+  rows: MerchantRow[];
+  /** Net spending across every ledger row in the period. */
+  totalSpending: number;
+  /** Net spending attributed to a merchant name. */
+  attributedSpending: number;
+  /** Spending without a merchant (or with refunds that offset it). */
+  unattributedSpending: number;
+  merchantCount: number;
+}
+
+export interface MerchantCategoryRow {
+  categoryId: string | null;
+  name: string;
+  icon: string;
+  color: string;
+  total: number;
+  count: number;
+  share: number;
+}
+
+export interface MerchantTrendPoint {
+  key: string;
+  label: string;
+  fullLabel: string;
+  value: number;
+}
+
+export interface MerchantDetail {
+  name: string;
+  total: number;
+  gross: number;
+  refunds: number;
+  count: number;
+  refundCount: number;
+  average: number;
+  largest: number;
+  lastUsed: string | null;
+  share: number;
+  previousTotal: number;
+  change: number | null;
+  categories: MerchantCategoryRow[];
+  trend: MerchantTrendPoint[];
 }
 
 /**
@@ -587,14 +687,14 @@ interface MerchantAgg {
 async function merchantAggregates(params: RangeParams): Promise<Map<string, MerchantAgg>> {
   const sqlite = getSqlite();
   const { clause, values } = ledgerWhere(params, [
-    { sql: `el.type = ?`, params: ['expense'] },
+    { sql: `el.type IN ('expense', 'refund')` },
     { sql: `t.merchant IS NOT NULL AND trim(t.merchant) <> ''` },
   ]);
   const rows = await sqlite.getAllAsync<{ name: string; total: number; count: number; largest: number; lastUsed: string }>(
     `SELECT ${MERCHANT_EXPR} AS name,
-            sum(abs(el.amount)) AS total,
-            count(DISTINCT el.transaction_id) AS count,
-            max(abs(el.amount)) AS largest,
+            sum(CASE WHEN el.type = 'expense' THEN abs(el.amount) ELSE -abs(el.amount) END) AS total,
+            count(DISTINCT CASE WHEN el.type = 'expense' THEN el.transaction_id END) AS count,
+            max(CASE WHEN el.type = 'expense' THEN abs(el.amount) END) AS largest,
             max(el.date) AS lastUsed
      FROM effective_ledger el
      JOIN transactions t ON t.id = el.transaction_id
@@ -607,20 +707,27 @@ async function merchantAggregates(params: RangeParams): Promise<Map<string, Merc
     map.set(row.name, {
       total: Number(row.total),
       count: Number(row.count),
-      largest: Number(row.largest),
+      largest: Number(row.largest ?? 0),
       lastUsed: row.lastUsed,
     });
   }
   return map;
 }
 
-export async function getTopMerchants(params: RangeParams, limit = 10): Promise<MerchantRow[]> {
+/**
+ * Merchant spend overview. The share denominator is ALL net spending in the
+ * period (not just the named merchants), so "20% of spending" reconciles with
+ * the total on the Insights screen even when some transactions have no merchant.
+ */
+export async function getMerchantOverview(params: RangeParams, limit = 50): Promise<MerchantOverview> {
   const prevRange = previousRange(params.range);
-  const [current, previous] = await Promise.all([
+  const [current, previous, currentTotals] = await Promise.all([
     merchantAggregates(params),
     merchantAggregates({ ...params, range: prevRange }),
+    totalsForRange(params, params.range),
   ]);
-  const total = Array.from(current.values()).reduce((sum, entry) => sum + entry.total, 0);
+  const totalSpending = currentTotals.netExpense;
+  const attributedSpending = Array.from(current.values()).reduce((sum, entry) => sum + entry.total, 0);
   const rows: MerchantRow[] = Array.from(current.entries()).map(([name, entry]) => {
     const prevTotal = previous.get(name)?.total ?? 0;
     return {
@@ -630,13 +737,138 @@ export async function getTopMerchants(params: RangeParams, limit = 10): Promise<
       average: entry.count > 0 ? Math.round(entry.total / entry.count) : 0,
       largest: entry.largest,
       lastUsed: entry.lastUsed,
-      share: total > 0 ? (entry.total / total) * 100 : 0,
+      share: totalSpending > 0 ? (entry.total / totalSpending) * 100 : 0,
       previousTotal: prevTotal,
       change: percentageChange(entry.total, prevTotal),
     };
   });
   rows.sort((a, b) => b.total - a.total);
-  return rows.slice(0, limit);
+  return {
+    rows: rows.slice(0, limit),
+    totalSpending,
+    attributedSpending,
+    unattributedSpending: totalSpending - attributedSpending,
+    merchantCount: rows.length,
+  };
+}
+
+export async function getTopMerchants(params: RangeParams, limit = 10): Promise<MerchantRow[]> {
+  return (await getMerchantOverview(params, limit)).rows;
+}
+
+/** Merchant detail: totals, refunds, category mix and a monthly trend. */
+export async function getMerchantDetail(params: RangeParams, merchantName: string): Promise<MerchantDetail> {
+  const sqlite = getSqlite();
+  const name = merchantName.trim();
+  const summaryFor = async (range: DateRange) => {
+    const { clause, values } = ledgerWhere(
+      { ...params, range },
+      [
+        { sql: `el.type IN ('expense', 'refund')` },
+        { sql: `(${MERCHANT_EXPR}) = ?`, params: [name] },
+      ],
+    );
+    return sqlite.getFirstAsync<{
+      gross: number;
+      refunds: number;
+      count: number;
+      refundCount: number;
+      largest: number;
+      lastUsed: string | null;
+    }>(
+      `SELECT
+         coalesce(sum(CASE WHEN el.type = 'expense' THEN abs(el.amount) ELSE 0 END), 0) AS gross,
+         coalesce(sum(CASE WHEN el.type = 'refund' THEN abs(el.amount) ELSE 0 END), 0) AS refunds,
+         count(DISTINCT CASE WHEN el.type = 'expense' THEN el.transaction_id END) AS count,
+         count(DISTINCT CASE WHEN el.type = 'refund' THEN el.transaction_id END) AS refundCount,
+         coalesce(max(CASE WHEN el.type = 'expense' THEN abs(el.amount) END), 0) AS largest,
+         max(el.date) AS lastUsed
+       FROM effective_ledger el
+       JOIN transactions t ON t.id = el.transaction_id
+       ${clause}`,
+      values,
+    );
+  };
+
+  const prevRange = previousRange(params.range);
+  const [current, previous, totals, categoryRows, monthRows] = await Promise.all([
+    summaryFor(params.range),
+    summaryFor(prevRange),
+    totalsForRange(params, params.range),
+    sqlite.getAllAsync<{ id: string | null; name: string | null; icon: string | null; color: string | null; total: number; count: number }>(
+      `SELECT COALESCE(p.id, c.id) AS id, COALESCE(p.name, c.name) AS name,
+              COALESCE(p.icon, c.icon) AS icon, COALESCE(p.color, c.color) AS color,
+              sum(CASE WHEN el.type = 'expense' THEN abs(el.amount) ELSE -abs(el.amount) END) AS total,
+              count(DISTINCT CASE WHEN el.type = 'expense' THEN el.transaction_id END) AS count
+       FROM effective_ledger el
+       JOIN transactions t ON t.id = el.transaction_id
+       LEFT JOIN categories c ON c.id = el.category_id
+       LEFT JOIN categories p ON p.id = c.parent_id
+       ${ledgerWhere({ ...params }, [
+         { sql: `el.type IN ('expense', 'refund')` },
+         { sql: `(${MERCHANT_EXPR}) = ?`, params: [name] },
+       ]).clause}
+       GROUP BY COALESCE(p.id, c.id)`,
+      ledgerWhere({ ...params }, [
+        { sql: `el.type IN ('expense', 'refund')` },
+        { sql: `(${MERCHANT_EXPR}) = ?`, params: [name] },
+      ]).values,
+    ),
+    sqlite.getAllAsync<{ month: string; total: number }>(
+      `SELECT substr(el.date, 1, 7) AS month,
+              sum(CASE WHEN el.type = 'expense' THEN abs(el.amount) ELSE -abs(el.amount) END) AS total
+       FROM effective_ledger el
+       JOIN transactions t ON t.id = el.transaction_id
+       ${ledgerWhere({ ...params }, [
+         { sql: `el.type IN ('expense', 'refund')` },
+         { sql: `(${MERCHANT_EXPR}) = ?`, params: [name] },
+       ]).clause}
+       GROUP BY month ORDER BY month ASC`,
+      ledgerWhere({ ...params }, [
+        { sql: `el.type IN ('expense', 'refund')` },
+        { sql: `(${MERCHANT_EXPR}) = ?`, params: [name] },
+      ]).values,
+    ),
+  ]);
+
+  const total = Number(current?.gross ?? 0) - Number(current?.refunds ?? 0);
+  const previousTotal = Number(previous?.gross ?? 0) - Number(previous?.refunds ?? 0);
+  const categoryTotal = categoryRows.reduce((sum, row) => sum + Math.max(0, Number(row.total)), 0);
+  const monthMap = new Map(monthRows.map((row) => [row.month, Number(row.total)]));
+  const trend = buildTrendBuckets(params.range, 'month').map((bucket) => ({
+    key: bucket.key,
+    label: bucket.label,
+    fullLabel: bucket.fullLabel,
+    value: Math.max(0, monthMap.get(toISODate(bucket.start).slice(0, 7)) ?? 0),
+  }));
+
+  return {
+    name,
+    total,
+    gross: Number(current?.gross ?? 0),
+    refunds: Number(current?.refunds ?? 0),
+    count: Number(current?.count ?? 0),
+    refundCount: Number(current?.refundCount ?? 0),
+    average: Number(current?.count ?? 0) > 0 ? Math.round(total / Number(current?.count ?? 0)) : 0,
+    largest: Number(current?.largest ?? 0),
+    lastUsed: current?.lastUsed ?? null,
+    share: totals.netExpense > 0 ? (total / totals.netExpense) * 100 : 0,
+    previousTotal,
+    change: percentageChange(total, previousTotal),
+    categories: categoryRows
+      .filter((row) => Number(row.total) !== 0)
+      .map((row) => ({
+        categoryId: row.id,
+        name: row.name ?? 'Uncategorised',
+        icon: row.icon ?? 'help-circle-outline',
+        color: row.color ?? '#929AA8',
+        total: Number(row.total),
+        count: Number(row.count),
+        share: categoryTotal > 0 ? (Number(row.total) / categoryTotal) * 100 : 0,
+      }))
+      .sort((a, b) => b.total - a.total),
+    trend,
+  };
 }
 
 /* ---------------------------- Largest / recent items ------------------------ */
@@ -713,12 +945,17 @@ export interface DailySpendingStats {
 
 export async function getDailySpendingStats(params: RangeParams): Promise<DailySpendingStats> {
   const sqlite = getSqlite();
-  const { clause, values } = ledgerWhere(params, [{ sql: `el.type = ?`, params: ['expense'] }]);
-  const rows = await sqlite.getAllAsync<{ date: string; total: number }>(
-    `SELECT el.date AS date, sum(abs(el.amount)) AS total FROM effective_ledger el ${clause} GROUP BY el.date`,
+  const { clause, values } = ledgerWhere(params, [{ sql: `el.type IN ('expense', 'refund')` }]);
+  const rawRows = await sqlite.getAllAsync<{ date: string; total: number }>(
+    `SELECT el.date AS date,
+            sum(CASE WHEN el.type = 'expense' THEN abs(el.amount) ELSE -abs(el.amount) END) AS total
+     FROM effective_ledger el ${clause} GROUP BY el.date`,
     values,
   );
-  const byDate = new Map(rows.map((r) => [r.date, Number(r.total)]));
+  // Refund-only days must not appear as active "spending" days, and a refund
+  // reduces the day it landed on (same rule as the period totals).
+  const rows = rawRows.filter((row) => Number(row.total) > 0);
+  const byDate = new Map(rawRows.map((r) => [r.date, Number(r.total)]));
   const today = toISODate(new Date());
 
   const trailingAverage = (days: number) => {
@@ -737,8 +974,9 @@ export async function getDailySpendingStats(params: RangeParams): Promise<DailyS
   };
 
   let highest: { date: string; amount: number } | null = null;
-  for (const [date, amount] of byDate) {
-    if (!highest || amount > highest.amount) highest = { date, amount };
+  for (const row of rows) {
+    const amount = Number(row.total);
+    if (!highest || amount > highest.amount) highest = { date: row.date, amount };
   }
 
   let lowestDay: { date: string; amount: number } | null = null;
@@ -749,7 +987,7 @@ export async function getDailySpendingStats(params: RangeParams): Promise<DailyS
     if (!lowestDay || amount < lowestDay.amount) lowestDay = { date: key, amount };
   }
 
-  const total = rows.reduce((sum, r) => sum + Number(r.total), 0);
+  const total = rawRows.reduce((sum, r) => sum + Number(r.total), 0);
   const activeDays = rows.length;
   return {
     today: byDate.get(today) ?? 0,
@@ -780,9 +1018,12 @@ export interface VelocityStats {
 export async function getSpendingVelocity(params: RangeParams): Promise<VelocityStats> {
   const sqlite = getSqlite();
   const totalFor = async (range: DateRange) => {
-    const { clause, values } = ledgerWhere({ ...params, range }, [{ sql: `el.type = ?`, params: ['expense'] }]);
+    const { clause, values } = ledgerWhere({ ...params, range }, [
+      { sql: `el.type IN ('expense', 'refund')` },
+    ]);
     const row = await sqlite.getFirstAsync<{ total: number }>(
-      `SELECT coalesce(sum(abs(el.amount)), 0) AS total FROM effective_ledger el ${clause}`,
+      `SELECT coalesce(sum(CASE WHEN el.type = 'expense' THEN abs(el.amount) ELSE -abs(el.amount) END), 0) AS total
+       FROM effective_ledger el ${clause}`,
       values,
     );
     return Number(row?.total ?? 0);
@@ -813,6 +1054,7 @@ export async function getSpendingVelocity(params: RangeParams): Promise<Velocity
 /* --------------------------- Category detail stats -------------------------- */
 
 export interface CategoryStats {
+  /** Net of refunds, positive minor units. */
   total: number;
   count: number;
   average: number;
@@ -820,37 +1062,55 @@ export interface CategoryStats {
   averagePerDay: number;
   firstDate: string | null;
   lastDate: string | null;
+  previousTotal: number;
+  change: number | null;
 }
 
 export async function getCategoryStats(params: RangeParams): Promise<CategoryStats> {
   const sqlite = getSqlite();
-  const { clause, values } = ledgerWhere(params, [{ sql: `el.type = ?`, params: ['expense'] }]);
-  const row = await sqlite.getFirstAsync<{
-    total: number;
-    count: number;
-    largest: number;
-    firstDate: string | null;
-    lastDate: string | null;
-  }>(
-    `SELECT coalesce(sum(abs(el.amount)), 0) AS total,
-            count(DISTINCT el.transaction_id) AS count,
-            coalesce(max(abs(el.amount)), 0) AS largest,
-            min(el.date) AS firstDate,
-            max(el.date) AS lastDate
-     FROM effective_ledger el ${clause}`,
-    values,
-  );
-  const total = Number(row?.total ?? 0);
-  const count = Number(row?.count ?? 0);
+  const statsFor = async (range: DateRange) => {
+    const { clause, values } = ledgerWhere(
+      { ...params, range },
+      [{ sql: `el.type IN ('expense', 'refund')` }],
+    );
+    const row = await sqlite.getFirstAsync<{
+      gross: number;
+      refunds: number;
+      count: number;
+      largest: number;
+      firstDate: string | null;
+      lastDate: string | null;
+    }>(
+      `SELECT coalesce(sum(CASE WHEN el.type = 'expense' THEN abs(el.amount) ELSE 0 END), 0) AS gross,
+              coalesce(sum(CASE WHEN el.type = 'refund' THEN abs(el.amount) ELSE 0 END), 0) AS refunds,
+              count(DISTINCT CASE WHEN el.type = 'expense' THEN el.transaction_id END) AS count,
+              coalesce(max(CASE WHEN el.type = 'expense' THEN abs(el.amount) END), 0) AS largest,
+              min(el.date) AS firstDate,
+              max(el.date) AS lastDate
+       FROM effective_ledger el ${clause}`,
+      values,
+    );
+    return {
+      total: Number(row?.gross ?? 0) - Number(row?.refunds ?? 0),
+      count: Number(row?.count ?? 0),
+      largest: Number(row?.largest ?? 0),
+      firstDate: row?.firstDate ?? null,
+      lastDate: row?.lastDate ?? null,
+    };
+  };
+
+  const [current, previous] = await Promise.all([statsFor(params.range), statsFor(previousRange(params.range))]);
   const days = daysInRange(params.range);
   return {
-    total,
-    count,
-    average: count > 0 ? Math.round(total / count) : 0,
-    largest: Number(row?.largest ?? 0),
-    averagePerDay: total / days,
-    firstDate: row?.firstDate ?? null,
-    lastDate: row?.lastDate ?? null,
+    total: current.total,
+    count: current.count,
+    average: current.count > 0 ? Math.round(current.total / current.count) : 0,
+    largest: current.largest,
+    averagePerDay: current.total / days,
+    firstDate: current.firstDate,
+    lastDate: current.lastDate,
+    previousTotal: previous.total,
+    change: percentageChange(current.total, previous.total),
   };
 }
 
@@ -922,6 +1182,8 @@ export interface CategoryMonthlyOptions {
   categoryIds?: string[];
   monthStartDay?: number;
   anchor?: Date;
+  /** `root` rolls children into their parent; `exact` keeps the child itself. */
+  grouping?: CategoryGrouping;
 }
 
 interface CategoryMonthAgg {
@@ -942,9 +1204,20 @@ async function categoryMonthAggregates(
   params: RangeParams,
   monthExpr: string,
   kind: 'expense' | 'refund',
+  grouping: CategoryGrouping = 'root',
 ): Promise<Map<string, CategoryMonthAgg>> {
   const sqlite = getSqlite();
   const { clause, values } = ledgerWhere(params, [{ sql: `el.type = ?`, params: [kind] }]);
+  const select =
+    grouping === 'exact'
+      ? { id: 'c.id', name: 'c.name', icon: 'c.icon', color: 'c.color', group: 'c.id' }
+      : {
+          id: 'COALESCE(p.id, c.id)',
+          name: 'COALESCE(p.name, c.name)',
+          icon: 'COALESCE(p.icon, c.icon)',
+          color: 'COALESCE(p.color, c.color)',
+          group: 'COALESCE(p.id, c.id)',
+        };
   const rows = await sqlite.getAllAsync<{
     id: string | null;
     name: string | null;
@@ -955,10 +1228,10 @@ async function categoryMonthAggregates(
     count: number;
   }>(
     `SELECT
-       COALESCE(p.id, c.id) AS id,
-       COALESCE(p.name, c.name) AS name,
-       COALESCE(p.icon, c.icon) AS icon,
-       COALESCE(p.color, c.color) AS color,
+       ${select.id} AS id,
+       ${select.name} AS name,
+       ${select.icon} AS icon,
+       ${select.color} AS color,
        ${monthExpr} AS month,
        sum(abs(el.amount)) AS total,
        count(DISTINCT el.transaction_id) AS count
@@ -966,7 +1239,7 @@ async function categoryMonthAggregates(
      LEFT JOIN categories c ON c.id = el.category_id
      LEFT JOIN categories p ON p.id = c.parent_id
      ${clause}
-     GROUP BY COALESCE(p.id, c.id), month`,
+     GROUP BY ${select.group}, month`,
     values,
   );
 
@@ -1010,9 +1283,10 @@ export async function getCategoryMonthlyTrends(options: CategoryMonthlyOptions =
   const shift = Math.max(0, Math.min(27, monthStartDay - 1));
   const monthExpr = shift > 0 ? `substr(date(el.date, '-${shift} days'), 1, 7)` : `substr(el.date, 1, 7)`;
 
+  const grouping = options.grouping ?? 'root';
   const [expenses, refunds] = await Promise.all([
-    categoryMonthAggregates(params, monthExpr, 'expense'),
-    categoryMonthAggregates(params, monthExpr, 'refund'),
+    categoryMonthAggregates(params, monthExpr, 'expense', grouping),
+    categoryMonthAggregates(params, monthExpr, 'refund', grouping),
   ]);
 
   const rows: CategoryMonthlyRow[] = [];

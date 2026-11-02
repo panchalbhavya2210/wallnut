@@ -108,6 +108,10 @@ export interface NotificationSettings {
   installmentReminders: boolean;
   /** Nudges when someone has owed you money for a while (opt-in — never spam). */
   sharedReminders: boolean;
+  /** A repeating local nudge to record today's spending. */
+  dailyReminder: boolean;
+  /** Local time for the daily check-in, HH:mm (24-hour). */
+  dailyReminderTime: string;
 }
 
 /** First-visit explainers the user has dismissed (keyed per screen/feature). */
@@ -177,8 +181,11 @@ export const DEFAULT_SETTINGS: SettingsGroups = {
     showDecimals: false,
   },
   appearance: {
-    theme: 'light',
-    accent: 'botanical',
+    // Wallnut 2.0 visual language: a near-black canvas with the indigo accent
+    // from the product reference. Light mode and every other accent remain
+    // available in Settings → Appearance.
+    theme: 'dark',
+    accent: 'indigo',
     fontFamily: 'inter',
     palette: 'wallnut',
     cornerStyle: 'round',
@@ -187,7 +194,7 @@ export const DEFAULT_SETTINGS: SettingsGroups = {
     chartColors: 'theme',
     reduceMotion: false,
     fontScale: 'default',
-    themeVersion: 4,
+    themeVersion: 5,
   },
   dashboard: {
     defaultPeriod: 'thisMonth',
@@ -235,6 +242,8 @@ export const DEFAULT_SETTINGS: SettingsGroups = {
     cardReminders: true,
     installmentReminders: true,
     sharedReminders: false,
+    dailyReminder: true,
+    dailyReminderTime: '21:00',
   },
   hints: {
     dismissed: [],
@@ -293,11 +302,17 @@ export async function loadAllSettings(): Promise<Partial<SettingsGroups>> {
           if (appearance.accent === 'magenta') appearance.accent = DEFAULT_SETTINGS.appearance.accent;
           if (appearance.theme === 'dark') appearance.theme = DEFAULT_SETTINGS.appearance.theme;
         }
-        // Pass 24 — shape option. Older installs keep the default round look.
-        if ((appearance.themeVersion ?? 0) < 4) {
+        // Wallnut 2.0 — neutral black canvas + indigo accent. Only the exact
+        // previous default pair (light + botanical) is migrated; an explicit
+        // choice of dark, light, or any other accent is preserved.
+        if ((appearance.themeVersion ?? 0) < 5) {
           appearance.cornerStyle = appearance.cornerStyle ?? 'round';
+          if (appearance.theme === 'light' && appearance.accent === 'botanical') {
+            appearance.theme = DEFAULT_SETTINGS.appearance.theme;
+            appearance.accent = DEFAULT_SETTINGS.appearance.accent;
+          }
         }
-        appearance.themeVersion = 4;
+        appearance.themeVersion = 5;
         result.appearance = appearance;
         continue;
       }

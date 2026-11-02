@@ -17,6 +17,27 @@ import { getDevicePaletteSeed, type DevicePaletteResult } from '@/services/devic
  * Appearance — theme, accent, shape, text and motion. Changes apply instantly
  * because the theme is built from this store on every render.
  */
+function ColorToken({ label, value }: { label: string; value: string }) {
+  const theme = useTheme();
+  return (
+    <View style={{ flex: 1, minWidth: 0, gap: 5, alignItems: 'center' }}>
+      <View
+        style={{
+          width: '100%',
+          height: 38,
+          borderRadius: theme.radius.md,
+          backgroundColor: value,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: theme.colors.border,
+        }}
+      />
+      <AppText variant="caption" tone="muted" numberOfLines={1} style={{ fontSize: 10 }}>
+        {label}
+      </AppText>
+    </View>
+  );
+}
+
 export default function AppearanceSettings() {
   const theme = useTheme();
   const appearance = useSettingsStore((state) => state.appearance);
@@ -144,7 +165,7 @@ export default function AppearanceSettings() {
           </View>
         </ListGroup>
 
-        <ListGroup title="Accent colour">
+        <ListGroup title="Primary colour">
           <View style={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {(Object.keys(accents) as AccentName[]).map((name) => {
@@ -177,6 +198,22 @@ export default function AppearanceSettings() {
             </View>
             <AppText variant="caption" tone="muted">
               {accentLabel} · used for buttons, selected states and charts. Income and expense colours never change.
+            </AppText>
+          </View>
+        </ListGroup>
+
+        <ListGroup title="Semantic colours">
+          <View style={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
+            <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
+              <ColorToken label="Primary" value={theme.colors.accent.base} />
+              <ColorToken label="Success" value={theme.colors.positive} />
+              <ColorToken label="Danger" value={theme.colors.negative} />
+              <ColorToken label="Warning" value={theme.colors.warning} />
+              <ColorToken label="Canvas" value={theme.colors.background} />
+            </View>
+            <AppText variant="caption" tone="muted">
+              Green, red and amber are deliberately fixed: money in, money out and needs attention. That keeps financial meaning
+              consistent even when you switch themes, accents or typefaces.
             </AppText>
           </View>
         </ListGroup>

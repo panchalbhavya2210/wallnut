@@ -141,9 +141,37 @@ export async function getReviewQueue(limit = 100): Promise<ReviewItem[]> {
   return items.sort((a, b) => weight(b) - weight(a) || b.date.localeCompare(a.date));
 }
 
+/**
+ * Cheap badge count. The full queue runs a duplicate lookup per row; a header
+ * badge must never pay that cost on every database revision. This uses the
+ * same predicates as `getReviewQueue` in one aggregate query.
+ */
 export async function reviewQueueCount(): Promise<number> {
-  const items = await getReviewQueue(500);
-  return items.length;
+  const sqlite = getSqlite();
+  const avgRow = await sqlite.getFirstAsync<{ avg: number }>(
+    `SELECT coalesce(avg(abs(amount)), 0) AS avg FROM transactions WHERE type = 'expense'`,
+  );
+  const largeThreshold = Math.max(Number(avgRow?.avg ?? 0) * 6, 1_000_000);
+  const row = await sqlite.getFirstAsync<{ count: number }>(
+    `SELECT count(*) AS count
+     FROM transactions t
+     WHERE (
+        t.is_reviewed = 0
+        OR (t.category_id IS NULL AND t.type = 'expense')
+        OR (t.is_transfer = 1 AND t.transfer_account_id IS NULL)
+        OR (t.type = 'expense' AND t.is_recurring = 0 AND abs(t.amount) > ?)
+        OR t.fingerprint IN (
+          SELECT fingerprint FROM transactions
+          WHERE fingerprint IS NOT NULL GROUP BY fingerprint HAVING count(*) > 1
+        )
+     )
+     AND t.id NOT IN (
+       SELECT ref_key FROM inbox_dismissals
+       WHERE kind = 'transaction' AND (snoozed_until IS NULL OR snoozed_until > ?)
+     )`,
+    [largeThreshold, Date.now()],
+  );
+  return Number(row?.count ?? 0);
 }
 
 /**

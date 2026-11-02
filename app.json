@@ -7,8 +7,8 @@
     "icon": "./assets/images/icon.png",
     "scheme": "wallnut",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#0A0A13",
-    "primaryColor": "#FF3D8B",
+    "backgroundColor": "#090B0F",
+    "primaryColor": "#8B8CFF",
     "android": {
       "package": "com.wallnut.app",
       "adaptiveIcon": {
@@ -17,7 +17,9 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": []
+      "permissions": [
+        "SCHEDULE_EXACT_ALARM"
+      ]
     },
     "ios": {
       "icon": "./assets/images/icon.png",
@@ -44,7 +46,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 180,
           "dark": {
-            "backgroundColor": "#0A0A13",
+            "backgroundColor": "#090B0F",
             "image": "./assets/images/splash-icon-dark.png"
           }
         }

@@ -46,8 +46,10 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
-  const translateY = useSharedValue(height);
+  const entryY = useSharedValue(height);
+  const dragY = useSharedValue(0);
   const backdrop = useSharedValue(0);
+  const duration = theme.motion.reduceMotion ? 0 : theme.motion.normal;
 
   // The sheet lifts with the keyboard so fields are never hidden behind it.
   // Modal windows on Android do not resize with the soft keyboard, so this
@@ -57,29 +59,38 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
 
   useEffect(() => {
     if (visible) {
-      backdrop.value = withTiming(1, { duration: theme.motion.fast });
-      translateY.value = theme.motion.reduceMotion
+      backdrop.value = withTiming(1, { duration });
+      entryY.value = theme.motion.reduceMotion
         ? 0
-        : withSpring(0, { damping: 28, stiffness: 300, overshootClamping: true });
-    } else {
-      backdrop.value = withTiming(0, { duration: theme.motion.fast });
-      translateY.value = withTiming(height, { duration: theme.motion.fast });
+        : withSpring(0, { damping: 30, stiffness: 320, overshootClamping: true });
+      return;
     }
-  }, [visible, height, theme.motion.reduceMotion, backdrop, translateY]);
+    backdrop.value = withTiming(0, { duration });
+    entryY.value = withTiming(height, { duration });
+    // Stable Reanimated values; the animation is driven by visibility.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, height, duration, theme.motion.reduceMotion]);
 
   const pan = Gesture.Pan()
+    .activeOffsetY([-10, 10])
+    .failOffsetX([-14, 14])
     .onUpdate((event) => {
-      translateY.value = Math.max(0, event.translationY);
+      dragY.value = Math.max(0, event.translationY);
     })
     .onEnd((event) => {
       if (event.translationY > 130 || event.velocityY > 900) {
+        // Leave the next open at the resting position, then let the parent
+        // unmount the modal.
+        dragY.value = 0;
         runOnJS(onClose)();
       } else {
-        translateY.value = withSpring(0, { damping: 28, stiffness: 300, overshootClamping: true });
+        dragY.value = withSpring(0, { damping: 30, stiffness: 320, overshootClamping: true });
       }
     });
 
-  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: Math.max(0, entryY.value + dragY.value) }],
+  }));
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdrop.value }));
   const maxHeight = Math.min(height * maxHeightRatio, availableHeight);
 
@@ -87,8 +98,10 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: lifted }}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.overlay }, backdropStyle]} />
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close sheet" />
         <Animated.View
+          accessibilityViewIsModal
+          accessibilityLabel={title}
           style={[
             {
               backgroundColor: theme.colors.surfaceElevated,
@@ -119,6 +132,24 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
               ) : null}
             </View>
           </GestureDetector>
+          <Pressable
+            onPress={onClose}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            style={({ pressed }) => ({
+              position: 'absolute',
+              top: theme.spacing.md,
+              right: theme.spacing.lg,
+              width: 34,
+              height: 34,
+              borderRadius: theme.radius.full,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: pressed ? theme.colors.pressed : 'transparent',
+            })}>
+            <Ionicons name="close" size={19} color={theme.colors.muted} />
+          </Pressable>
           <ScrollView
             style={{ flexGrow: 0 }}
             contentContainerStyle={{
@@ -128,6 +159,7 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
             automaticallyAdjustKeyboardInsets
+            nestedScrollEnabled
             showsVerticalScrollIndicator={false}>
             {children}
           </ScrollView>

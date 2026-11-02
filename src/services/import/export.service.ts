@@ -1,9 +1,15 @@
 import { getSqlite } from '@/db/client';
 import { USER_DATA_DELETE_ORDER, USER_DATA_TABLES, VOLATILE_TABLES } from '@/db/tables';
-import { listAccounts, recalculateAllBalances } from '@/services/accounts.service';
+import { recalculateAllBalances } from '@/services/accounts.service';
 import { notifyDbChanged } from '@/stores/db.store';
 import { toCsv } from '@/utils/csv';
 import { toISODate } from '@/utils/date';
+import {
+  buildTransactionExportDataset,
+  transactionRowsToCsv,
+  type ExportRow,
+  type ExportSplit,
+} from '@/utils/export-format';
 import { transactionFingerprint } from '@/utils/hash';
 import { formatMoney } from '@/utils/money';
 
@@ -20,25 +26,8 @@ export interface ExportOptions {
   formatCurrency?: string;
 }
 
-interface ExportRow {
-  id: string;
-  date: string;
-  type: string;
-  amount: number;
-  accountName: string;
-  transferAccountName: string | null;
-  categoryName: string | null;
-  merchant: string | null;
-  description: string | null;
-  notes: string | null;
-  reference: string | null;
-  isRecurring: number;
-  tags: string | null;
-  currency: string;
-}
-
-export async function buildTransactionExportRows(options: ExportOptions = {}): Promise<ExportRow[]> {
-  const sqlite = getSqlite();
+/** Shared WHERE builder so the preview count and the actual export cannot drift. */
+function exportWhere(options: ExportOptions): { clause: string; params: (string | number)[] } {
   const clauses: string[] = [];
   const params: (string | number)[] = [];
   if (options.from) {
@@ -54,7 +43,12 @@ export async function buildTransactionExportRows(options: ExportOptions = {}): P
     params.push(...options.accountIds, ...options.accountIds);
   }
   if (options.includeTransfers === false) clauses.push('t.is_transfer = 0');
+  return { clause: clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '', params };
+}
 
+export async function buildTransactionExportRows(options: ExportOptions = {}): Promise<ExportRow[]> {
+  const sqlite = getSqlite();
+  const { clause, params } = exportWhere(options);
   return sqlite.getAllAsync<ExportRow>(
     `SELECT t.id, t.date, t.type, t.amount,
             a.name AS accountName,
@@ -68,45 +62,59 @@ export async function buildTransactionExportRows(options: ExportOptions = {}): P
      LEFT JOIN accounts a ON a.id = t.account_id
      LEFT JOIN accounts ta ON ta.id = t.transfer_account_id
      LEFT JOIN categories c ON c.id = t.category_id
-     ${clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''}
+     ${clause}
      ORDER BY t.date ASC, t.created_at ASC`,
     params,
   );
 }
 
+/** Cheap record count for the export preview — never loads rows. */
+export async function countTransactionExportRows(options: ExportOptions = {}): Promise<number> {
+  const sqlite = getSqlite();
+  const { clause, params } = exportWhere(options);
+  const row = await sqlite.getFirstAsync<{ count: number }>(`SELECT count(*) AS count FROM transactions t ${clause}`, params);
+  return Number(row?.count ?? 0);
+}
+
 export async function exportTransactionsCsv(options: ExportOptions = {}): Promise<string> {
+  return transactionRowsToCsv(await buildTransactionExportRows(options));
+}
+
+export async function exportTransactionsJson(options: ExportOptions = {}): Promise<string> {
   const rows = await buildTransactionExportRows(options);
-  const headers = [
-    'Date',
-    'Type',
-    'Amount',
-    'Currency',
-    'Account',
-    'Transfer Account',
-    'Category',
-    'Merchant',
-    'Description',
-    'Notes',
-    'Reference',
-    'Recurring',
-    'Tags',
-  ];
-  const data = rows.map((row) => [
-    row.date,
-    row.type,
-    (row.amount / 100).toFixed(2),
-    row.currency,
-    row.accountName,
-    row.transferAccountName ?? '',
-    row.categoryName ?? '',
-    row.merchant ?? '',
-    row.description ?? '',
-    row.notes ?? '',
-    row.reference ?? '',
-    row.isRecurring ? 'yes' : 'no',
-    row.tags ?? '',
-  ]);
-  return toCsv(headers, data);
+  const splits = await loadExportSplits(rows.map((row) => row.id));
+  return JSON.stringify(
+    buildTransactionExportDataset(rows, splits, {
+      from: options.from ?? null,
+      to: options.to ?? null,
+      includeTransfers: options.includeTransfers !== false,
+    }),
+    null,
+    2,
+  );
+}
+
+async function loadExportSplits(ids: string[]): Promise<Map<string, ExportSplit[]>> {
+  const sqlite = getSqlite();
+  const map = new Map<string, ExportSplit[]>();
+  for (let index = 0; index < ids.length; index += 400) {
+    const chunk = ids.slice(index, index + 400);
+    if (chunk.length === 0) continue;
+    const rows = await sqlite.getAllAsync<{ transactionId: string; categoryName: string | null; amount: number }>(
+      `SELECT ts.transaction_id AS transactionId, c.name AS categoryName, ts.amount AS amount
+       FROM transaction_splits ts
+       LEFT JOIN categories c ON c.id = ts.category_id
+       WHERE ts.transaction_id IN (${chunk.map(() => '?').join(',')})
+       ORDER BY ts.transaction_id ASC`,
+      chunk,
+    );
+    for (const row of rows) {
+      const bucket = map.get(row.transactionId) ?? [];
+      bucket.push({ category: row.categoryName, amountMinor: Number(row.amount) });
+      map.set(row.transactionId, bucket);
+    }
+  }
+  return map;
 }
 
 export interface BackupFile {

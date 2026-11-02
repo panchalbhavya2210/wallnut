@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -11,6 +11,7 @@ import { AppText, MoneyText } from '@/components/ui/text';
 import { Button, Chip, IconButton, SegmentedControl } from '@/components/ui/controls';
 import { BottomSheet, DatePickerSheet, Field, FormSheet, PickerSheet } from '@/components/ui/sheets';
 import { AmountDisplay, AmountKeypad } from '@/components/AmountKeypad';
+import { AmountCalculatorSheet } from '@/components/AmountCalculator';
 import { confirm } from '@/components/ui/confirm';
 import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
@@ -31,6 +32,8 @@ import { addAttachment } from '@/services/attachments.service';
 import { aiFeatureStatus, aiStatusMessage } from '@/ai/client';
 import { suggestCategory, type CategorySuggestion } from '@/ai/features';
 import { fromISODate, toISODate } from '@/utils/date';
+import { currencyInfo } from '@/utils/money';
+import { formatCalculatorAmount } from '@/utils/calculator';
 import type { TransactionType } from '@/db/schema';
 
 /**
@@ -70,6 +73,8 @@ export default function TransactionComposer() {
   const [newTagOpen, setNewTagOpen] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<CategorySuggestion | null>(null);
   const [aiSuggesting, setAiSuggesting] = useState(false);
   const [loaded, setLoaded] = useState(!editingId);
@@ -202,7 +207,10 @@ export default function TransactionComposer() {
   /* --------------------------------- Actions -------------------------------- */
 
   const save = async () => {
-    if (saving) return;
+    // A ref guard closes the same-tick double-tap race that a state flag cannot:
+    // two taps before the first re-render used to create two transactions.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       if (amountMinor === 0) throw new Error('Enter an amount above zero.');
@@ -237,17 +245,29 @@ export default function TransactionComposer() {
         savedId = created.id;
       }
 
+      // The ledger row is already committed at this point. Attachment or
+      // settings failures must not throw back into the save handler — retrying
+      // a "failed" save would create a duplicate transaction.
       if (savedId && pendingFiles.length > 0) {
         for (const file of pendingFiles) {
-          await addAttachment(savedId, file);
+          try {
+            await addAttachment(savedId, file);
+          } catch {
+            toast.error('Transaction saved, but the receipt could not be attached.');
+            break;
+          }
         }
       }
 
       if (!editingId) {
-        updateFinance('finance', {
-          defaultAccountId: accountId,
-          defaultCategoryId: categoryId,
-        });
+        try {
+          updateFinance('finance', {
+            defaultAccountId: accountId,
+            defaultCategoryId: categoryId,
+          });
+        } catch {
+          // Remembering defaults is a convenience; never fail the save for it.
+        }
       }
       const kind = type === 'transfer' ? 'Transfer' : type === 'income' ? 'Income' : 'Expense';
       toast.success(`${money.format(amountMinor)}${merchant ? ` · ${merchant}` : ''}`, {
@@ -257,6 +277,7 @@ export default function TransactionComposer() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not save the transaction');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -323,12 +344,34 @@ export default function TransactionComposer() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
         {/* Amount */}
-        <View style={{ alignItems: 'center', paddingVertical: theme.spacing.lg }}>
+        <View style={{ alignItems: 'center', paddingVertical: theme.spacing.lg, gap: theme.spacing.sm }}>
           <AmountDisplay
             value={amountText}
             currencySymbol={money.currency === 'INR' ? '₹' : money.currency}
             tone={type === 'expense' ? 'negative' : type === 'income' ? 'positive' : 'primary'}
           />
+          {type !== 'transfer' ? (
+            <Pressable
+              onPress={() => setCalculatorOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Open amount calculator"
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                paddingHorizontal: theme.spacing.md,
+                paddingVertical: 5,
+                borderRadius: theme.radius.full,
+                backgroundColor: pressed ? theme.colors.pressed : theme.colors.accent.soft,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: `${theme.colors.accent.base}44`,
+              })}>
+              <Ionicons name="calculator-outline" size={13} color={theme.colors.accent.base} />
+              <AppText variant="captionMedium" tone="accent">
+                Calculator
+              </AppText>
+            </Pressable>
+          ) : null}
         </View>
 
         {/* Type */}
@@ -576,6 +619,16 @@ export default function TransactionComposer() {
       </View>
 
       {/* Sheets */}
+      <AmountCalculatorSheet
+        key={calculatorOpen ? 'calculator-open' : 'calculator-closed'}
+        visible={calculatorOpen}
+        onClose={() => setCalculatorOpen(false)}
+        initialMinor={amountMinor}
+        onApply={(minor) => {
+          const decimals = currencyInfo(money.currency).decimals;
+          setAmountText(formatCalculatorAmount(minor / 10 ** decimals));
+        }}
+      />
       <PickerSheet
         visible={sheet === 'category'}
         onClose={() => setSheet('none')}
