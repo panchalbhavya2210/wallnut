@@ -1,7 +1,7 @@
 # Wallnut — project status & living task list
 
 > **Read this first.** This file is the handoff document for any new session
-> (human or agent). Keep it updated as work lands. Last updated: 2026-11-02 (Pass 23: drawer/navigation fix — Budgets lives in the drawer shell, menu button works from pushed screens; Pass 22: Home polish — account pills with balances + add-account + long-press actions, top tabs removed, gradient-blob backdrop, chart polish, long-press fixes; Pass 21: statement import P1 + Quick Actions + performance).
+> (human or agent). Keep it updated as work lands. Last updated: 2026-11-02 (Pass 24: global drawer access on pushed screens, boxy/round shape setting, settings cleanup, seamless gradients; Pass 23: drawer/navigation fix; Pass 22: Home polish; Pass 21: statement import P1 + Quick Actions + performance).
 
 ---
 
@@ -315,6 +315,24 @@ index.ts                   custom entry: registers widget task handler, then exp
     open and `router.dismissAll()` returns to the drawer shell, which opens the drawer when it regains focus.
   - **Verification**: `tsc` clean, 173 tests green, ESLint clean on touched files. Web export not rebuilt on this
     device (no Chrome / limited RAM) — visually verify with `npx expo export --platform web` + `verify-web.mjs`.
+
+* **Pass 24 (UX pass — drawer everywhere, shape, settings, gradients)** — landed:
+  - **Drawer everywhere**: `DrawerContent.tsx` now exports a reusable `DrawerMenu` (used by both the native drawer
+    and the new root-level `GlobalDrawer` modal). `HeaderMenuButton` opens the native drawer in the `(app)` shell
+    and the overlay everywhere else, so settings/detail screens keep their place in the stack. Menu buttons were
+    added to `ScreenHeader` and the custom settings/transaction/import headers; the `drawer-bridge` deferred
+    `dismissAll()` hack was deleted. Active rows now follow `usePathname()`.
+  - **Shape setting**: `appearance.cornerStyle: 'round' | 'boxy'` (default `round`, migration to `themeVersion 4`).
+    `theme.radius` is built with `radiusFor(cornerStyle)`; boxy collapses card/input corners while `radius.full`
+    stays circular. FAB/QuickAdd/onboarding hard-coded radii moved onto tokens.
+  - **Settings simplification**: the Settings hub dropped the duplicate Manage group and uses `ScreenHeader`;
+    Appearance is now Preview → Theme → Accent → Shape → Text & motion → Advanced (Presets removed, accents are a
+    compact swatch grid, one live preview).
+  - **Seamless gradients**: the third blob no longer clips at the backdrop's bottom edge; the backdrop now also
+    appears on Records, Insights and Budgets; brand/hero gradients gained a middle stop.
+  - **Verification**: `npm run typecheck` clean; 173 tests green. ESLint reports no new errors on the new/changed
+    core files (only pre-existing react-hooks v6 findings elsewhere). No web/device visual pass on this machine
+    (no Chrome, low RAM) — check the next CI APK on-device.
 
 ### Priorities (user-set, 2026-10-16)
 1. **Transaction Inbox + statement import + merchant memory** — **P1 landed (Pass 21)**: staging tables,
@@ -811,9 +829,14 @@ the period labels, with a per-budget override chip in the budget editor.
 
 - **Pass 23 — drawer/navigation fix**:
   - Moved Budgets into the drawer shell (`(app)/budgets.tsx`) so the header menu opens the drawer and the bottom
-    nav stays visible there. Added `components/drawer-bridge.ts`: `HeaderMenuButton` on a pushed root-stack screen
-    requests a deferred open and dismisses back to the drawer shell, which opens the drawer on focus. Full detail
-    in §4 (Pass 23 entry).
+    nav stays visible there. Added `components/drawer-bridge.ts` (superseded by Pass 24's `GlobalDrawer`).
+
+- **Pass 24 — UX pass: drawer everywhere, shape, settings cleanup, seamless gradients**:
+  - Reusable `DrawerMenu` + root `GlobalDrawer` overlay; menu button on `ScreenHeader` and custom headers; active
+    rows via `usePathname`; removed `drawer-bridge`. Added `cornerStyle` (`round`/`boxy`) with `themeVersion 4`
+    migration and dynamic `theme.radius`; rebuilt Appearance; trimmed Settings; fixed the clipped gradient blob,
+    reused the backdrop on the three primary screens, and added a third gradient stop. Full detail in §4
+    (Pass 24 entry).
 
 ### Verification commands
 `npm run typecheck` · `npm test` · `npx expo export --platform web` · `node scripts/serve-web.mjs 8081` · `node scripts/verify-web.mjs http://localhost:8081 home 390 844 "Assets"` · `node scripts/verify-statement.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/quick-entry quick-entry 390 844 "Quick Entry"` · `node scripts/verify-web.mjs http://localhost:8081/settings/widgets settings-widgets 390 844 "Widgets enabled"` · `node scripts/capture-screens.mjs http://localhost:8081 390 844` · `node scripts/verify-lock.mjs http://localhost:8081` · `node scripts/verify-shopping.mjs http://localhost:8081` · `node scripts/verify-shared.mjs http://localhost:8081` · `node scripts/verify-trip.mjs http://localhost:8081` · `node scripts/verify-inbox.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/transactions transactions 390 844 "Transactions"` · `node scripts/verify-web.mjs http://localhost:8081/analytics insights 390 844 "Total spending"` · `node scripts/verify-web.mjs http://localhost:8081/category-trends trends 390 844 "MONTH ON MONTH"` · `node scripts/verify-web.mjs http://localhost:8081/settings/dashboard widgets 390 844 "Widgets"`

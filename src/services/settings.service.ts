@@ -1,6 +1,7 @@
 import { getDb } from '@/db/client';
 import { settings } from '@/db/schema';
 import type { AccentName } from '@/theme/colors';
+import type { CornerStyle } from '@/theme/radius';
 import type { PeriodPreset } from '@/utils/date';
 import type { CurrencyCode } from '@/utils/money';
 
@@ -27,6 +28,8 @@ export interface AppearanceSettings {
   fontFamily: string;
   /** Wallnut's own palette or a Material-style tonal palette. */
   palette: 'wallnut' | 'material';
+  /** Surface corners: soft/round (default) or sharp-edged. */
+  cornerStyle: CornerStyle;
   /** Use the device wallpaper palette as the Material seed (Android only). */
   deviceColors: boolean;
   /** Pure-black canvas for OLED screens (dark mode only). */
@@ -178,12 +181,13 @@ export const DEFAULT_SETTINGS: SettingsGroups = {
     accent: 'botanical',
     fontFamily: 'inter',
     palette: 'wallnut',
+    cornerStyle: 'round',
     deviceColors: false,
     amoled: false,
     chartColors: 'theme',
     reduceMotion: false,
     fontScale: 'default',
-    themeVersion: 3,
+    themeVersion: 4,
   },
   dashboard: {
     defaultPeriod: 'thisMonth',
@@ -289,7 +293,11 @@ export async function loadAllSettings(): Promise<Partial<SettingsGroups>> {
           if (appearance.accent === 'magenta') appearance.accent = DEFAULT_SETTINGS.appearance.accent;
           if (appearance.theme === 'dark') appearance.theme = DEFAULT_SETTINGS.appearance.theme;
         }
-        appearance.themeVersion = 3;
+        // Pass 24 — shape option. Older installs keep the default round look.
+        if ((appearance.themeVersion ?? 0) < 4) {
+          appearance.cornerStyle = appearance.cornerStyle ?? 'round';
+        }
+        appearance.themeVersion = 4;
         result.appearance = appearance;
         continue;
       }

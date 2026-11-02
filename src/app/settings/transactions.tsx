@@ -1,10 +1,9 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
-import { ListGroup, Row, ScrollScreen } from '@/components/ui/layout';
+import { ListGroup, Row, ScreenHeader, ScrollScreen } from '@/components/ui/layout';
 import { AppText } from '@/components/ui/text';
 import { SettingSwitch } from '@/components/ui/controls';
 import { useSettingsStore } from '@/stores/settings.store';
@@ -16,12 +15,7 @@ export default function TransactionSettings() {
 
   return (
     <ScrollScreen>
-      <Row gap="sm" style={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg }}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
-        </Pressable>
-        <AppText variant="title">Transactions</AppText>
-      </Row>
+      <ScreenHeader title="Transactions" />
 
       <View style={{ gap: theme.spacing.lg }}>
         <ListGroup title="List behaviour">

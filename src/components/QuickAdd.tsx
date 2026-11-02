@@ -31,7 +31,8 @@ const SECONDARY_ACTIONS = [
   { label: 'Quick templates', subtitle: 'Reuse a frequent transaction', icon: 'flash-outline' as const, href: '/templates' },
 ];
 
-export function QuickAddFab() {  const theme = useTheme();
+export function QuickAddFab() {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
 
@@ -48,14 +49,15 @@ export function QuickAddFab() {  const theme = useTheme();
             {
               right: Math.max(insets.right, 16) + 4,
               bottom: Math.max(insets.bottom, 12) + 14,
+              borderRadius: theme.radius.xxl,
             },
             theme.shadow('fab'),
           ]}>
           <LinearGradient
-            colors={[theme.gradient[0], theme.gradient[1]]}
+            colors={theme.gradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.fabInner}>
+            style={[styles.fabInner, { borderRadius: theme.radius.xxl }]}>
             <Ionicons name="add" size={30} color="#FFFFFF" />
           </LinearGradient>
         </PressableBounce>
@@ -205,12 +207,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 58,
     height: 58,
-    borderRadius: 29,
   },
   fabInner: {
     width: '100%',
     height: '100%',
-    borderRadius: 29,
     alignItems: 'center',
     justifyContent: 'center',
   },

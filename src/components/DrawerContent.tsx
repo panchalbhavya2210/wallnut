@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDrawerStatus, type DrawerContentComponentProps } from 'expo-router/drawer';
 
@@ -11,16 +11,16 @@ import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
 import { getNetWorthSummary } from '@/services/analytics.service';
 import { useSettingsStore } from '@/stores/settings.store';
-import { registerDrawerNavigation } from './drawer-bridge';
 import type { IconName } from './ui/layout';
 
 /**
  * Drawer menu — the app's navigation hub. A searchable, grouped index of every
- * destination, with the net-worth summary pinned at the top. Registered drawer
- * screens navigate in place; everything else pushes onto the root stack.
+ * destination, with the net-worth summary pinned at the top. It is shared by
+ * the in-shell drawer and the root-level overlay (see GlobalDrawer), so pushed
+ * screens get the same menu without losing their place in the stack.
  */
 
-interface Destination {
+export interface DrawerDestination {
   label: string;
   detail?: string;
   icon: IconName;
@@ -32,23 +32,23 @@ interface Destination {
 
 interface DestinationGroup {
   title: string;
-  items: Destination[];
+  items: DrawerDestination[];
 }
 
 const GROUPS: DestinationGroup[] = [
   {
     title: 'Overview',
     items: [
-      { label: 'Home', detail: 'Dashboard & insights', icon: 'home-outline', screen: 'index', keywords: 'home dashboard widgets' },
-      { label: 'Transactions', detail: 'Search, filter, edit', icon: 'receipt-outline', screen: 'transactions', keywords: 'records ledger history search' },
-      { label: 'Analytics', detail: 'Charts, trends, categories', icon: 'stats-chart-outline', screen: 'analytics', keywords: 'charts stats reports insights' },
+      { label: 'Home', detail: 'Dashboard & insights', icon: 'home-outline', screen: 'index', href: '/', keywords: 'home dashboard widgets' },
+      { label: 'Transactions', detail: 'Search, filter, edit', icon: 'receipt-outline', screen: 'transactions', href: '/transactions', keywords: 'records ledger history search' },
+      { label: 'Analytics', detail: 'Charts, trends, categories', icon: 'stats-chart-outline', screen: 'analytics', href: '/analytics', keywords: 'charts stats reports insights' },
     ],
   },
   {
     title: 'Financial',
     items: [
       { label: 'Accounts', icon: 'wallet-outline', href: '/accounts', keywords: 'balance bank cash credit card wallet groups reconcile' },
-      { label: 'Budgets', icon: 'pie-chart-outline', screen: 'budgets', keywords: 'limits spending safe to spend category' },
+      { label: 'Budgets', icon: 'pie-chart-outline', screen: 'budgets', href: '/budgets', keywords: 'limits spending safe to spend category' },
       { label: 'Goals', icon: 'flag-outline', href: '/goals', keywords: 'savings target contribute' },
       { label: 'Money owed', icon: 'people-outline', href: '/debts', keywords: 'lending debt loan borrowed person owed' },
       { label: 'Shared expenses', icon: 'people-circle-outline', href: '/shared', keywords: 'split splitwise group trip settle share bill' },
@@ -82,32 +82,38 @@ const GROUPS: DestinationGroup[] = [
   },
 ];
 
-export function WallnutDrawerContent(props: DrawerContentComponentProps) {
+function isFocused(destination: DrawerDestination, pathname: string): boolean {
+  if (!destination.href) return false;
+  if (destination.href === '/') return pathname === '/' || pathname === '/index';
+  return pathname === destination.href || pathname.startsWith(`${destination.href}/`);
+}
+
+export function DrawerMenu({
+  active,
+  onNavigate,
+}: {
+  active: boolean;
+  onNavigate: (destination: DrawerDestination) => void;
+}) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const money = useMoney();
+  const pathname = usePathname();
   const [search, setSearch] = useState('');
   const userName = useSettingsStore((state) => state.general.userName);
 
-  // Opening the drawer re-renders this whole tree (the drawer's open/closed
-  // state lives in navigation state). The net-worth query is the only real
-  // work here, so it is skipped entirely while the drawer is closed — on a
-  // long-lived Android session that DB hop during the open animation was what
-  // made the menu feel slow.
-  const drawerStatus = useDrawerStatus();
+  // Opening the drawer re-renders this whole tree. The net-worth query is the
+  // only real work here, so it is skipped entirely while the drawer is closed —
+  // on a long-lived Android session that DB hop during the open animation was
+  // what made the menu feel slow.
   const summaryRef = useRef<{ netWorth: number; count: number } | null>(null);
   const summary = useQuery(async () => {
-    if (drawerStatus !== 'open') return summaryRef.current;
+    if (!active) return summaryRef.current;
     const netWorth = await getNetWorthSummary();
     const next = { netWorth: netWorth.netWorth, count: netWorth.accounts.length };
     summaryRef.current = next;
     return next;
-  }, [drawerStatus]);
-
-  React.useEffect(() => registerDrawerNavigation(props.navigation), [props.navigation]);
-
-  const activeRouteName = props.state.routeNames[props.state.index];
-  const { navigate, closeDrawer } = props.navigation;
+  }, [active]);
 
   const query = search.trim().toLowerCase();
   const groups = useMemo(() => {
@@ -122,22 +128,6 @@ export function WallnutDrawerContent(props: DrawerContentComponentProps) {
       ),
     })).filter((group) => group.items.length > 0);
   }, [query]);
-
-  const go = useCallback(
-    (destination: Destination) => {
-      if (destination.screen) {
-        navigate(destination.screen as never);
-        closeDrawer();
-        return;
-      }
-      if (destination.href) {
-        const href = destination.href;
-        closeDrawer();
-        setTimeout(() => router.push(href as never), 160);
-      }
-    },
-    [navigate, closeDrawer],
-  );
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.surface, paddingTop: insets.top }}>
@@ -172,7 +162,7 @@ export function WallnutDrawerContent(props: DrawerContentComponentProps) {
         </View>
 
         <Pressable
-          onPress={() => go({ label: 'Accounts', icon: 'wallet-outline', href: '/accounts', keywords: '' })}
+          onPress={() => onNavigate({ label: 'Accounts', icon: 'wallet-outline', href: '/accounts', keywords: '' })}
           android_ripple={{ color: theme.colors.ripple }}
           style={({ pressed }) => ({
             padding: theme.spacing.lg,
@@ -241,9 +231,9 @@ export function WallnutDrawerContent(props: DrawerContentComponentProps) {
               <DrawerRow
                 key={destination.label}
                 destination={destination}
-                focused={destination.screen !== undefined && destination.screen === activeRouteName}
+                focused={isFocused(destination, pathname)}
                 theme={theme}
-                onPress={go}
+                onPress={onNavigate}
               />
             ))}
           </View>
@@ -271,6 +261,30 @@ export function WallnutDrawerContent(props: DrawerContentComponentProps) {
   );
 }
 
+/** Native drawer content — registered in `(app)/_layout.tsx`. */
+export function WallnutDrawerContent(props: DrawerContentComponentProps) {
+  const status = useDrawerStatus();
+  const { navigate, closeDrawer } = props.navigation;
+
+  const go = useCallback(
+    (destination: DrawerDestination) => {
+      if (destination.screen) {
+        navigate(destination.screen as never);
+        closeDrawer();
+        return;
+      }
+      if (destination.href) {
+        const href = destination.href;
+        closeDrawer();
+        setTimeout(() => router.dismissTo(href as never), 160);
+      }
+    },
+    [navigate, closeDrawer],
+  );
+
+  return <DrawerMenu active={status === 'open'} onNavigate={go} />;
+}
+
 /**
  * One destination row. Memoized: re-rendering ~50 rows inside the open
  * animation was the other half of the slow drawer.
@@ -281,10 +295,10 @@ const DrawerRow = React.memo(function DrawerRow({
   theme,
   onPress,
 }: {
-  destination: Destination;
+  destination: DrawerDestination;
   focused: boolean;
   theme: Theme;
-  onPress: (destination: Destination) => void;
+  onPress: (destination: DrawerDestination) => void;
 }) {
   const tint = focused ? theme.colors.accent.base : theme.colors.textSecondary;
   return (

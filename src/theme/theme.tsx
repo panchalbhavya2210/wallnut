@@ -6,7 +6,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { accents, type AccentName, type AccentTokens, type ThemeColors } from './colors';
 import { DEFAULT_FONT_ID, fontFamiliesFor, fontModulesFor } from './fonts';
 import { accentGradient, buildChartTokens, buildThemeColors, heroGradient, type ChartTokens, type PaletteChoice } from './palette';
-import { radius } from './radius';
+import { radius, radiusFor } from './radius';
 import { shadow, type ShadowLevel } from './shadows';
 import { spacing } from './spacing';
 import { buildTypography, typography, type TypographyVariant } from './typography';
@@ -19,10 +19,10 @@ export interface Theme {
   mode: 'light' | 'dark';
   colors: ThemeColors & { accent: AccentTokens };
   chart: ChartTokens;
-  /** Two-stop brand gradient for action surfaces (floating add button). */
-  gradient: [string, string];
-  /** Deeper two-stop gradient for hero cards that carry white type. */
-  heroGradient: [string, string];
+  /** Three-stop brand gradient for action surfaces (floating add button). */
+  gradient: [string, string, string];
+  /** Deeper three-stop gradient for hero cards that carry white type. */
+  heroGradient: [string, string, string];
   spacing: typeof spacing;
   radius: typeof radius;
   typography: typeof typography;
@@ -34,7 +34,7 @@ const ThemeContext = createContext<Theme | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const systemScheme = useColorScheme();
-  const { modePreference, accentName, reduceMotion, fontScale, fontId, palette, deviceColors, amoled } = useSettingsStore(
+  const { modePreference, accentName, reduceMotion, fontScale, fontId, palette, deviceColors, amoled, cornerStyle } = useSettingsStore(
     useShallow((s) => ({
       modePreference: s.appearance.theme,
       accentName: s.appearance.accent,
@@ -44,6 +44,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       palette: s.appearance.palette,
       deviceColors: s.appearance.deviceColors,
       amoled: s.appearance.amoled,
+      cornerStyle: s.appearance.cornerStyle,
     })),
   );
 
@@ -66,10 +67,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Wallpaper palette (Android) — resolved once when the option is enabled.
   const [deviceSeed, setDeviceSeed] = useState<string | null>(null);
   useEffect(() => {
-    if (!deviceColors) {
-      setDeviceSeed(null);
-      return;
-    }
+    if (!deviceColors) return;
     let cancelled = false;
     void getDevicePaletteSeed()
       .then((result) => {
@@ -89,22 +87,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       mode,
       accent: resolvedAccent,
       palette: (palette as PaletteChoice) ?? 'wallnut',
-      deviceSeed,
+      deviceSeed: deviceColors ? deviceSeed : null,
       amoled,
     });
     return {
       mode,
       colors,
-      chart: buildChartTokens(mode, resolvedAccent, (palette as PaletteChoice) ?? 'wallnut', deviceSeed),
+      chart: buildChartTokens(mode, resolvedAccent, (palette as PaletteChoice) ?? 'wallnut', deviceColors ? deviceSeed : null),
       gradient: accentGradient(colors.accent.base, mode),
       heroGradient: heroGradient(colors.accent.base, mode),
       spacing,
-      radius,
+      radius: radiusFor(cornerStyle),
       typography: buildTypography(fontFamiliesFor(loadedFontId), fontScale === 'default' ? 1 : fontScale === 'large' ? 1.08 : 1.16),
       shadow: (level) => shadow(level, mode),
       motion: { fast: 140, normal: 220, slow: 320, reduceMotion },
     };
-  }, [modePreference, accentName, reduceMotion, systemScheme, fontScale, fontId, loadedFontId, palette, deviceSeed, amoled]);
+  }, [modePreference, accentName, reduceMotion, systemScheme, fontScale, loadedFontId, palette, deviceSeed, deviceColors, amoled, cornerStyle]);
 
   return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
 }

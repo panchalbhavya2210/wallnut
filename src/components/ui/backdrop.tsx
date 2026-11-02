@@ -40,7 +40,7 @@ export function GradientBlobs({ style, height = 380 }: { style?: StyleProp<ViewS
         </Defs>
         <Circle cx="14%" cy="34%" r={170} fill={`url(#blob-a-${rawId})`} />
         <Circle cx="92%" cy="6%" r={150} fill={`url(#blob-b-${rawId})`} />
-        <Circle cx="62%" cy="88%" r={180} fill={`url(#blob-c-${rawId})`} />
+        <Circle cx="58%" cy="64%" r={136} fill={`url(#blob-c-${rawId})`} />
       </Svg>
     </View>
   );

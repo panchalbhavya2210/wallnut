@@ -112,12 +112,12 @@ export function BottomNav() {
             accessibilityRole="button"
             accessibilityLabel="Add transaction"
             scaleTo={0.95}
-            style={[{ width: 52, height: 52, borderRadius: 26, marginTop: -28 }, theme.shadow('fab')]}>
+            style={[{ width: 52, height: 52, borderRadius: theme.radius.xxl, marginTop: -28 }, theme.shadow('fab')]}>
             <LinearGradient
-              colors={[theme.gradient[0], theme.gradient[1]]}
+              colors={theme.gradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={{ width: '100%', height: '100%', borderRadius: 26, alignItems: 'center', justifyContent: 'center' }}>
+              style={{ width: '100%', height: '100%', borderRadius: theme.radius.xxl, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="add" size={28} color="#FFFFFF" />
             </LinearGradient>
           </PressableBounce>

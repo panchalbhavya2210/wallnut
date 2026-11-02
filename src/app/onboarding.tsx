@@ -132,7 +132,7 @@ function WelcomeStep() {
         style={{
           width: 76,
           height: 76,
-          borderRadius: 24,
+          borderRadius: theme.radius.xxl,
           backgroundColor: theme.colors.accent.base,
           alignItems: 'center',
           justifyContent: 'center',

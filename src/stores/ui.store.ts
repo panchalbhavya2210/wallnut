@@ -41,6 +41,8 @@ interface UiState {
   chartScrubbing: boolean;
   /** Account scope on Home: null = every account. */
   accountScopeId: string | null;
+  /** Root-level drawer overlay, used on screens outside the drawer shell. */
+  drawerOpen: boolean;
 
   setSelectionMode: (enabled: boolean) => void;
   toggleSelected: (id: string) => void;
@@ -50,6 +52,8 @@ interface UiState {
   setDashboardEditing: (editing: boolean) => void;
   setChartScrubbing: (scrubbing: boolean) => void;
   setAccountScope: (accountId: string | null) => void;
+  openDrawer: () => void;
+  closeDrawer: () => void;
   showToast: (toast: Omit<ToastMessage, 'id' | 'durationMs'> & { durationMs?: number }) => void;
   dismissToast: (id: number) => void;
 }
@@ -64,6 +68,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   dashboardEditing: false,
   chartScrubbing: false,
   accountScopeId: null,
+  drawerOpen: false,
 
   setSelectionMode: (enabled) =>
     set({ selectionMode: enabled, selectedIds: enabled ? get().selectedIds : [] }),
@@ -81,6 +86,8 @@ export const useUiStore = create<UiState>((set, get) => ({
     if (get().chartScrubbing !== scrubbing) set({ chartScrubbing: scrubbing });
   },
   setAccountScope: (accountId) => set({ accountScopeId: accountId }),
+  openDrawer: () => set({ drawerOpen: true }),
+  closeDrawer: () => set({ drawerOpen: false }),
 
   showToast: (toast) => {
     const id = ++toastId;

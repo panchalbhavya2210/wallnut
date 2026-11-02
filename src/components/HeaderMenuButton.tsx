@@ -1,21 +1,19 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useNavigation } from 'expo-router';
+import { useNavigation } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
 import { useSettingsStore } from '@/stores/settings.store';
-import { toast } from '@/stores/ui.store';
-import { openDrawerDirect, requestDrawerOpen } from './drawer-bridge';
+import { toast, useUiStore } from '@/stores/ui.store';
 
 /**
  * The menu button: fixed at the top-right of every primary screen, it opens the
  * full destination drawer. Long-press toggles privacy mode (the eye that used
  * to live on Home) so amounts can be hidden from anywhere.
  *
- * The navigation object is typed structurally because `openDrawer` only exists
- * on drawer navigators and expo-router's generic `useNavigation` does not
- * surface it.
+ * In the drawer shell it opens the native drawer; everywhere else it opens the
+ * root-level overlay so the current screen is never dismissed.
  */
 export function HeaderMenuButton({ size = 20, compact }: { size?: number; compact?: boolean }) {
   const theme = useTheme();
@@ -31,9 +29,7 @@ export function HeaderMenuButton({ size = 20, compact }: { size?: number; compac
       navigation.openDrawer();
       return;
     }
-    requestDrawerOpen();
-    if (router.canDismiss()) router.dismissAll();
-    else openDrawerDirect();
+    useUiStore.getState().openDrawer();
   };
 
   return (

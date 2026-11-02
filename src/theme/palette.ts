@@ -58,14 +58,15 @@ export function mixHex(foreground: string, background: string, amount: number): 
  * Two-stop gradient for hero surfaces and the add button: the accent plus a
  * hue-shifted partner, so the brand colour feels alive instead of flat.
  */
-export function accentGradient(base: string, mode: 'light' | 'dark'): [string, string] {
+export function accentGradient(base: string, mode: 'light' | 'dark'): [string, string, string] {
   const { h, s, l } = hexToHsl(base);
   const partner = hslToHex(
     h - 36,
     Math.max(55, Math.min(92, s + 14)),
     mode === 'dark' ? Math.max(56, Math.min(72, l)) : Math.max(36, Math.min(52, l)),
   );
-  return [base, partner];
+  const middle = hslToHex(h - 18, Math.max(58, Math.min(90, s + 8)), (l + (mode === 'dark' ? 64 : 44)) / 2);
+  return [base, middle, partner];
 }
 
 /**
@@ -73,12 +74,13 @@ export function accentGradient(base: string, mode: 'light' | 'dark'): [string, s
  * into deep tonal greens so white type and a bright chart line read crisply on
  * top. Deliberately darker than `accentGradient` — a hero surface, not a button.
  */
-export function heroGradient(base: string, mode: 'light' | 'dark'): [string, string] {
+export function heroGradient(base: string, mode: 'light' | 'dark'): [string, string, string] {
   const { h, s } = hexToHsl(base);
   const sat = Math.max(30, Math.min(58, s));
   const deep = hslToHex(h + 10, sat, mode === 'dark' ? 13 : 17);
   const mid = hslToHex(h - 8, Math.min(64, sat + 8), mode === 'dark' ? 24 : 31);
-  return [deep, mid];
+  const bridge = hslToHex(h, Math.min(60, sat + 4), mode === 'dark' ? 18.5 : 24);
+  return [deep, bridge, mid];
 }
 
 export function buildChartTokens(

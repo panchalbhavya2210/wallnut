@@ -8,6 +8,7 @@ import { useTheme } from '@/theme/theme';
 import { useUiStore } from '@/stores/ui.store';
 import { AppText, type TextTone } from './text';
 import { ScreenHint } from '../ScreenHint';
+import { HeaderMenuButton } from '../HeaderMenuButton';
 
 export type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -423,6 +424,7 @@ export function ScreenHeader({
           ) : null}
         </View>
         {right}
+        <HeaderMenuButton compact />
       </View>
       {hint ? <ScreenHint id={hint.id} message={hint.message} /> : null}
     </>

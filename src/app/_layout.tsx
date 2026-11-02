@@ -13,6 +13,7 @@ import { ThemeProvider, useTheme } from '@/theme/theme';
 import { AppText } from '@/components/ui/text';
 import { Button } from '@/components/ui/controls';
 import { ConfirmHost } from '@/components/ui/confirm';
+import { GlobalDrawer } from '@/components/GlobalDrawer';
 import { ToastHost } from '@/components/ui/feedback';
 import { LockScreen } from '@/security/LockScreen';
 import { canUnlock } from '@/security/pin';
@@ -137,6 +138,7 @@ export default function RootLayout() {
               {locked ? <LockScreen /> : null}
               <ToastHost />
               <ConfirmHost />
+              {locked ? null : <GlobalDrawer />}
             </>
           ) : (
             <BootScreen />

@@ -6,6 +6,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/theme/theme';
+import { HeaderMenuButton } from '@/components/HeaderMenuButton';
 import { IconName, KeyValueRow, Row } from '@/components/ui/layout';
 import { AppText, MoneyText } from '@/components/ui/text';
 import { Button, Chip, IconButton } from '@/components/ui/controls';
@@ -147,6 +148,7 @@ export default function TransactionDetailScreen() {
           <IconButton icon="copy-outline" onPress={duplicate} accessibilityLabel="Duplicate" />
           <IconButton icon="create-outline" onPress={() => router.push(`/transaction/new?id=${detail.id}` as never)} accessibilityLabel="Edit" />
           <IconButton icon="trash-outline" color={theme.colors.negative} onPress={removeTransaction} accessibilityLabel="Delete" />
+          <HeaderMenuButton compact />
         </Row>
       </View>
 

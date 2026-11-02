@@ -3,8 +3,7 @@ import { View } from 'react-native';
 import { router } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
-import { ListGroup, ListRow, ScrollScreen } from '@/components/ui/layout';
-import { AppText } from '@/components/ui/text';
+import { ListGroup, ListRow, ScreenHeader, ScrollScreen } from '@/components/ui/layout';
 import { useSettingsStore } from '@/stores/settings.store';
 
 /**
@@ -20,19 +19,16 @@ export default function SettingsScreen() {
 
   return (
     <ScrollScreen>
-      <View style={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg }}>
-        <AppText variant="title">Settings</AppText>
-        <AppText variant="caption" tone="muted" style={{ marginTop: 2 }}>
-          {general.currency} · {appearance.theme === 'system' ? 'System theme' : appearance.theme === 'dark' ? 'Dark' : 'Light'} ·{' '}
-          {appearance.accent} accent
-        </AppText>
-      </View>
+      <ScreenHeader
+        title="Settings"
+        subtitle={`${general.currency} · ${appearance.theme === 'system' ? 'System' : appearance.theme === 'dark' ? 'Dark' : 'Light'} · ${appearance.cornerStyle === 'boxy' ? 'Boxy' : 'Round'} corners`}
+      />
 
       <View style={{ gap: theme.spacing.lg }}>
         <ListGroup title="Personalise">
           <ListRow
             title="Appearance"
-            subtitle="Theme, accent colour, font size, motion"
+            subtitle="Theme, accent, shape, text and motion"
             icon="color-palette-outline"
             value={`${appearance.theme === 'system' ? 'System' : appearance.theme === 'dark' ? 'Dark' : 'Light'}`}
             onPress={() => router.push('/settings/appearance')}
@@ -85,22 +81,9 @@ export default function SettingsScreen() {
           />
         </ListGroup>
 
-        <ListGroup title="Manage">
-          <ListRow title="Accounts & groups" icon="wallet-outline" onPress={() => router.push('/accounts')} chevron />
-          <ListRow title="Categories" icon="pricetags-outline" onPress={() => router.push('/categories')} chevron />
-          <ListRow title="Budgets" icon="pie-chart-outline" onPress={() => router.push('/budgets')} chevron />
-          <ListRow title="Recurring & subscriptions" icon="repeat-outline" onPress={() => router.push('/recurring')} chevron />
-          <ListRow title="Goals" icon="flag-outline" onPress={() => router.push('/goals')} chevron />
-          <ListRow title="Money owed" icon="people-outline" onPress={() => router.push('/debts')} chevron />
-          <ListRow title="Transaction rules" icon="git-branch-outline" onPress={() => router.push('/rules')} chevron />
-        </ListGroup>
-
-        <ListGroup title="Data">
+        <ListGroup title="Data & privacy">
           <ListRow title="Import, export & backup" icon="swap-vertical-outline" onPress={() => router.push('/data')} chevron />
           <ListRow title="Merchant names" subtitle="Group messy merchant strings" icon="storefront-outline" onPress={() => router.push('/merchants')} chevron />
-        </ListGroup>
-
-        <ListGroup title="Privacy">
           <ListRow
             title="App lock"
             subtitle="Fingerprint / face unlock on the Android app"

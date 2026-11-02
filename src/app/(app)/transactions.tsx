@@ -9,6 +9,7 @@ import { AppText, MoneyText } from '@/components/ui/text';
 import { Button, Chip, IconButton, SegmentedControl } from '@/components/ui/controls';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/feedback';
 import { AppHeader, RoundIconButton } from '@/components/AppHeader';
+import { GradientBlobs } from '@/components/ui/backdrop';
 import { BottomSheet, DatePickerSheet, PickerSheet } from '@/components/ui/sheets';
 import { SwipeableRow } from '@/components/ui/SwipeableRow';
 import { confirm } from '@/components/ui/confirm';
@@ -206,6 +207,7 @@ export default function TransactionsScreen() {
 
   return (
     <Screen>
+      <GradientBlobs />
       {/* Header */}
       {selectionMode ? (
         <View

@@ -1,11 +1,10 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import Constants from 'expo-constants';
 
 import { useTheme } from '@/theme/theme';
-import { Card, ListGroup, Row, ScrollScreen } from '@/components/ui/layout';
+import { Card, ListGroup, Row, ScreenHeader, ScrollScreen } from '@/components/ui/layout';
 import { AppText } from '@/components/ui/text';
 import { useQuery } from '@/hooks/useQuery';
 import { getSqlite } from '@/db/client';
@@ -36,12 +35,7 @@ export default function AboutSettings() {
 
   return (
     <ScrollScreen>
-      <Row gap="sm" style={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg }}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
-        </Pressable>
-        <AppText variant="title">About Wallnut</AppText>
-      </Row>
+      <ScreenHeader title="About Wallnut" />
 
       <View style={{ gap: theme.spacing.lg }}>
         <Card>

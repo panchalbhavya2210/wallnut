@@ -3,14 +3,13 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
 import { AppText } from '@/components/ui/text';
 import { Button, Chip, IconButton } from '@/components/ui/controls';
 import { BottomSheet } from '@/components/ui/sheets';
 import { confirm } from '@/components/ui/confirm';
-import { Row, ScrollScreen, IconName } from '@/components/ui/layout';
+import { Row, ScreenHeader, ScrollScreen, IconName } from '@/components/ui/layout';
 import { useQuery } from '@/hooks/useQuery';
 import { toast } from '@/stores/ui.store';
 import { useSettingsStore } from '@/stores/settings.store';
@@ -138,18 +137,11 @@ export default function DashboardSettings() {
 
   return (
     <ScrollScreen>
-      <Row gap="sm" style={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.md }}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <AppText variant="title">Dashboard</AppText>
-          <AppText variant="caption" tone="muted">
-            {visible.length} shown · {hidden.length} hidden
-          </AppText>
-        </View>
-        <IconButton icon="add" onPress={() => setAddingOpen(true)} accessibilityLabel="Add widget" />
-      </Row>
+      <ScreenHeader
+        title="Dashboard"
+        subtitle={`${visible.length} shown · ${hidden.length} hidden`}
+        right={<IconButton icon="add" onPress={() => setAddingOpen(true)} accessibilityLabel="Add widget" />}
+      />
 
       <View style={{ gap: theme.spacing.lg }}>
         <View style={{ gap: theme.spacing.sm }}>

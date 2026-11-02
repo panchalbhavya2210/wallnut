@@ -149,7 +149,7 @@ export function WidgetCard({
     // chart's own white line so the card reads as one surface.
     return (
       <LinearGradient
-        colors={[theme.heroGradient[0], theme.heroGradient[1]]}
+        colors={theme.heroGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{

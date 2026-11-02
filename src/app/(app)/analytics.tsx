@@ -4,11 +4,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
-import { Card, HeaderScrollScreen, IconName, Row, ScrollScreen, SectionHeader, KeyValueRow } from '@/components/ui/layout';
+import { Card, HeaderScrollScreen, IconName, Row, SectionHeader, KeyValueRow } from '@/components/ui/layout';
 import { AppText, MoneyText } from '@/components/ui/text';
 import { ProgressBar, SegmentedControl } from '@/components/ui/controls';
 import { EmptyState, LoadingBlock } from '@/components/ui/feedback';
 import { AppHeader, TopTabs } from '@/components/AppHeader';
+import { GradientBlobs } from '@/components/ui/backdrop';
 import { ScreenHint } from '@/components/ScreenHint';
 import { BarChart, DonutChart, FlowBars, LineChart } from '@/components/charts';
 import { Gauge } from '@/components/Gauge';
@@ -219,6 +220,7 @@ export default function InsightsScreen() {
           />
         </>
       }>
+      <GradientBlobs />
 
       {/* Period: a named pill for every preset, a segmented control for the
           four windows people actually flip between. */}

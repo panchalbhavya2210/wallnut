@@ -1,10 +1,8 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { View } from 'react-native';
 
 import { useTheme } from '@/theme/theme';
-import { ListGroup, Row, ScrollScreen } from '@/components/ui/layout';
+import { ListGroup, Row, ScreenHeader, ScrollScreen } from '@/components/ui/layout';
 import { AppText } from '@/components/ui/text';
 import { Chip } from '@/components/ui/controls';
 import { Field } from '@/components/ui/sheets';
@@ -28,7 +26,7 @@ export default function FinanceSettings() {
 
   return (
     <ScrollScreen>
-      <Header title="Finance" />
+      <ScreenHeader title="Finance" />
 
       <View style={{ gap: theme.spacing.lg }}>
         <ListGroup title="Currency">
@@ -181,18 +179,6 @@ export default function FinanceSettings() {
         </ListGroup>
       </View>
     </ScrollScreen>
-  );
-}
-
-export function Header({ title }: { title: string }) {
-  const theme = useTheme();
-  return (
-    <Row gap="sm" style={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg }}>
-      <Pressable onPress={() => router.back()} hitSlop={10}>
-        <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
-      </Pressable>
-      <AppText variant="title">{title}</AppText>
-    </Row>
   );
 }
 

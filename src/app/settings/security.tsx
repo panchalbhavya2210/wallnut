@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
-import { ListGroup, Row, ScrollScreen } from '@/components/ui/layout';
+import { ListGroup, Row, ScreenHeader, ScrollScreen } from '@/components/ui/layout';
 import { AppText } from '@/components/ui/text';
 import { Button, SettingSwitch } from '@/components/ui/controls';
 import { InfoBanner } from '@/components/ui/feedback';
@@ -104,12 +104,7 @@ export default function SecuritySettings() {
 
   return (
     <ScrollScreen>
-      <Row gap="sm" style={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg }}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
-        </Pressable>
-        <AppText variant="title">Security & privacy</AppText>
-      </Row>
+      <ScreenHeader title="Security & privacy" />
 
       <View style={{ gap: theme.spacing.lg }}>
         <InfoBanner

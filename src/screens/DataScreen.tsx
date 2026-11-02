@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { router } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
-import { Card, IconName, ListGroup, ListRow, Row, ScrollScreen } from '@/components/ui/layout';
+import { Card, IconName, ListGroup, ListRow, Row, ScreenHeader, ScrollScreen } from '@/components/ui/layout';
 import { AppText, MoneyText } from '@/components/ui/text';
-import { Button, Chip, IconButton } from '@/components/ui/controls';
+import { Button } from '@/components/ui/controls';
 import { EmptyState, InfoBanner, LoadingBlock } from '@/components/ui/feedback';
-import { BottomSheet, PickerSheet, FormSheet } from '@/components/ui/sheets';
+import { BottomSheet, PickerSheet } from '@/components/ui/sheets';
 import { confirm } from '@/components/ui/confirm';
 import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
@@ -320,17 +320,10 @@ export default function DataScreen() {
 
   return (
     <ScrollScreen>
-      <Row gap="sm" style={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg }}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <AppText variant="title">Import & export</AppText>
-          <AppText variant="caption" tone="muted">
-            CSV, JSON backup and restore — all processed on this device
-          </AppText>
-        </View>
-      </Row>
+      <ScreenHeader
+        title="Import & export"
+        subtitle="CSV, JSON backup and restore — all processed on this device"
+      />
 
       <View style={{ gap: theme.spacing.lg }}>
         <ListGroup title="Export">
@@ -499,23 +492,17 @@ function ImportWizard({
 
   return (
     <ScrollScreen>
-      <Row gap="sm" style={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg }}>
-        <Pressable onPress={onBack} hitSlop={10}>
-          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <AppText variant="title">
-            {mode === 'map' ? 'Map columns' : mode === 'preview' ? 'Preview import' : 'Import complete'}
-          </AppText>
-          <AppText variant="caption" tone="muted">
-            {mode === 'map'
-              ? `${headers.length} columns detected — match them to Wallnut fields`
-              : mode === 'preview'
-                ? 'Nothing is written until you confirm'
-                : 'Your ledger has been updated'}
-          </AppText>
-        </View>
-      </Row>
+      <ScreenHeader
+        title={mode === 'map' ? 'Map columns' : mode === 'preview' ? 'Preview import' : 'Import complete'}
+        subtitle={
+          mode === 'map'
+            ? `${headers.length} columns detected — match them to Wallnut fields`
+            : mode === 'preview'
+              ? 'Nothing is written until you confirm'
+              : 'Your ledger has been updated'
+        }
+        onBack={onBack}
+      />
 
       {mode === 'map' ? (
         <View style={{ gap: theme.spacing.lg }}>

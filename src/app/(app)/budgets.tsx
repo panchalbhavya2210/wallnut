@@ -9,6 +9,7 @@ import { AppText, MoneyText } from '@/components/ui/text';
 import { Chip, SettingSwitch } from '@/components/ui/controls';
 import { EmptyState, InfoBanner, LoadingBlock } from '@/components/ui/feedback';
 import { AppHeader, RoundIconButton } from '@/components/AppHeader';
+import { GradientBlobs } from '@/components/ui/backdrop';
 import { ScreenHint } from '@/components/ScreenHint';
 import { AmountField, FormSheet, PickerSheet } from '@/components/ui/sheets';
 import { AnimatedMoney, Gauge } from '@/components/Gauge';
@@ -97,6 +98,7 @@ export default function BudgetsScreen() {
           />
         </>
       }>
+      <GradientBlobs />
       {query.loading && !query.data ? (
         <LoadingBlock label="Loading budgets…" />
       ) : budgets.length === 0 ? (

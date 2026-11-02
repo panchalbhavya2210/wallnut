@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
-import { Redirect, useFocusEffect } from 'expo-router';
+import { Redirect } from 'expo-router';
 import { Drawer, type DrawerContentComponentProps } from 'expo-router/drawer';
 
 import { useTheme } from '@/theme/theme';
@@ -9,26 +9,17 @@ import { useBootstrapStore } from '@/stores/bootstrap.store';
 import { toast } from '@/stores/ui.store';
 import { WallnutDrawerContent } from '@/components/DrawerContent';
 import { BottomNav } from '@/components/BottomNav';
-import { consumeDrawerRequest, openDrawerDirect } from '@/components/drawer-bridge';
 
 /**
  * Top-level shell: a one-handed bottom navigation bar for the primary
  * destinations (with the create action in the centre), plus the full searchable
  * drawer behind "More" and the header menu. Detail screens are pushed on the
- * root stack above this shell (so they get a back chevron instead of a
- * hamburger).
+ * root stack above this shell; their header menu opens the root-level drawer
+ * overlay without dismissing them.
  */
 export default function AppLayout() {
   const onboarded = useSettingsStore((state) => state.general.onboarded);
   const theme = useTheme();
-
-  useFocusEffect(
-    React.useCallback(() => {
-      if (!consumeDrawerRequest()) return;
-      const timer = setTimeout(openDrawerDirect, 80);
-      return () => clearTimeout(timer);
-    }, []),
-  );
 
   // Tell the user when the app posted scheduled payments on launch — the local
   // equivalent of a “payment processed” notification.
