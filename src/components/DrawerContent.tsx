@@ -11,6 +11,7 @@ import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
 import { getNetWorthSummary } from '@/services/analytics.service';
 import { useSettingsStore } from '@/stores/settings.store';
+import { registerDrawerNavigation } from './drawer-bridge';
 import type { IconName } from './ui/layout';
 
 /**
@@ -47,7 +48,7 @@ const GROUPS: DestinationGroup[] = [
     title: 'Financial',
     items: [
       { label: 'Accounts', icon: 'wallet-outline', href: '/accounts', keywords: 'balance bank cash credit card wallet groups reconcile' },
-      { label: 'Budgets', icon: 'pie-chart-outline', href: '/budgets', keywords: 'limits spending safe to spend category' },
+      { label: 'Budgets', icon: 'pie-chart-outline', screen: 'budgets', keywords: 'limits spending safe to spend category' },
       { label: 'Goals', icon: 'flag-outline', href: '/goals', keywords: 'savings target contribute' },
       { label: 'Money owed', icon: 'people-outline', href: '/debts', keywords: 'lending debt loan borrowed person owed' },
       { label: 'Shared expenses', icon: 'people-circle-outline', href: '/shared', keywords: 'split splitwise group trip settle share bill' },
@@ -102,6 +103,8 @@ export function WallnutDrawerContent(props: DrawerContentComponentProps) {
     summaryRef.current = next;
     return next;
   }, [drawerStatus]);
+
+  React.useEffect(() => registerDrawerNavigation(props.navigation), [props.navigation]);
 
   const activeRouteName = props.state.routeNames[props.state.index];
   const { navigate, closeDrawer } = props.navigation;

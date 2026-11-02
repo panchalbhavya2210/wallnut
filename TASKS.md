@@ -1,7 +1,7 @@
 # Wallnut — project status & living task list
 
 > **Read this first.** This file is the handoff document for any new session
-> (human or agent). Keep it updated as work lands. Last updated: 2026-10-16 (Pass 22: Home polish — account pills with balances + add-account + long-press actions, top tabs removed, gradient-blob backdrop, chart polish, long-press fixes; Pass 21: statement import P1 + Quick Actions + performance).
+> (human or agent). Keep it updated as work lands. Last updated: 2026-11-02 (Pass 23: drawer/navigation fix — Budgets lives in the drawer shell, menu button works from pushed screens; Pass 22: Home polish — account pills with balances + add-account + long-press actions, top tabs removed, gradient-blob backdrop, chart polish, long-press fixes; Pass 21: statement import P1 + Quick Actions + performance).
 
 ---
 
@@ -304,6 +304,17 @@ index.ts                   custom entry: registers widget task handler, then exp
     (tabs gone, balance pills, add-account), `scope-actions.png` (long-press sheet), `scope-add-account.png`
     (editor from Home), `analytics-via-nav.png` (gradient bars), `records-longpress.png` (multi-select via
     long-press). APK rebuilt: `wallnut-2026-10-16.apk`.
+
+* **Pass 23 (drawer/navigation fix)**:
+  - **Budgets moved into the drawer shell** (`src/app/budgets/index.tsx` → `src/app/(app)/budgets.tsx`). It was a
+    root-stack screen pushed above the drawer, so the header menu button did nothing there and the bottom nav
+    disappeared. It is now a registered drawer screen: menu opens in place, bottom nav stays visible, and the
+    drawer highlights it.
+  - **Menu works from pushed screens**: `components/drawer-bridge.ts` registers the drawer navigator from
+    `DrawerContent`. When `HeaderMenuButton` has no `openDrawer` (any root-stack screen), it requests a deferred
+    open and `router.dismissAll()` returns to the drawer shell, which opens the drawer when it regains focus.
+  - **Verification**: `tsc` clean, 173 tests green, ESLint clean on touched files. Web export not rebuilt on this
+    device (no Chrome / limited RAM) — visually verify with `npx expo export --platform web` + `verify-web.mjs`.
 
 ### Priorities (user-set, 2026-10-16)
 1. **Transaction Inbox + statement import + merchant memory** — **P1 landed (Pass 21)**: staging tables,
@@ -797,6 +808,12 @@ the period labels, with a per-budget override chip in the budget editor.
     per-row pan gesture, tuned the FlatList); cached widget config parsing; header menu privacy long-press now
     toasts. Full detail in §4 and §8 (Pass 21/22 entries). Screenshots: `home-pass22`, `scope-actions`,
     `scope-add-account`, `analytics-via-nav`, `records-longpress`.
+
+- **Pass 23 — drawer/navigation fix**:
+  - Moved Budgets into the drawer shell (`(app)/budgets.tsx`) so the header menu opens the drawer and the bottom
+    nav stays visible there. Added `components/drawer-bridge.ts`: `HeaderMenuButton` on a pushed root-stack screen
+    requests a deferred open and dismisses back to the drawer shell, which opens the drawer on focus. Full detail
+    in §4 (Pass 23 entry).
 
 ### Verification commands
 `npm run typecheck` · `npm test` · `npx expo export --platform web` · `node scripts/serve-web.mjs 8081` · `node scripts/verify-web.mjs http://localhost:8081 home 390 844 "Assets"` · `node scripts/verify-statement.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/quick-entry quick-entry 390 844 "Quick Entry"` · `node scripts/verify-web.mjs http://localhost:8081/settings/widgets settings-widgets 390 844 "Widgets enabled"` · `node scripts/capture-screens.mjs http://localhost:8081 390 844` · `node scripts/verify-lock.mjs http://localhost:8081` · `node scripts/verify-shopping.mjs http://localhost:8081` · `node scripts/verify-shared.mjs http://localhost:8081` · `node scripts/verify-trip.mjs http://localhost:8081` · `node scripts/verify-inbox.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/transactions transactions 390 844 "Transactions"` · `node scripts/verify-web.mjs http://localhost:8081/analytics insights 390 844 "Total spending"` · `node scripts/verify-web.mjs http://localhost:8081/category-trends trends 390 844 "MONTH ON MONTH"` · `node scripts/verify-web.mjs http://localhost:8081/settings/dashboard widgets 390 844 "Widgets"`

@@ -1,11 +1,12 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
 import { useSettingsStore } from '@/stores/settings.store';
 import { toast } from '@/stores/ui.store';
+import { openDrawerDirect, requestDrawerOpen } from './drawer-bridge';
 
 /**
  * The menu button: fixed at the top-right of every primary screen, it opens the
@@ -26,8 +27,13 @@ export function HeaderMenuButton({ size = 20, compact }: { size?: number; compac
   const updateSettings = useSettingsStore((state) => state.update);
 
   const open = () => {
-    if (typeof navigation.openDrawer === 'function') navigation.openDrawer();
-    else navigation.dispatch?.({ type: 'OPEN_DRAWER' });
+    if (typeof navigation.openDrawer === 'function') {
+      navigation.openDrawer();
+      return;
+    }
+    requestDrawerOpen();
+    if (router.canDismiss()) router.dismissAll();
+    else openDrawerDirect();
   };
 
   return (

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
-import { Redirect } from 'expo-router';
+import { Redirect, useFocusEffect } from 'expo-router';
 import { Drawer, type DrawerContentComponentProps } from 'expo-router/drawer';
 
 import { useTheme } from '@/theme/theme';
@@ -9,6 +9,7 @@ import { useBootstrapStore } from '@/stores/bootstrap.store';
 import { toast } from '@/stores/ui.store';
 import { WallnutDrawerContent } from '@/components/DrawerContent';
 import { BottomNav } from '@/components/BottomNav';
+import { consumeDrawerRequest, openDrawerDirect } from '@/components/drawer-bridge';
 
 /**
  * Top-level shell: a one-handed bottom navigation bar for the primary
@@ -20,6 +21,14 @@ import { BottomNav } from '@/components/BottomNav';
 export default function AppLayout() {
   const onboarded = useSettingsStore((state) => state.general.onboarded);
   const theme = useTheme();
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!consumeDrawerRequest()) return;
+      const timer = setTimeout(openDrawerDirect, 80);
+      return () => clearTimeout(timer);
+    }, []),
+  );
 
   // Tell the user when the app posted scheduled payments on launch — the local
   // equivalent of a “payment processed” notification.
@@ -81,6 +90,7 @@ export default function AppLayout() {
       <Drawer.Screen name="index" options={{ title: 'Home' }} />
       <Drawer.Screen name="transactions" options={{ title: 'Transactions' }} />
       <Drawer.Screen name="analytics" options={{ title: 'Analytics' }} />
+      <Drawer.Screen name="budgets" options={{ title: 'Budgets' }} />
     </Drawer>
   );
 }
