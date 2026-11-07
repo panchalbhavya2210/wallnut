@@ -1,7 +1,7 @@
 # Wallnut — project status & living task list
 
 > **Read this first.** This file is the handoff document for any new session
-> (human or agent). Keep it updated as work lands. Last updated: 2026-11-02 (Pass 25: Wallnut 2.0 overhaul — black/indigo design system, five-tab navigation + floating add, drawer query prefetch, Insights Overview/Categories/Trends/Merchants, correct merchant net spend + drill-down, category delete history safety, export CSV/JSON repair, amount calculator, daily notification check-in; Pass 24: global drawer access on pushed screens, boxy/round shape setting, settings cleanup, seamless gradients; Pass 23: drawer/navigation fix; Pass 22: Home polish; Pass 21: statement import P1 + Quick Actions + performance).
+> (human or agent). Keep it updated as work lands. Last updated: 2026-11-07 (Pass 26: Android sheet/modal reliability — every native `Modal` sheet replaced by one portal-based `@gorhom/bottom-sheet` engine, nested filter → picker → date stacks, back button + keyboard handling, global drawer overlay; Pass 25: Wallnut 2.0 overhaul — black/indigo design system, five-tab navigation + floating add, drawer query prefetch, Insights Overview/Categories/Trends/Merchants, correct merchant net spend + drill-down, category delete history safety, export CSV/JSON repair, amount calculator, daily notification check-in; Pass 24: global drawer access on pushed screens, boxy/round shape setting, settings cleanup, seamless gradients; Pass 23: drawer/navigation fix; Pass 22: Home polish; Pass 21: statement import P1 + Quick Actions + performance).
 
 ---
 
@@ -44,6 +44,10 @@ powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1   # widgets need 
 * `scripts/verify-web.mjs` — headless Chrome (puppeteer-core) that waits for real
   content, writes `screenshots/<name>.png`, dumps the DOM to `.expo/verify/…`,
   prints console errors and the app's own `[boot]` timing logs.
+* `scripts/verify-modals.mjs` — headless regression pass for the sheet engine:
+  plus button → quick-add, composer, global drawer, filter → nested picker →
+  date picker → apply, and view-options → filter in one tick (33 checks). Run it
+  after any change to `src/components/ui/sheets.tsx` or the root providers.
 * Screenshots for the user live in `screenshots/`.
 * **Never re-introduce `metro.config.js` beyond `config.resolver.assetExts.push('wasm')`**:
   overriding the middleware or Babel transformer breaks Metro's worker chunking
@@ -347,6 +351,13 @@ index.ts                   custom entry: registers widget task handler, then exp
   - **Daily notification**: Settings → Notifications now has a daily check-in (default on at 21:00, five preset times) scheduled with a repeating `DAILY` local trigger. The Android channel is created **before** requesting permission (the Android 13 prompt requires a channel), and daily scheduling is independent of the reminder engine. `SCHEDULE_EXACT_ALARM` added to `app.json`. Device delivery still needs an Android rebuild + permission check.
   - **Verification**: `tsc --noEmit` clean, 180 unit tests green (7 new), web export built. A browser pass covered home → bottom nav → Insights Categories/Merchants → merchant detail → native drawer → GlobalDrawer search → calculator → real CSV/JSON downloads (files parsed) with zero production console errors. The final dashboard-only polish (Money owed/Subscriptions compact cards, chart transform warning, BETA removal, duplicate Drawer.Screen removal) was checked with `tsc` and a dev-server boot; no production rebuild was run afterwards because the user asked CI/GitHub to own builds. Full lint still has the pre-existing ~56 errors (`react-hooks/set-state-in-effect`, mostly older screens); touched files add none.
 
+* **Pass 26 (Android sheet/modal reliability — 2026-11-07)**:
+  - **Root cause**: every dialog in the app was React Native's native `Modal` with Reanimated styles inside it. On Android + the new architecture this is a known broken combination (`react-native-reanimated#6659`): the Modal window can get a corrupted height, so sheets open squashed, invisible or not at all — web was unaffected, which is why it only reproduced on the phone. Stacking two native `Modal`s (filter → account picker → date picker, or an editor → delete confirmation) was a second source of failures because Android only reliably hosts one dialog window at a time.
+  - **One sheet engine**: `src/components/ui/sheets.tsx` `BottomSheet` now wraps `@gorhom/bottom-sheet` 5.2.14 (`BottomSheetModal` + `@gorhom/portal`), mounted once through `BottomSheetModalProvider` in the root layout. There is **no native `Modal` window** anymore: sheets are ordinary portal views inside the app root, so they cannot be corrupted by window sizing and any number can stack. The public API (`visible`, `onClose`, `title`, `footer`, `maxHeightRatio`, `bare`) is unchanged, so all ~127 call sites moved without edits.
+  - **Nested sheets**: `stackBehavior="push"` keeps the parent filter sheet open underneath an account/category/tag picker or date picker — closing the child returns to the parent without a minimize/restore animation race (the `switch` behavior was flaky on the web check as well). The filter's multi-select pickers now have a **Done** footer so it is obvious how to return with several accounts/categories/tags selected.
+  - **Android back + keyboard**: the portal is not a native window, so `BottomSheet` registers `BackHandler` while open (top-most sheet first) and uses the library's `interactive` keyboard behavior with `android_keyboardInputMode="adjustResize"`. Dynamic sizing caps at the previous `maxHeightRatio` and the pinned footer stays visible. `GlobalDrawer` also dropped its native `Modal` for a plain root overlay (with back-button handling), leaving the app with **zero** RN `Modal` windows.
+  - **Verification**: `scripts/verify-modals.mjs` (33 checks) drives plus button → quick-add sheet → close, quick-add → expense composer, global drawer over a pushed Settings screen, filter sheet → nested account picker → nested date picker → apply, and view-options → filter in one tick. Two consecutive full runs pass. `tsc --noEmit` clean, 180 unit tests green, web export rebuilt; screenshots `modal-quick-add.png`, `modal-filter.png`, `modal-filter-picker.png`, `modal-filter-date.png`, `modal-global-drawer.png`. A device APK rebuild is still required to confirm on Android hardware (no emulator on this machine), but the failing component (native `Modal`) is no longer in the code path.
+
 ### Priorities (user-set, 2026-10-16)
 1. **Transaction Inbox + statement import + merchant memory** — **P1 landed (Pass 21)**: staging tables,
    review screen, capture source, suggest-mode merchant memory. Remaining: OFX/QFX (cheap, same staging),
@@ -411,7 +422,8 @@ report path) — import and export are different problems.
 | FAB floating over the drawer | FAB rendered as a sibling of `<Drawer>` | render it from `screenLayout` so it lives inside the drawer scene |
 | `Cannot find native module 'ExpoUI'` on web | `@expo/ui/jetpack-compose` is Android-only and throws when required on web | only require it in `device-palette.service.native.ts`, guarded + Android-only |
 | Recurring "31st" payment drifts to the 28th | date-fns `addMonths` clamps month-end | `anchor_day` column + skip months without the anchored day (`advanceRecurrence`) |
-| Inputs hidden behind the keyboard (Android) | RN `Modal` windows do not `adjustResize` | `useKeyboardHeight` lifts the bottom sheet and caps its max height |
+| Inputs hidden behind the keyboard (Android) | RN `Modal` windows do not `adjustResize` | `useKeyboardHeight` lifts the bottom sheet and caps its max height — **Pass 26**: sheets are now `@gorhom/bottom-sheet` portals and use its `interactive` keyboard behavior + `android_keyboardInputMode="adjustResize"` |
+| Sheets/modals open squashed, invisible, or a second sheet never appears — Android only, web fine | RN `Modal` + Reanimated on the new architecture (`reanimated#6659`) and multiple native Modal windows | never use React Native `Modal` for app dialogs: `src/components/ui/sheets.tsx` is a single `@gorhom/bottom-sheet` portal (`stackBehavior="push"` for nesting), `GlobalDrawer` is a plain root overlay, and the provider lives in `src/app/_layout.tsx`. Re-run `node scripts/verify-modals.mjs` after touching any of them |
 | Widgets crash/blank after a React Compiler build | compiler memoizes widget components by adding hooks — widget primitives must not use hooks | `'use no memo';` at the top of `src/widgets/components.tsx` |
 | Widget data never updates / "Worker chunk" style startup errors | the widget task handler must be registered in the entry point | custom `index.ts` registers the handler, then imports `expo-router/entry` last |
 | `expo prebuild --platform android` deleted the release keystore | prebuild clears `android/` | keystore backed up to `%TEMP%\opencode` before prebuild; restore it after (or keep a copy outside `android/`) |
@@ -851,8 +863,18 @@ the period labels, with a per-budget override chip in the budget editor.
     reused the backdrop on the three primary screens, and added a third gradient stop. Full detail in §4
     (Pass 24 entry).
 
+- **Pass 26 — Android sheet/modal reliability (2026-11-07)**:
+  - Removed every React Native `Modal` from the dialog path. `BottomSheet`, `PickerSheet`, `FormSheet` and
+    `DatePickerSheet` are now one `@gorhom/bottom-sheet` portal (`BottomSheetModalProvider` in the root layout),
+    so the plus sheet, filters, nested pickers, date pickers and confirmations cannot hit the Android new-arch
+    Modal/Reanimated window corruption or the one-native-dialog limitation. Nested sheets use
+    `stackBehavior="push"` (parent stays open underneath); filter multi-select pickers gained a Done footer;
+    Android back closes the top sheet; the keyboard uses the library's interactive behavior. `GlobalDrawer`
+    is a plain root overlay too. `scripts/verify-modals.mjs` is the 33-check regression pass. Full detail in §4
+    (Pass 26 entry).
+
 ### Verification commands
-`npm run typecheck` · `npm test` · `npx expo export --platform web` · `node scripts/serve-web.mjs 8081` · `node scripts/verify-web.mjs http://localhost:8081 home 390 844 "Assets"` · `node scripts/verify-statement.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/quick-entry quick-entry 390 844 "Quick Entry"` · `node scripts/verify-web.mjs http://localhost:8081/settings/widgets settings-widgets 390 844 "Widgets enabled"` · `node scripts/capture-screens.mjs http://localhost:8081 390 844` · `node scripts/verify-lock.mjs http://localhost:8081` · `node scripts/verify-shopping.mjs http://localhost:8081` · `node scripts/verify-shared.mjs http://localhost:8081` · `node scripts/verify-trip.mjs http://localhost:8081` · `node scripts/verify-inbox.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/transactions transactions 390 844 "Transactions"` · `node scripts/verify-web.mjs http://localhost:8081/analytics insights 390 844 "Total spending"` · `node scripts/verify-web.mjs http://localhost:8081/category-trends trends 390 844 "MONTH ON MONTH"` · `node scripts/verify-web.mjs http://localhost:8081/settings/dashboard widgets 390 844 "Widgets"`
+`npm run typecheck` · `npm test` · `npx expo export --platform web` · `node scripts/serve-web.mjs 8081` · `node scripts/verify-modals.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081 home 390 844 "Assets"` · `node scripts/verify-statement.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/quick-entry quick-entry 390 844 "Quick Entry"` · `node scripts/verify-web.mjs http://localhost:8081/settings/widgets settings-widgets 390 844 "Widgets enabled"` · `node scripts/capture-screens.mjs http://localhost:8081 390 844` · `node scripts/verify-lock.mjs http://localhost:8081` · `node scripts/verify-shopping.mjs http://localhost:8081` · `node scripts/verify-shared.mjs http://localhost:8081` · `node scripts/verify-trip.mjs http://localhost:8081` · `node scripts/verify-inbox.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/transactions transactions 390 844 "Transactions"` · `node scripts/verify-web.mjs http://localhost:8081/analytics insights 390 844 "Total spending"` · `node scripts/verify-web.mjs http://localhost:8081/category-trends trends 390 844 "MONTH ON MONTH"` · `node scripts/verify-web.mjs http://localhost:8081/settings/dashboard widgets 390 844 "Widgets"`
 
 > Widgets are native: verify them only in a real build (`npx expo prebuild --platform android` then `scripts/build-apk.ps1`), never in Expo Go or the web preview.
 

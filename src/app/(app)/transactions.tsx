@@ -1162,6 +1162,7 @@ function FilterSheet({
           icon: 'wallet-outline' as IconName,
         }))}
         selectedId={null}
+        footer={<Button label="Done" fullWidth onPress={() => setSheet('none')} />}
         onSelect={(item) => {
           setDraft((current) => ({
             ...current,
@@ -1183,6 +1184,7 @@ function FilterSheet({
             section: parent.name,
           })),
         ])}
+        footer={<Button label="Done" fullWidth onPress={() => setSheet('none')} />}
         onSelect={(item) => {
           setDraft((current) => ({
             ...current,
@@ -1196,6 +1198,7 @@ function FilterSheet({
         title="Filter by tag"
         items={(tags.data ?? []).map((tag) => ({ id: tag.id, label: tag.name, icon: 'pricetag-outline' as IconName, color: tag.color }))}
         emptyTitle="No tags yet"
+        footer={<Button label="Done" fullWidth onPress={() => setSheet('none')} />}
         onSelect={(item) => {
           setDraft((current) => ({ ...current, tagIds: Array.from(new Set([...(current.tagIds ?? []), item.id])) }));
         }}

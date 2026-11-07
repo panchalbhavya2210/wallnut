@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
+  BackHandler,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -11,12 +10,18 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import {
+  BottomSheetBackdrop,
+  BottomSheetFooter,
+  BottomSheetModal,
+  BottomSheetScrollView,
+  type BottomSheetBackdropProps,
+  type BottomSheetFooterProps,
+} from '@gorhom/bottom-sheet';
+import { ReduceMotion } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useTheme } from '@/theme/theme';
 import { AppText } from './text';
@@ -41,132 +46,179 @@ export interface BottomSheetProps {
   bare?: boolean;
 }
 
+/**
+ * App-wide bottom sheet.
+ *
+ * Backed by `@gorhom/bottom-sheet` — a portal rendered once at the app root —
+ * instead of React Native's native `Modal`. This is deliberate: on Android the
+ * new architecture corrupts `Modal` windows that contain Reanimated styles
+ * (sheets open squashed, invisible, or not at all), and two `Modal`s cannot be
+ * reliably shown at the same time (filter → picker → date). The portal engine
+ * has no native window, stacks sheets correctly, handles the Android back
+ * button and the keyboard, and keeps the same API for every caller.
+ */
 export function BottomSheet({ visible, onClose, title, children, maxHeightRatio = 0.88, footer, bare }: BottomSheetProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const keyboardHeight = useKeyboardHeight();
-  const entryY = useSharedValue(height);
-  const dragY = useSharedValue(0);
-  const backdrop = useSharedValue(0);
-  const duration = theme.motion.reduceMotion ? 0 : theme.motion.normal;
-
-  // The sheet lifts with the keyboard so fields are never hidden behind it.
-  // Modal windows on Android do not resize with the soft keyboard, so this
-  // padding is the fix rather than relying on `adjustResize`.
-  const lifted = Math.max(0, keyboardHeight - insets.bottom);
-  const availableHeight = Math.max(260, height - lifted - insets.top - 24);
+  const sheetRef = useRef<BottomSheetModal>(null);
+  const visibleRef = useRef(visible);
+  const firstRender = useRef(true);
+  const onCloseRef = useRef(onClose);
 
   useEffect(() => {
-    if (visible) {
-      backdrop.value = withTiming(1, { duration });
-      entryY.value = theme.motion.reduceMotion
-        ? 0
-        : withSpring(0, { damping: 30, stiffness: 320, overshootClamping: true });
+    visibleRef.current = visible;
+    onCloseRef.current = onClose;
+  });
+
+  const maxHeight = Math.max(280, Math.min(height * maxHeightRatio, height - insets.top - 24));
+
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      // Some callers mount the sheet already open (e.g. the filter sheet).
+      // Give the portal one frame to attach before presenting.
+      if (visible) {
+        const frame = requestAnimationFrame(() => sheetRef.current?.present());
+        return () => cancelAnimationFrame(frame);
+      }
       return;
     }
-    backdrop.value = withTiming(0, { duration });
-    entryY.value = withTiming(height, { duration });
-    // Stable Reanimated values; the animation is driven by visibility.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, height, duration, theme.motion.reduceMotion]);
+    if (visible) sheetRef.current?.present();
+    else sheetRef.current?.dismiss();
+  }, [visible]);
 
-  const pan = Gesture.Pan()
-    .activeOffsetY([-10, 10])
-    .failOffsetX([-14, 14])
-    .onUpdate((event) => {
-      dragY.value = Math.max(0, event.translationY);
-    })
-    .onEnd((event) => {
-      if (event.translationY > 130 || event.velocityY > 900) {
-        // Leave the next open at the resting position, then let the parent
-        // unmount the modal.
-        dragY.value = 0;
-        runOnJS(onClose)();
-      } else {
-        dragY.value = withSpring(0, { damping: 30, stiffness: 320, overshootClamping: true });
-      }
+  // The portal-based sheet is not a native window, so it does not get Android's
+  // back button for free (React Native's Modal did). Register while open; the
+  // most recently opened sheet runs first, which matches the visual stack.
+  useEffect(() => {
+    if (!visible || Platform.OS === 'web') return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onCloseRef.current();
+      return true;
     });
+    return () => subscription.remove();
+  }, [visible]);
 
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: Math.max(0, entryY.value + dragY.value) }],
-  }));
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: backdrop.value }));
-  const maxHeight = Math.min(height * maxHeightRatio, availableHeight);
+  // Closing from the backdrop/swipe is completed by the sheet itself; mirror it
+  // back into the caller's state. A caller-driven close never loops because
+  // `visible` is already false by the time this runs.
+  const handleDismiss = useCallback(() => {
+    if (visibleRef.current) onCloseRef.current();
+  }, []);
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.6}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
+
+  const renderHandle = useCallback(
+    () => (
+      <View style={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.sm, alignItems: 'center' }}>
+        <View
+          style={{
+            width: 38,
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: theme.colors.borderStrong,
+          }}
+        />
+        {title ? (
+          <AppText variant="titleSmall" style={{ marginTop: theme.spacing.md }}>
+            {title}
+          </AppText>
+        ) : null}
+        <Pressable
+          onPress={() => onCloseRef.current()}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          style={({ pressed }) => ({
+            position: 'absolute',
+            top: theme.spacing.md,
+            right: theme.spacing.lg,
+            width: 34,
+            height: 34,
+            borderRadius: theme.radius.full,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: pressed ? theme.colors.pressed : 'transparent',
+          })}>
+          <Ionicons name="close" size={19} color={theme.colors.muted} />
+        </Pressable>
+      </View>
+    ),
+    // `onClose` is read through a ref so typing in a field never remounts the
+    // handle (which would interrupt an in-flight drag).
+    [theme, title],
+  );
+
+  const renderFooter = useCallback(
+    ({ animatedFooterPosition }: BottomSheetFooterProps) => (
+      <BottomSheetFooter animatedFooterPosition={animatedFooterPosition} bottomInset={insets.bottom}>
+        <View
+          style={{
+            paddingHorizontal: theme.spacing.lg,
+            paddingTop: theme.spacing.sm,
+            paddingBottom: theme.spacing.md,
+            backgroundColor: theme.colors.surfaceElevated,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: theme.colors.border,
+          }}>
+          {footer}
+        </View>
+      </BottomSheetFooter>
+    ),
+    [footer, insets.bottom, theme],
+  );
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: lifted }}>
-        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.overlay }, backdropStyle]} />
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close sheet" />
-        <Animated.View
-          accessibilityViewIsModal
-          accessibilityLabel={title}
-          style={[
-            {
-              backgroundColor: theme.colors.surfaceElevated,
-              borderTopLeftRadius: theme.radius.xxl,
-              borderTopRightRadius: theme.radius.xxl,
-              borderColor: theme.colors.border,
-              borderWidth: StyleSheet.hairlineWidth,
-              maxHeight,
-              paddingBottom: Math.max(insets.bottom, theme.spacing.md),
-              ...theme.shadow('lg'),
-            },
-            sheetStyle,
-          ]}>
-          <GestureDetector gesture={pan}>
-            <View style={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.sm, alignItems: 'center' }}>
-              <View
-                style={{
-                  width: 38,
-                  height: 4,
-                  borderRadius: 2,
-                  backgroundColor: theme.colors.borderStrong,
-                }}
-              />
-              {title ? (
-                <AppText variant="titleSmall" style={{ marginTop: theme.spacing.md }}>
-                  {title}
-                </AppText>
-              ) : null}
-            </View>
-          </GestureDetector>
-          <Pressable
-            onPress={onClose}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            style={({ pressed }) => ({
-              position: 'absolute',
-              top: theme.spacing.md,
-              right: theme.spacing.lg,
-              width: 34,
-              height: 34,
-              borderRadius: theme.radius.full,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: pressed ? theme.colors.pressed : 'transparent',
-            })}>
-            <Ionicons name="close" size={19} color={theme.colors.muted} />
-          </Pressable>
-          <ScrollView
-            style={{ flexGrow: 0 }}
-            contentContainerStyle={{
-              paddingHorizontal: bare ? 0 : theme.spacing.lg,
-              paddingBottom: theme.spacing.md + (keyboardHeight > 0 ? theme.spacing.xl : 0),
-            }}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
-            automaticallyAdjustKeyboardInsets
-            nestedScrollEnabled
-            showsVerticalScrollIndicator={false}>
-            {children}
-          </ScrollView>
-          {footer ? <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm }}>{footer}</View> : null}
-        </Animated.View>
-      </View>
-    </Modal>
+    <BottomSheetModal
+      ref={sheetRef}
+      // Keep the parent sheet open underneath instead of minimizing/restoring
+      // it. The filter → picker → date stack is then a pure render-order stack
+      // with no restore animation to race against (Android was flaky there).
+      stackBehavior="push"
+      enableDynamicSizing
+      maxDynamicContentSize={maxHeight}
+      enablePanDownToClose
+      backdropComponent={renderBackdrop}
+      footerComponent={footer ? renderFooter : undefined}
+      handleComponent={renderHandle}
+      onDismiss={handleDismiss}
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      overrideReduceMotion={theme.motion.reduceMotion ? ReduceMotion.Always : ReduceMotion.System}
+      accessible
+      accessibilityLabel={title}
+      backgroundStyle={{
+        backgroundColor: theme.colors.surfaceElevated,
+        borderTopLeftRadius: theme.radius.xxl,
+        borderTopRightRadius: theme.radius.xxl,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.border,
+      }}>
+      <BottomSheetScrollView
+        contentContainerStyle={{
+          paddingHorizontal: bare ? 0 : theme.spacing.lg,
+          paddingBottom: theme.spacing.md + (footer ? 0 : Math.max(insets.bottom, theme.spacing.md)),
+        }}
+        enableFooterMarginAdjustment={Boolean(footer)}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
+        showsVerticalScrollIndicator={false}>
+        {children}
+      </BottomSheetScrollView>
+    </BottomSheetModal>
   );
 }
 

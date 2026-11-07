@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import { Stack, router } from 'expo-router';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 
 import { bootstrapApp } from '@/db/bootstrap';
@@ -109,40 +110,42 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.flex}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <ThemedStatusBar />
-          {error ? (
-            <BootError error={error} onRetry={() => setError(null)} />
-          ) : showApp ? (
-            <>
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                  animationDuration: 220,
-                  gestureEnabled: true,
-                }}>
-                <Stack.Screen name="(app)" options={{ animation: 'fade' }} />
-                <Stack.Screen name="onboarding" options={{ animation: 'fade', gestureEnabled: false }} />
-                <Stack.Screen
-                  name="transaction/new"
-                  options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-                />
-                <Stack.Screen name="transaction/[id]" options={{ animation: 'slide_from_right' }} />
-                <Stack.Screen
-                  name="quick-entry"
-                  options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-                />
-                <Stack.Screen name="data" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-                <Stack.Screen name="import/[batchId]" options={{ animation: 'slide_from_right' }} />
-              </Stack>
-              {locked ? <LockScreen /> : null}
-              <ToastHost />
-              <ConfirmHost />
-              {locked ? null : <GlobalDrawer />}
-            </>
-          ) : (
-            <BootScreen />
-          )}
+          <BottomSheetModalProvider>
+            <ThemedStatusBar />
+            {error ? (
+              <BootError error={error} onRetry={() => setError(null)} />
+            ) : showApp ? (
+              <>
+                <Stack
+                  screenOptions={{
+                    headerShown: false,
+                    animation: 'slide_from_right',
+                    animationDuration: 220,
+                    gestureEnabled: true,
+                  }}>
+                  <Stack.Screen name="(app)" options={{ animation: 'fade' }} />
+                  <Stack.Screen name="onboarding" options={{ animation: 'fade', gestureEnabled: false }} />
+                  <Stack.Screen
+                    name="transaction/new"
+                    options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+                  />
+                  <Stack.Screen name="transaction/[id]" options={{ animation: 'slide_from_right' }} />
+                  <Stack.Screen
+                    name="quick-entry"
+                    options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+                  />
+                  <Stack.Screen name="data" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+                  <Stack.Screen name="import/[batchId]" options={{ animation: 'slide_from_right' }} />
+                </Stack>
+                {locked ? <LockScreen /> : null}
+                <ToastHost />
+                <ConfirmHost />
+                {locked ? null : <GlobalDrawer />}
+              </>
+            ) : (
+              <BootScreen />
+            )}
+          </BottomSheetModalProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

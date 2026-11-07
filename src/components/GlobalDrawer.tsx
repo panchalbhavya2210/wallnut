@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Animated, BackHandler, Easing, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
@@ -69,30 +69,43 @@ export function GlobalDrawer() {
   const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-panelWidth - 32, 0] });
   const backdropOpacity = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
 
+  // The overlay is a plain root-level view (not a native Modal window), so
+  // Android's back button needs to be wired manually.
+  useEffect(() => {
+    if (!open || Platform.OS === 'web') return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      close();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [open, close]);
+
   if (!open) return null;
 
   return (
-    <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={close}>
-      <View style={{ flex: 1 }}>
-        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.overlay, opacity: backdropOpacity }]} />
-        <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" accessibilityLabel="Close menu" />
-        <Animated.View
-          accessibilityViewIsModal
-          style={{
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            left: 0,
-            width: panelWidth,
-            transform: [{ translateX }],
-            backgroundColor: theme.colors.surface,
-            borderRightWidth: StyleSheet.hairlineWidth,
-            borderRightColor: theme.colors.border,
-            ...theme.shadow('lg'),
-          }}>
-          <DrawerMenu active onNavigate={go} />
-        </Animated.View>
-      </View>
-    </Modal>
+    // No native Modal: the overlay is a sibling of the navigator at the app
+    // root, which paints above every pushed screen without a second window.
+    // Native Modal windows with animated content are the Android new-arch
+    // bug this whole change set removes.
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.overlay, opacity: backdropOpacity }]} />
+      <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" accessibilityLabel="Close menu" />
+      <Animated.View
+        accessibilityViewIsModal
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: panelWidth,
+          transform: [{ translateX }],
+          backgroundColor: theme.colors.surface,
+          borderRightWidth: StyleSheet.hairlineWidth,
+          borderRightColor: theme.colors.border,
+          ...theme.shadow('lg'),
+        }}>
+        <DrawerMenu active onNavigate={go} />
+      </Animated.View>
+    </View>
   );
 }
