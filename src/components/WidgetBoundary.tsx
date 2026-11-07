@@ -47,16 +47,16 @@ function WidgetFallback({ onRetry }: { onRetry: () => void }) {
   return (
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
-        <Ionicons name="alert-circle-outline" size={16} color={theme.colors.warning} />
-        <AppText variant="label" tone="muted">
-          CARD UNAVAILABLE
+        <Ionicons name="alert-circle-outline" size={18} color={theme.m3.color.warning} />
+        <AppText variant="titleSmall" tone="muted">
+          Card unavailable
         </AppText>
       </View>
-      <AppText variant="caption" tone="muted" style={{ marginTop: theme.spacing.sm }} numberOfLines={3}>
+      <AppText variant="bodyMedium" tone="muted" style={{ marginTop: theme.spacing.sm }} numberOfLines={3}>
         This card hit a problem and was skipped. Everything else still works.
       </AppText>
       <Pressable onPress={onRetry} hitSlop={8} style={({ pressed }) => ({ marginTop: theme.spacing.sm, opacity: pressed ? 0.7 : 1 })}>
-        <AppText variant="captionMedium" tone="accent">
+        <AppText variant="labelLarge" tone="accent">
           Try again
         </AppText>
       </Pressable>

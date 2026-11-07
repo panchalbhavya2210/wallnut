@@ -1063,7 +1063,7 @@ Merging `development` into `main` is what ships.
 | Transactions inner (`TransactionRow`, `FilterSheet`, `ViewOptionsSheet`, `BulkActionBar`) | 🟡 Partial | Chips, switches, segmented, bulk bar done; row/period pills to review on device |
 | AI cards (`AiInsightCard`, `AiMonthlyReview`) | 🟡 Partial | Insight card done; monthly review still legacy |
 | ForecastCard / SettleSheet / QuickEntryBatchRow / AccountEditor | 🟡 Partial | Forecast, Settle and batch rows moved to M3; AccountEditor internals still to review |
-| ColorField / SwipeableRow / WidgetBoundary / backdrop blobs | 🟡 Partial | ColorField + backdrop done; SwipeableRow/WidgetBoundary still legacy |
+| ColorField / SwipeableRow / WidgetBoundary / backdrop blobs | ✅ Done | Color swatches, swipe actions, error card and M3 primary/tertiary backdrop |
 | Material 3 FAB menu / split button / toolbars / loading indicator / search view | ⬜ Future | Expressive additions from the I/O 2026 update; not required for the baseline |
 | Tablet navigation rail / medium window layouts | ⬜ Future | M3 adaptive layout; app is phone-first today |
 

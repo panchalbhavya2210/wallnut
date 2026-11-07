@@ -94,11 +94,11 @@ export function SwipeableRow({
         <View
           style={[
             StyleSheet.absoluteFill,
-            { backgroundColor: leftAction.background ?? `${theme.colors.accent.base}22`, alignItems: 'flex-start', justifyContent: 'center', paddingLeft: 22 },
+            { backgroundColor: leftAction.background ?? `${theme.m3.color.primary}22`, alignItems: 'flex-start', justifyContent: 'center', paddingLeft: 22 },
           ]}>
           <View style={{ alignItems: 'center', gap: 2, width: ACTION_WIDTH - 20 }}>
-            <Ionicons name={leftAction.icon} size={20} color={leftAction.color ?? theme.colors.accent.base} />
-            <AppText variant="caption" style={{ color: leftAction.color ?? theme.colors.accent.base }}>
+            <Ionicons name={leftAction.icon} size={20} color={leftAction.color ?? theme.m3.color.primary} />
+            <AppText variant="labelSmall" style={{ color: leftAction.color ?? theme.m3.color.primary }}>
               {leftAction.label}
             </AppText>
           </View>
@@ -108,11 +108,11 @@ export function SwipeableRow({
         <View
           style={[
             StyleSheet.absoluteFill,
-            { backgroundColor: rightAction.background ?? theme.colors.negative, alignItems: 'flex-end', justifyContent: 'center', paddingRight: 22 },
+            { backgroundColor: rightAction.background ?? theme.m3.color.error, alignItems: 'flex-end', justifyContent: 'center', paddingRight: 22 },
           ]}>
           <View style={{ alignItems: 'center', gap: 2, width: ACTION_WIDTH - 20 }}>
-            <Ionicons name={rightAction.icon} size={20} color={rightAction.color ?? theme.colors.onNegative} />
-            <AppText variant="caption" style={{ color: rightAction.color ?? theme.colors.onNegative }}>
+            <Ionicons name={rightAction.icon} size={20} color={rightAction.color ?? theme.m3.color.onError} />
+            <AppText variant="labelSmall" style={{ color: rightAction.color ?? theme.m3.color.onError }}>
               {rightAction.label}
             </AppText>
           </View>

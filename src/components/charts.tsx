@@ -145,10 +145,10 @@ function ChartTooltip({
         top: 0,
         left: clamp(x - tooltipWidth / 2, 0, Math.max(0, width - tooltipWidth)),
         minWidth: tooltipWidth,
-        backgroundColor: theme.colors.surfaceElevated,
-        borderColor: theme.colors.border,
+        backgroundColor: theme.m3.color.surfaceContainerHigh,
+        borderColor: theme.m3.color.outlineVariant,
         borderWidth: StyleSheet.hairlineWidth,
-        borderRadius: theme.radius.md,
+        borderRadius: theme.m3.shape.medium,
         paddingHorizontal: theme.spacing.sm,
         paddingVertical: 5,
         ...theme.shadow('md'),
@@ -250,11 +250,11 @@ export const LineChart = React.memo(function LineChart({
 
   const average = points.length > 0 ? points.reduce((sum, point) => sum + point.value, 0) / points.length : 0;
   const averageY = yFor(average);
-  const strokeColor = color ?? theme.chart.series[0] ?? theme.colors.accent.base;
-  const gridColor = onDark ? 'rgba(255, 255, 255, 0.16)' : theme.colors.chartGrid;
-  const labelColor = onDark ? 'rgba(255, 255, 255, 0.75)' : theme.colors.muted;
+  const strokeColor = color ?? theme.chart.series[0] ?? theme.m3.color.primary;
+  const gridColor = onDark ? 'rgba(255, 255, 255, 0.16)' : theme.m3.color.outlineVariant;
+  const labelColor = onDark ? 'rgba(255, 255, 255, 0.75)' : theme.m3.color.onSurfaceVariant;
   const averageColor = onDark ? 'rgba(255, 255, 255, 0.5)' : theme.chart.average;
-  const cursorColor = onDark ? 'rgba(255, 255, 255, 0.45)' : theme.colors.borderStrong;
+  const cursorColor = onDark ? 'rgba(255, 255, 255, 0.45)' : theme.m3.color.outline;
   const last = coords[coords.length - 1];
 
   const handleSelect = React.useCallback((index: number) => {
@@ -323,7 +323,7 @@ export const LineChart = React.memo(function LineChart({
                   <Path
                     d={buildSmoothPath(comparisonCoords)}
                     fill="none"
-                    stroke={onDark ? 'rgba(255, 255, 255, 0.55)' : theme.colors.muted}
+                    stroke={onDark ? 'rgba(255, 255, 255, 0.55)' : theme.m3.color.onSurfaceVariant}
                     strokeWidth={1.4}
                     strokeDasharray="4 4"
                     opacity={0.7}
@@ -367,7 +367,7 @@ export const LineChart = React.memo(function LineChart({
                       cx={selectedCoord.x}
                       cy={selectedCoord.y}
                       r={4.5}
-                      fill={onDark ? '#12241A' : theme.colors.surfaceElevated}
+                      fill={onDark ? '#12241A' : theme.m3.color.surfaceContainerHigh}
                       stroke={strokeColor}
                       strokeWidth={2.5}
                     />
@@ -457,7 +457,7 @@ export const BarChart = React.memo(function BarChart({
   }, [reveal, theme.motion.reduceMotion]);
   const revealStyle = useAnimatedStyle(() => ({ opacity: reveal.value }));
   const labelStep = Math.max(1, Math.ceil(points.length / (compactLabels ? 4 : 6)));
-  const primary = color ?? theme.chart.series[0] ?? theme.colors.accent.base;
+  const primary = color ?? theme.chart.series[0] ?? theme.m3.color.primary;
   const secondaryFill = secondaryColor ?? theme.colors.positive;
 
   const baseline = padding.top + innerHeight - ((0 - scale.min) / scale.range) * innerHeight;
@@ -513,7 +513,7 @@ export const BarChart = React.memo(function BarChart({
                       y1={y}
                       x2={width - padding.right}
                       y2={y}
-                      stroke={theme.colors.chartGrid}
+                      stroke={theme.m3.color.outlineVariant}
                       strokeWidth={StyleSheet.hairlineWidth}
                       strokeDasharray={ratio === 1 ? undefined : '3 5'}
                     />
@@ -552,7 +552,7 @@ export const BarChart = React.memo(function BarChart({
                         <SvgText
                           x={slotCenter}
                           y={height - 5}
-                          fill={isSelected ? theme.colors.text : theme.colors.muted}
+                          fill={isSelected ? theme.colors.text : theme.m3.color.onSurfaceVariant}
                           fontSize={10}
                           textAnchor="middle">
                           {point.label}
@@ -561,8 +561,8 @@ export const BarChart = React.memo(function BarChart({
                     </G>
                   );
                 })}
-                <Line x1={padding.left} y1={baseline} x2={width - padding.right} y2={baseline} stroke={theme.colors.borderStrong} strokeWidth={1} />
-                <SvgText x={width - padding.right} y={padding.top - 6} fill={theme.colors.muted} fontSize={10} textAnchor="end">
+                <Line x1={padding.left} y1={baseline} x2={width - padding.right} y2={baseline} stroke={theme.m3.color.outline} strokeWidth={1} />
+                <SvgText x={width - padding.right} y={padding.top - 6} fill={theme.m3.color.onSurfaceVariant} fontSize={10} textAnchor="end">
                   {money.format(scale.max, { compact: true })}
                 </SvgText>
               </Svg>
@@ -623,7 +623,7 @@ export const DonutChart = React.memo(function DonutChart({
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke={theme.colors.inputBackground}
+            stroke={theme.m3.color.surfaceContainerHighest}
             strokeWidth={thickness}
             fill="none"
           />
@@ -683,7 +683,7 @@ export const Sparkline = React.memo(function Sparkline({
   strokeWidth?: number;
 }) {
   const theme = useTheme();
-  const stroke = color ?? theme.chart.series[0] ?? theme.colors.accent.base;
+  const stroke = color ?? theme.chart.series[0] ?? theme.m3.color.primary;
   const min = Math.min(...values, 0);
   const max = Math.max(...values, 1);
   const range = max - min || 1;
@@ -739,7 +739,7 @@ export const FlowBars = React.memo(function FlowBars({
         style={{
           height: 6,
           borderRadius: 3,
-          backgroundColor: theme.chart.series[0] ?? theme.colors.accent.base,
+          backgroundColor: theme.chart.series[0] ?? theme.m3.color.primary,
           opacity: 0.9,
           width: '100%',
         }}
@@ -758,7 +758,7 @@ export const FlowBars = React.memo(function FlowBars({
                   {money.format(item.value, { compact: false })}
                 </AppText>
               </View>
-              <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.inputBackground, overflow: 'hidden' }}>
+              <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.m3.color.surfaceContainerHighest, overflow: 'hidden' }}>
                 <View
                   style={{
                     width: `${Math.max(2, ratio * 100)}%`,
