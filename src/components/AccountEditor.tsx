@@ -284,8 +284,8 @@ export function AccountEditor({ visible, onClose, account, defaultGroupId }: Acc
         <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
           {account ? (
             <>
-              <IconButton icon={account.isArchived ? 'refresh-outline' : 'archive-outline'} onPress={archive} size={44} background={theme.colors.inputBackground} accessibilityLabel="Archive" />
-              <IconButton icon="trash-outline" onPress={remove} size={44} background={theme.colors.negativeSoft} color={theme.colors.negative} accessibilityLabel="Delete" />
+              <IconButton icon={account.isArchived ? 'refresh-outline' : 'archive-outline'} onPress={archive} size={44} background={theme.m3.color.surfaceContainerHighest} accessibilityLabel="Archive" />
+              <IconButton icon="trash-outline" onPress={remove} size={44} background={theme.m3.color.errorContainer} color={theme.m3.color.error} accessibilityLabel="Delete" />
             </>
           ) : null}
           <Button label={editing ? 'Save account' : 'Create account'} onPress={submit} loading={busy} style={{ flex: 1 }} />
@@ -295,7 +295,7 @@ export function AccountEditor({ visible, onClose, account, defaultGroupId }: Acc
         <Field label="Account name" value={name} onChangeText={setName} placeholder="e.g. Kotak Bank" autoFocus={!editing} />
 
         <View style={{ gap: theme.spacing.sm }}>
-          <AppText variant="captionMedium" tone="secondary">
+          <AppText variant="titleSmall" tone="secondary">
             Type
           </AppText>
           <Row gap="sm" wrap>
@@ -319,7 +319,7 @@ export function AccountEditor({ visible, onClose, account, defaultGroupId }: Acc
         <Field label="Institution (optional)" value={institution} onChangeText={setInstitution} placeholder="e.g. HDFC Bank" />
 
         <View style={{ gap: theme.spacing.sm }}>
-          <AppText variant="captionMedium" tone="secondary">
+          <AppText variant="titleSmall" tone="secondary">
             Appearance
           </AppText>
           <Row gap="md" align="center">
@@ -378,10 +378,10 @@ export function AccountEditor({ visible, onClose, account, defaultGroupId }: Acc
         )}
 
         {isCard ? (
-          <View style={{ gap: theme.spacing.md, padding: theme.spacing.lg, borderRadius: theme.radius.md, backgroundColor: theme.colors.inputBackground }}>
+          <View style={{ gap: theme.spacing.md, padding: theme.spacing.lg, borderRadius: theme.m3.shape.medium, backgroundColor: theme.m3.color.surfaceContainerHighest }}>
             <Row gap="sm">
-              <Ionicons name="card-outline" size={16} color={theme.colors.textSecondary} />
-              <AppText variant="captionMedium" tone="secondary">
+              <Ionicons name="card-outline" size={16} color={theme.m3.color.onSurfaceVariant} />
+              <AppText variant="titleSmall" tone="secondary">
                 Credit card details
               </AppText>
             </Row>
@@ -399,15 +399,15 @@ export function AccountEditor({ visible, onClose, account, defaultGroupId }: Acc
         ) : null}
 
         {isInvestment ? (
-          <View style={{ gap: theme.spacing.md, padding: theme.spacing.lg, borderRadius: theme.radius.md, backgroundColor: theme.colors.inputBackground }}>
+          <View style={{ gap: theme.spacing.md, padding: theme.spacing.lg, borderRadius: theme.m3.shape.medium, backgroundColor: theme.m3.color.surfaceContainerHighest }}>
             <Row gap="sm">
-              <Ionicons name="trending-up-outline" size={16} color={theme.colors.textSecondary} />
-              <AppText variant="captionMedium" tone="secondary">
+              <Ionicons name="trending-up-outline" size={16} color={theme.m3.color.onSurfaceVariant} />
+              <AppText variant="titleSmall" tone="secondary">
                 Investment details
               </AppText>
             </Row>
             <View style={{ gap: theme.spacing.sm }}>
-              <AppText variant="caption" tone="muted">
+              <AppText variant="bodyMedium" tone="muted">
                 Asset class
               </AppText>
               <Row gap="sm" wrap>
@@ -418,17 +418,17 @@ export function AccountEditor({ visible, onClose, account, defaultGroupId }: Acc
             </View>
             <Field label="Invested (cost basis)" value={costBasis} onChangeText={setCostBasis} keyboardType="decimal-pad" prefix={money.currency === 'INR' ? '₹' : money.currency} money />
             <Field label="Current value" value={currentValue} onChangeText={setCurrentValue} keyboardType="decimal-pad" prefix={money.currency === 'INR' ? '₹' : money.currency} money />
-            <AppText variant="caption" tone="muted">
+            <AppText variant="bodyMedium" tone="muted">
               Updating the current value records a valuation adjustment — your ledger history stays intact.
             </AppText>
           </View>
         ) : null}
 
         {isLoan || isMortgage ? (
-          <View style={{ gap: theme.spacing.md, padding: theme.spacing.lg, borderRadius: theme.radius.md, backgroundColor: theme.colors.inputBackground }}>
+          <View style={{ gap: theme.spacing.md, padding: theme.spacing.lg, borderRadius: theme.m3.shape.medium, backgroundColor: theme.m3.color.surfaceContainerHighest }}>
             <Row gap="sm">
-              <Ionicons name={isMortgage ? 'home-outline' : 'document-outline'} size={16} color={theme.colors.textSecondary} />
-              <AppText variant="captionMedium" tone="secondary">
+              <Ionicons name={isMortgage ? 'home-outline' : 'document-outline'} size={16} color={theme.m3.color.onSurfaceVariant} />
+              <AppText variant="titleSmall" tone="secondary">
                 {isMortgage ? 'Mortgage details' : 'Loan details'}
               </AppText>
             </Row>
@@ -436,7 +436,7 @@ export function AccountEditor({ visible, onClose, account, defaultGroupId }: Acc
           </View>
         ) : null}
 
-        <View style={{ borderRadius: theme.radius.md, backgroundColor: theme.colors.inputBackground, overflow: 'hidden' }}>
+        <View style={{ borderRadius: theme.m3.shape.medium, backgroundColor: theme.m3.color.surfaceContainerHighest, overflow: 'hidden' }}>
           <SettingSwitch title="Count in net worth" value={includeInNetWorth} onValueChange={setIncludeInNetWorth} />
           <SettingSwitch
             title="Count in total balance"
@@ -456,7 +456,7 @@ export function AccountEditor({ visible, onClose, account, defaultGroupId }: Acc
 
         {editing ? (
           <Row justify="space-between">
-            <AppText variant="caption" tone="muted">
+            <AppText variant="bodyMedium" tone="muted">
               Current balance
             </AppText>
             <MoneyText amount={account?.currentBalance ?? 0} variant="numericCaption" tone={isLiability(type) ? 'negative' : 'neutral'} />

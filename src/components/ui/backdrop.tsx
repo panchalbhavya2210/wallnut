@@ -26,16 +26,16 @@ export function GradientBlobs({ style, height = 380 }: { style?: StyleProp<ViewS
       <Svg width="100%" height="100%">
         <Defs>
           <RadialGradient id={`blob-a-${rawId}`} cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor={theme.colors.accent.base} stopOpacity={strong} />
-            <Stop offset="1" stopColor={theme.colors.accent.base} stopOpacity={0} />
+            <Stop offset="0" stopColor={theme.m3.color.primary} stopOpacity={strong} />
+            <Stop offset="1" stopColor={theme.m3.color.primary} stopOpacity={0} />
           </RadialGradient>
           <RadialGradient id={`blob-b-${rawId}`} cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor={theme.colors.positive} stopOpacity={mid} />
-            <Stop offset="1" stopColor={theme.colors.positive} stopOpacity={0} />
+            <Stop offset="0" stopColor={theme.m3.color.tertiary} stopOpacity={mid} />
+            <Stop offset="1" stopColor={theme.m3.color.tertiary} stopOpacity={0} />
           </RadialGradient>
           <RadialGradient id={`blob-c-${rawId}`} cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor={theme.chart.series[2] ?? theme.colors.warning} stopOpacity={soft} />
-            <Stop offset="1" stopColor={theme.chart.series[2] ?? theme.colors.warning} stopOpacity={0} />
+            <Stop offset="0" stopColor={theme.m3.color.secondary} stopOpacity={soft} />
+            <Stop offset="1" stopColor={theme.m3.color.secondary} stopOpacity={0} />
           </RadialGradient>
         </Defs>
         <Circle cx="14%" cy="34%" r={170} fill={`url(#blob-a-${rawId})`} />

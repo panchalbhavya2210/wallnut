@@ -98,15 +98,15 @@ export function SettleSheet({
         <View
           style={{
             padding: theme.spacing.lg,
-            borderRadius: theme.radius.lg,
-            backgroundColor: theme.colors.accent.soft,
+            borderRadius: theme.m3.shape.large,
+            backgroundColor: direction === 'received' ? theme.m3.color.positiveContainer : theme.m3.color.errorContainer,
             gap: 4,
           }}>
-          <AppText variant="caption" tone="secondary">
+          <AppText variant="labelMedium" tone="secondary">
             {direction === 'received' ? `${personName} owes you` : `You owe ${personName}`}
           </AppText>
-          <MoneyText amount={max} variant="numericMedium" tone={direction === 'received' ? 'positive' : 'negative'} />
-          <AppText variant="caption" tone="muted">
+          <MoneyText amount={max} variant="headlineSmall" tone={direction === 'received' ? 'positive' : 'negative'} />
+          <AppText variant="bodyMedium" tone="muted">
             Settlements move cash and reduce the balance — they are never income or spending.
           </AppText>
         </View>
@@ -130,20 +130,22 @@ export function SettleSheet({
             flexDirection: 'row',
             alignItems: 'center',
             gap: theme.spacing.md,
-            padding: theme.spacing.md,
-            borderRadius: theme.radius.md,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: theme.colors.border,
-            backgroundColor: pressed ? theme.colors.pressed : theme.colors.inputBackground,
+            paddingHorizontal: theme.spacing.md,
+            paddingVertical: theme.spacing.md,
+            borderTopLeftRadius: theme.m3.shape.extraSmall,
+            borderTopRightRadius: theme.m3.shape.extraSmall,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.m3.color.onSurfaceVariant,
+            backgroundColor: pressed ? theme.colors.pressed : theme.m3.color.surfaceContainerHighest,
           })}>
-          <Ionicons name="wallet-outline" size={17} color={theme.colors.textSecondary} />
+          <Ionicons name="wallet-outline" size={20} color={theme.m3.color.onSurfaceVariant} />
           <View style={{ flex: 1 }}>
-            <AppText variant="caption" tone="muted">
+            <AppText variant="labelMedium" tone="muted">
               Account
             </AppText>
-            <AppText variant="bodySmall">{account?.name ?? 'Track without an account'}</AppText>
+            <AppText variant="bodyLarge">{account?.name ?? 'Track without an account'}</AppText>
           </View>
-          <Ionicons name="chevron-forward" size={14} color={theme.colors.muted} />
+          <Ionicons name="chevron-forward" size={16} color={theme.m3.color.onSurfaceVariant} />
         </Pressable>
 
         {remaining > 0 ? (
