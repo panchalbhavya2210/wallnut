@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
@@ -76,42 +76,42 @@ export default function AccountsScreen() {
             <View
               style={{
                 padding: theme.spacing.lg,
-                borderRadius: theme.radius.xxl,
-                backgroundColor: theme.colors.accent.soft,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: theme.colors.border,
+                borderRadius: theme.m3.shape.extraLarge,
+                backgroundColor: theme.m3.color.primaryContainer,
                 gap: theme.spacing.md,
               }}>
               <View>
-                <AppText variant="label" tone="muted">
-                  NET WORTH
+                <AppText variant="labelMedium" style={{ color: theme.m3.color.onPrimaryContainer, opacity: 0.8 }}>
+                  Net worth
                 </AppText>
-                <AppText variant="numericLarge" style={{ marginTop: 6 }}>
+                <AppText variant="headlineMedium" style={{ marginTop: 6, color: theme.m3.color.onPrimaryContainer }}>
                   {money.format(data?.netWorth ?? 0)}
                 </AppText>
               </View>
               <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
                 <View style={{ flex: 1 }}>
-                  <AppText variant="caption" tone="muted">
+                  <AppText variant="labelSmall" style={{ color: theme.m3.color.onPrimaryContainer, opacity: 0.7 }}>
                     Assets
                   </AppText>
-                  <AppText variant="numericSmall" tone="positive">
+                  <AppText variant="numericSmall" style={{ color: theme.m3.color.onPrimaryContainer }}>
                     {money.format(data?.assetsTotal ?? 0, { compact: true })}
                   </AppText>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <AppText variant="caption" tone="muted">
+                  <AppText variant="labelSmall" style={{ color: theme.m3.color.onPrimaryContainer, opacity: 0.7 }}>
                     Liabilities
                   </AppText>
-                  <AppText variant="numericSmall" tone="negative">
+                  <AppText variant="numericSmall" style={{ color: theme.m3.color.onPrimaryContainer }}>
                     {money.format(data?.liabilitiesTotal ?? 0, { compact: true })}
                   </AppText>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <AppText variant="caption" tone="muted">
+                  <AppText variant="labelSmall" style={{ color: theme.m3.color.onPrimaryContainer, opacity: 0.7 }}>
                     Spendable
                   </AppText>
-                  <AppText variant="numericSmall">{money.format(data?.liquidTotal ?? 0, { compact: true })}</AppText>
+                  <AppText variant="numericSmall" style={{ color: theme.m3.color.onPrimaryContainer }}>
+                    {money.format(data?.liquidTotal ?? 0, { compact: true })}
+                  </AppText>
                 </View>
               </View>
             </View>
@@ -130,8 +130,8 @@ export default function AccountsScreen() {
                       {section.group ? (
                         <Ionicons name={isCollapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={theme.colors.muted} />
                       ) : null}
-                      <AppText variant="label" tone={section.group?.isHidden ? 'muted' : 'secondary'}>
-                        {(section.group?.name ?? 'Ungrouped').toUpperCase()}
+                      <AppText variant="titleSmall" tone={section.group?.isHidden ? 'muted' : 'secondary'}>
+                        {section.group?.name ?? 'Ungrouped'}
                       </AppText>
                       {section.group?.isHidden ? <Ionicons name="eye-off-outline" size={13} color={theme.colors.muted} /> : null}
                     </View>
@@ -200,35 +200,33 @@ function AccountCard({ account, onPress }: { account: Account; onPress: () => vo
         alignItems: 'center',
         gap: theme.spacing.md,
         padding: theme.spacing.lg,
-        borderRadius: theme.radius.lg,
-        backgroundColor: theme.colors.surface,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.border,
+        borderRadius: theme.m3.shape.large,
+        backgroundColor: theme.m3.color.surfaceContainerLow,
         opacity: pressed ? 0.85 : account.isArchived ? 0.5 : 1,
       })}>
       <View
         style={{
-          width: 42,
-          height: 42,
-          borderRadius: theme.radius.md + 2,
-          backgroundColor: `${account.color ?? theme.colors.accent.base}22`,
+          width: 40,
+          height: 40,
+          borderRadius: theme.m3.shape.full,
+          backgroundColor: `${account.color ?? theme.m3.color.primary}22`,
           alignItems: 'center',
           justifyContent: 'center',
         }}>
-        <Ionicons name={icon} size={20} color={account.color ?? theme.colors.accent.base} />
+        <Ionicons name={icon} size={20} color={account.color ?? theme.m3.color.primary} />
       </View>
       <View style={{ flex: 1, gap: 2 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <AppText variant="bodyMedium" numberOfLines={1} style={{ flexShrink: 1 }}>
+          <AppText variant="titleSmall" numberOfLines={1} style={{ flexShrink: 1 }}>
             {account.name}
           </AppText>
           {account.isArchived ? (
-            <AppText variant="caption" tone="muted">
+            <AppText variant="labelSmall" tone="muted">
               archived
             </AppText>
           ) : null}
         </View>
-        <AppText variant="caption" tone="muted" numberOfLines={1}>
+        <AppText variant="bodyMedium" tone="muted" numberOfLines={1}>
           {account.institution ? `${account.institution} · ` : ''}
           {investment && account.costBasis
             ? `${money.format(account.currentBalance - account.costBasis, { sign: 'always' })} gain`
@@ -241,7 +239,7 @@ function AccountCard({ account, onPress }: { account: Account; onPress: () => vo
             <ProgressBar
               progress={cardUtilisation * 100}
               height={4}
-              color={cardUtilisation > 0.7 ? theme.colors.warning : theme.colors.accent.base}
+              color={cardUtilisation > 0.7 ? theme.m3.color.warning : theme.m3.color.primary}
             />
           </View>
         ) : null}
@@ -252,7 +250,7 @@ function AccountCard({ account, onPress }: { account: Account; onPress: () => vo
           variant="numericBody"
           tone={liability && account.currentBalance < 0 ? 'negative' : 'neutral'}
         />
-        <Ionicons name="chevron-forward" size={14} color={theme.colors.muted} />
+        <Ionicons name="chevron-forward" size={16} color={theme.m3.color.onSurfaceVariant} />
       </View>
     </Pressable>
   );

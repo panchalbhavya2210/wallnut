@@ -50,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1   # widgets need 
   after any change to `src/components/ui/sheets.tsx` or the root providers.
 * `scripts/verify-m3.mjs` — Material 3 regression pass: 392dp web phone frame,
   drawer Settings push/back, global bottom nav, segmented-control geometry,
-  date-picker + ledger calendar, compact type (13 checks). Run it after touching
+  date-picker + ledger calendar, compact type (14 checks). Run it after touching
   M3 tokens, the segmented control, the calendar or navigation.
 * Screenshots for the user live in `screenshots/`.
 * **Never re-introduce `metro.config.js` beyond `config.resolver.assetExts.push('wasm')`**:
@@ -374,7 +374,7 @@ index.ts                   custom entry: registers widget task handler, then exp
   - **Web phone frame**: `src/components/PhonePreviewFrame.tsx` centers the web build in a **392dp** phone frame (testID `phone-preview-frame`); native is untouched. All screenshots are now at realistic phone width with dark mat gutters.
   - **Navigation**: the bottom navigation is rendered **once at the root** (`RootBottomNav`), so it stays visible on pushed screens (Settings, detail, composer). Shell tabs use `router.navigate`; tabs from a pushed screen use `router.dismissTo`. Screen bottom padding/fixed bars were lifted by 72dp (composer, quick entry, shared expense, AI input) so the nav never covers controls.
   - **Back policy**: `AndroidBackTrap` — Home: first back shows “Press back again to exit”, second within 2s exits; every other route: navigator pops, and if there is no history (deep link / replaced route) it goes Home instead of closing the app. The native drawer mirrors its open state into `ui.store.nativeDrawerOpen` so the trap defers to the drawer. `WallnutDrawerContent`/`GlobalDrawer` now use `router.navigate` (push) for Settings and other pages — `dismissTo` was **replacing** Home, so Android back had nothing to pop.
-  - **Verification**: `scripts/verify-m3.mjs` (13 checks: phone frame, drawer Settings push + back, bottom nav on pushed screens, segmented-control geometry, date-picker calendar, ledger calendar, compact type) and `scripts/verify-modals.mjs` (33 checks) — `verify-m3` passes 13/13; `verify-modals` needs a final rerun after the global-nav tab fix. `tsc --noEmit` clean, 185 unit tests green (5 new M3 token tests), web export rebuilt. Screenshots: `m3-phone-frame.png`, `m3-segmented.png`, `m3-calendar.png`, `m3-ledger-calendar.png`, `appearance-m3.png`, `home-m3.png`, `transactions-m3.png`, `insights-m3.png`, `budgets-m3.png`, `settings-m3.png`.
+  - **Verification**: `scripts/verify-m3.mjs` (14 checks: phone frame, drawer Settings push + back, bottom nav on pushed screens, segmented-control geometry, date-picker calendar, ledger calendar, compact type) and `scripts/verify-modals.mjs` (33 checks) — both pass 14/14 and 33/33. `tsc --noEmit` clean, 185 unit tests green (5 new M3 token tests), web export rebuilt. Screenshots: `m3-phone-frame.png`, `m3-segmented.png`, `m3-calendar.png`, `m3-ledger-calendar.png`, `appearance-m3.png`, `accounts-m3.png`, `home-m3.png`, `transactions-m3.png`, `insights-m3.png`, `budgets-m3.png`, `settings-m3.png`, `composer-m3.png`.
   - **Remaining**: see §11 for the component/screen status board and the exact next steps. The biggest remaining items are the rest of the custom inner cards (analytics metric tiles, AI monthly review, forecast, settle sheet, account editor), the composer's custom header, reports/detail headers, onboarding/lock screen, tablet navigation rail, and a device APK pass for the back policy, switches and keyboard.
 
 ### Priorities (user-set, 2026-10-16)
@@ -905,7 +905,7 @@ the period labels, with a per-budget override chip in the budget editor.
     fixed. Shared components (buttons, chips, connected button group, cards, lists, app/nav bars, FAB, sheets,
     fields, snackbar, calendar, keypad, calculator, drawer, switches) were rebuilt on the M3 roles. The web preview
     is a 392dp phone frame; the bottom nav is global; Android back pops pages and double-back exits; the ledger
-    calendar no longer paints red blocks. `scripts/verify-m3.mjs` (13 checks) covers the frame, drawer push/back,
+    calendar no longer paints red blocks. `scripts/verify-m3.mjs` (14 checks) covers the frame, drawer push/back,
     global nav, segmented geometry, date picker and ledger calendar. Full status board in §11.
 
 ### Verification commands
@@ -1081,7 +1081,7 @@ Merging `development` into `main` is what ships.
 | Composer (`transaction/new`) | 🟡 Partial | Fields/keypad/sheets done; custom header still pre-M3; bottom nav clearance added |
 | Quick Entry | 🟡 Partial | Sheets/fields/buttons done; custom chrome/empty states pending |
 | Transaction detail | ⬜ To do | Header, action rows, split/tag/attachment sections |
-| Accounts / Account detail / Account editor | ⬜ To do | Cards/charts inherit colors; inner panes and editor need M3 |
+| Accounts / Account detail / Account editor | 🟡 Partial | Account list/hero cards now M3; detail/editor inner panes still to review |
 | Goals / Debts / Shared / Recurring / Installments / Investments / Shopping | ⬜ To do | Shared components already shift the visual language; each screen's custom cards/rows need a pass |
 | Review / Inbox / Rules / Templates / Tags / Merchants / Categories | ⬜ To do | ListGroup/rows inherit; custom hero/filter chrome pending |
 | Data & Import / statement review | ⬜ To do | Wizard cards, mapping/preview tables, review rows |
