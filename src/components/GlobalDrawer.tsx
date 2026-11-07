@@ -6,6 +6,9 @@ import { useTheme } from '@/theme/theme';
 import { useUiStore } from '@/stores/ui.store';
 import { DrawerMenu, type DrawerDestination } from './DrawerContent';
 
+/** Routes that live inside the drawer shell (not pushed on the root stack). */
+const DRAWER_SHELL_ROUTES = new Set(['/', '/transactions', '/budgets', '/analytics']);
+
 /**
  * Root-level drawer overlay for screens that sit above the drawer shell
  * (settings, editors, detail screens). It mirrors the native drawer without
@@ -61,7 +64,12 @@ export function GlobalDrawer() {
     (destination: DrawerDestination) => {
       if (!destination.href) return;
       close();
-      router.dismissTo(destination.href as never);
+      if (DRAWER_SHELL_ROUTES.has(destination.href)) {
+        router.dismissTo(destination.href as never);
+        return;
+      }
+      // Pushed page: keep the current screen below it so Android back works.
+      router.navigate(destination.href as never);
     },
     [close],
   );

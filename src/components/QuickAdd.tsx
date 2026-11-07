@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -31,10 +30,13 @@ const SECONDARY_ACTIONS = [
   { label: 'Quick templates', subtitle: 'Reuse a frequent transaction', icon: 'flash-outline' as const, href: '/templates' },
 ];
 
-export function QuickAddFab({ bottomOffset = 0 }: { bottomOffset?: number }) {
+export function QuickAddFab({ bottomOffset = 0, hidden = false }: { bottomOffset?: number; hidden?: boolean }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
+  const c = theme.m3.color;
+
+  if (hidden) return null;
 
   return (
     <>
@@ -43,23 +45,24 @@ export function QuickAddFab({ bottomOffset = 0 }: { bottomOffset?: number }) {
           onPress={() => setOpen(true)}
           accessibilityRole="button"
           accessibilityLabel="Add transaction"
-          scaleTo={0.95}
+          scaleTo={0.94}
           style={[
             styles.fab,
             {
               right: Math.max(insets.right, 16) + 4,
               bottom: Math.max(insets.bottom, 12) + 14 + bottomOffset,
-              borderRadius: theme.radius.xxl,
+              borderRadius: theme.m3.shape.large,
+              backgroundColor: c.primaryContainer,
             },
             theme.shadow('fab'),
           ]}>
-          <LinearGradient
-            colors={theme.gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.fabInner, { borderRadius: theme.radius.xxl }]}>
-            <Ionicons name="add" size={30} color="#FFFFFF" />
-          </LinearGradient>
+          <View
+            style={[
+              styles.fabInner,
+              { borderRadius: theme.m3.shape.large },
+            ]}>
+            <Ionicons name="add" size={28} color={c.onPrimaryContainer} />
+          </View>
         </PressableBounce>
       </View>
       <QuickAddSheet
@@ -207,8 +210,8 @@ export function QuickAddSheet({
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
-    width: 58,
-    height: 58,
+    width: 56,
+    height: 56,
   },
   fabInner: {
     width: '100%',

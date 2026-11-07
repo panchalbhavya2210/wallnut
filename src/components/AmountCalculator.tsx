@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useTheme } from '@/theme/theme';
@@ -125,15 +125,14 @@ export function AmountCalculatorSheet({
         <View
           style={{
             padding: theme.spacing.lg,
-            borderRadius: theme.radius.lg,
-            backgroundColor: theme.colors.inputBackground,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: theme.colors.border,
+            borderTopLeftRadius: theme.m3.shape.extraSmall,
+            borderTopRightRadius: theme.m3.shape.extraSmall,
+            backgroundColor: theme.m3.color.surfaceContainerHighest,
             gap: 4,
           }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ minWidth: '100%' }}>
             <AppText
-              variant="numericMedium"
+              variant="bodyLarge"
               tone={expression ? 'secondary' : 'muted'}
               numberOfLines={1}
               style={{ flex: 1, textAlign: 'right' }}>
@@ -141,7 +140,7 @@ export function AmountCalculatorSheet({
             </AppText>
           </ScrollView>
           <AppText
-            variant="display"
+            variant="headlineLarge"
             tone={result.ok ? 'primary' : 'negative'}
             numberOfLines={1}
             adjustsFontSizeToFit
@@ -172,28 +171,30 @@ export function AmountCalculatorSheet({
                 accessibilityLabel={key.token === 'backspace' ? 'Backspace' : key.label}
                 style={({ pressed }) => ({
                   width: '22.8%',
-                  height: 54,
-                  borderRadius: theme.radius.md,
+                  height: 56,
+                  borderRadius: theme.m3.shape.medium,
                   alignItems: 'center',
                   justifyContent: 'center',
                   backgroundColor: isEquals
-                    ? theme.colors.accent.base
+                    ? theme.m3.color.primary
                     : isOperator
-                      ? theme.colors.accent.soft
+                      ? theme.m3.color.secondaryContainer
                       : isAction
-                        ? theme.colors.neutralSoft
-                        : theme.colors.surface,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: isEquals || isOperator ? 'transparent' : theme.colors.border,
+                        ? theme.m3.color.surfaceContainerHighest
+                        : theme.m3.color.surfaceContainerHigh,
                   opacity: pressed ? 0.72 : 1,
                 })}>
                 {key.token === 'backspace' ? (
-                  <Ionicons name="backspace-outline" size={21} color={theme.colors.text} />
+                  <Ionicons name="backspace-outline" size={22} color={theme.m3.color.onSurfaceVariant} />
                 ) : (
                   <AppText
-                    variant="titleSmall"
+                    variant="titleLarge"
                     style={{
-                      color: isEquals ? theme.colors.accent.on : isOperator ? theme.colors.accent.base : theme.colors.text,
+                      color: isEquals
+                        ? theme.m3.color.onPrimary
+                        : isOperator
+                          ? theme.m3.color.onSecondaryContainer
+                          : theme.m3.color.onSurface,
                     }}>
                     {key.label}
                   </AppText>

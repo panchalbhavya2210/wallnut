@@ -8,7 +8,6 @@ import { useSettingsStore } from '@/stores/settings.store';
 import { useBootstrapStore } from '@/stores/bootstrap.store';
 import { toast } from '@/stores/ui.store';
 import { WallnutDrawerContent } from '@/components/DrawerContent';
-import { BottomNav } from '@/components/BottomNav';
 
 /**
  * Top-level shell: a one-handed bottom navigation bar for the primary
@@ -55,7 +54,6 @@ export default function AppLayout() {
     ({ children }: { children: React.ReactNode }) => (
       <View style={{ flex: 1 }}>
         {children}
-        <BottomNav />
       </View>
     ),
     [],

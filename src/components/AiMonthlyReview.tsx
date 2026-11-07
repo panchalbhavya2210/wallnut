@@ -68,12 +68,12 @@ export function AiMonthlyReview({ range }: { range: DateRange }) {
     return (
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
-          <Ionicons name="sparkles-outline" size={15} color={theme.colors.accent.base} />
-          <AppText variant="label" tone="muted">
-            AI REVIEW
+          <Ionicons name="sparkles-outline" size={16} color={theme.m3.color.tertiary} />
+          <AppText variant="titleSmall" tone="muted">
+            AI review
           </AppText>
         </View>
-        <AppText variant="bodySmall" tone="muted" style={{ marginTop: theme.spacing.md }}>
+        <AppText variant="bodyMedium" tone="muted" style={{ marginTop: theme.spacing.md }}>
           Reading the month…
         </AppText>
       </Card>
@@ -85,18 +85,18 @@ export function AiMonthlyReview({ range }: { range: DateRange }) {
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
-            <Ionicons name="sparkles-outline" size={15} color={theme.colors.muted} />
-            <AppText variant="label" tone="muted">
-              AI REVIEW
+            <Ionicons name="sparkles-outline" size={16} color={theme.m3.color.onSurfaceVariant} />
+            <AppText variant="titleSmall" tone="muted">
+              AI review
             </AppText>
           </View>
           <Pressable onPress={() => setNonce((value) => value + 1)} hitSlop={10}>
-            <AppText variant="captionMedium" tone="accent">
+            <AppText variant="labelLarge" tone="accent">
               Retry
             </AppText>
           </Pressable>
         </View>
-        <AppText variant="caption" tone="muted" style={{ marginTop: theme.spacing.md }}>
+        <AppText variant="bodyMedium" tone="muted" style={{ marginTop: theme.spacing.md }}>
           {state.message}
         </AppText>
       </Card>
@@ -106,24 +106,24 @@ export function AiMonthlyReview({ range }: { range: DateRange }) {
   return (
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
-        <Ionicons name="sparkles-outline" size={15} color={theme.colors.accent.base} />
-        <AppText variant="label" tone="muted">
-          AI REVIEW · {periodKey.toUpperCase()}
+        <Ionicons name="sparkles-outline" size={16} color={theme.m3.color.tertiary} />
+        <AppText variant="titleSmall" tone="muted">
+          AI review · {periodKey}
         </AppText>
       </View>
-      <AppText variant="bodyMedium" style={{ marginTop: theme.spacing.md }}>
+      <AppText variant="titleMedium" style={{ marginTop: theme.spacing.md }}>
         {state.summary.headline}
       </AppText>
 
       {state.summary.changed.length > 0 ? (
         <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.xs }}>
-          <AppText variant="captionMedium" tone="secondary">
+          <AppText variant="titleSmall" tone="secondary">
             What changed
           </AppText>
           {state.summary.changed.map((entry) => (
             <View key={`${entry.label}-${entry.detail}`} style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
-              <View style={[styles.dot, { backgroundColor: theme.colors.accent.base }]} />
-              <AppText variant="caption" tone="secondary" style={{ flex: 1 }}>
+              <View style={[styles.dot, { backgroundColor: theme.m3.color.tertiary }]} />
+              <AppText variant="bodyMedium" tone="secondary" style={{ flex: 1 }}>
                 {entry.label}
                 {entry.detail ? ` — ${entry.detail}` : ''}
               </AppText>
@@ -134,7 +134,7 @@ export function AiMonthlyReview({ range }: { range: DateRange }) {
 
       {state.summary.goingWell.length > 0 ? (
         <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.xs }}>
-          <AppText variant="captionMedium" tone="secondary">
+          <AppText variant="titleSmall" tone="secondary">
             Going well
           </AppText>
           {state.summary.goingWell.map((entry) => (

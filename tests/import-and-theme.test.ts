@@ -344,7 +344,7 @@ describe('material palette generator', () => {
     for (const palette of [light, dark]) {
       expect(palette.primary).toMatch(/^#[0-9A-F]{6}$/);
       expect(palette.surface).toMatch(/^#[0-9A-F]{6}$/);
-      expect(Object.keys(palette)).toHaveLength(24);
+      expect(Object.keys(palette)).toHaveLength(30);
     }
   });
 

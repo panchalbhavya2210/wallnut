@@ -331,7 +331,7 @@ export default function AiAssistantScreen() {
             flexDirection: 'row',
             alignItems: 'center',
             gap: theme.spacing.sm,
-            paddingBottom: Math.max(insets.bottom, theme.spacing.sm),
+            paddingBottom: Math.max(insets.bottom, theme.spacing.sm) + 72,
             paddingTop: theme.spacing.sm,
           }}>
           <View

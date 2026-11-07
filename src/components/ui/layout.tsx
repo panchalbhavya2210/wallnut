@@ -119,24 +119,31 @@ export function Card({
   style,
   padded = true,
   elevation = false,
+  variant,
 }: {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   padded?: boolean;
   elevation?: boolean;
+  /** M3 card styles: filled (default), elevated, outlined. */
+  variant?: 'filled' | 'elevated' | 'outlined';
 }) {
   const theme = useTheme();
+  const c = theme.m3.color;
+  const resolved = variant ?? (elevation ? 'elevated' : 'filled');
+  const background =
+    resolved === 'filled' ? c.surfaceContainerHigh : resolved === 'elevated' ? c.surfaceContainerLow : c.surface;
   return (
     <View
       style={[
         {
-          backgroundColor: theme.colors.surface,
-          borderRadius: theme.radius.lg,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: theme.colors.border,
+          backgroundColor: background,
+          borderRadius: theme.m3.shape.large,
+          borderWidth: resolved === 'outlined' ? 1 : 0,
+          borderColor: c.outlineVariant,
         },
         padded ? { padding: theme.spacing.lg } : null,
-        elevation ? theme.shadow('sm') : null,
+        resolved === 'elevated' ? theme.shadow('sm') : null,
         style,
       ]}>
       {children}
@@ -158,20 +165,19 @@ export function ListGroup({
   footer?: React.ReactNode;
 }) {
   const theme = useTheme();
+  const c = theme.m3.color;
   const items = React.Children.toArray(children).filter(Boolean);
   return (
     <View style={style}>
       {title ? (
-        <AppText variant="label" tone="muted" style={{ marginBottom: theme.spacing.sm, marginLeft: theme.spacing.xs }}>
+        <AppText variant="titleSmall" tone="muted" style={{ marginBottom: theme.spacing.sm, marginLeft: theme.spacing.xs }}>
           {title}
         </AppText>
       ) : null}
       <View
         style={{
-          backgroundColor: theme.colors.surface,
-          borderRadius: theme.radius.lg,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: theme.colors.border,
+          backgroundColor: c.surfaceContainerLow,
+          borderRadius: theme.m3.shape.large,
           overflow: 'hidden',
         }}>
         {items.map((child, index) => (
@@ -180,8 +186,8 @@ export function ListGroup({
               <View
                 style={{
                   height: StyleSheet.hairlineWidth,
-                  backgroundColor: theme.colors.border,
-                  marginLeft: theme.spacing.lg + 44,
+                  backgroundColor: c.outlineVariant,
+                  marginLeft: theme.spacing.lg + 40,
                 }}
               />
             ) : null}
@@ -235,6 +241,7 @@ export function ListRow({
   compact,
 }: ListRowProps) {
   const theme = useTheme();
+  const c = theme.m3.color;
   const body = (
     <View
       style={{
@@ -243,35 +250,36 @@ export function ListRow({
         gap: theme.spacing.md,
         paddingHorizontal: theme.spacing.lg,
         paddingVertical: compact ? theme.spacing.md : theme.spacing.lg - 2,
-        opacity: disabled ? 0.45 : 1,
+        minHeight: compact ? 56 : 64,
+        opacity: disabled ? 0.38 : 1,
       }}>
       {icon ? (
         <View
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: theme.radius.full,
+            width: 40,
+            height: 40,
+            borderRadius: theme.m3.shape.full,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: iconTile ? `${iconTint ?? iconColor ?? theme.colors.accent.base}22` : 'transparent',
+            backgroundColor: iconTile ? `${iconTint ?? iconColor ?? c.primary}22` : 'transparent',
           }}>
-          <Ionicons name={icon} size={18} color={iconColor ?? iconTint ?? theme.colors.accent.base} />
+          <Ionicons name={icon} size={20} color={iconColor ?? iconTint ?? c.primary} />
         </View>
       ) : null}
       <View style={{ flex: 1, gap: 2 }}>
-        <AppText variant="bodyMedium" tone={titleTone} numberOfLines={1}>
+        <AppText variant="bodyLarge" tone={titleTone} numberOfLines={1}>
           {title}
         </AppText>
         {subtitle ? (
-          <AppText variant="bodySmall" tone="muted" numberOfLines={1}>
+          <AppText variant="bodyMedium" tone="muted" numberOfLines={1}>
             {subtitle}
           </AppText>
         ) : null}
       </View>
       {value ?? null}
       {right ?? null}
-      {selected ? <Ionicons name="checkmark" size={18} color={theme.colors.accent.base} /> : null}
-      {chevron ? <Ionicons name="chevron-forward" size={16} color={theme.colors.muted} /> : null}
+      {selected ? <Ionicons name="checkmark" size={20} color={c.primary} /> : null}
+      {chevron ? <Ionicons name="chevron-forward" size={18} color={c.onSurfaceVariant} /> : null}
     </View>
   );
 
@@ -303,18 +311,17 @@ export function SectionHeader({
   style?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
+  const c = theme.m3.color;
   return (
     <View
       style={[
         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.sm },
         style,
       ]}>
-      {/* Sentence-case section titles: hierarchy comes from weight and size,
-          not from shouting. */}
       <AppText variant="titleSmall">{title}</AppText>
       {actionLabel && onAction ? (
         <Pressable onPress={onAction} hitSlop={10}>
-          <AppText variant="bodySmall" tone="accent" style={{ fontFamily: theme.typography.captionMedium.fontFamily }}>
+          <AppText variant="labelLarge" style={{ color: c.primary }}>
             {actionLabel}
           </AppText>
         </Pressable>
@@ -325,7 +332,7 @@ export function SectionHeader({
 
 export function Divider({ inset = 0, style }: { inset?: number; style?: StyleProp<ViewStyle> }) {
   const theme = useTheme();
-  return <View style={[{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border, marginLeft: inset }, style]} />;
+  return <View style={[{ height: StyleSheet.hairlineWidth, backgroundColor: theme.m3.color.outlineVariant, marginLeft: inset }, style]} />;
 }
 
 export function Row({
@@ -393,6 +400,7 @@ export function ScreenHeader({
   hint?: { id: string; message: string };
 }) {
   const theme = useTheme();
+  const c = theme.m3.color;
   return (
     <>
       <View
@@ -400,8 +408,9 @@ export function ScreenHeader({
           flexDirection: 'row',
           alignItems: 'center',
           gap: theme.spacing.sm,
-          paddingTop: theme.spacing.md,
-          paddingBottom: theme.spacing.lg,
+          minHeight: theme.m3.size.appBar,
+          paddingTop: theme.spacing.sm,
+          paddingBottom: theme.spacing.md,
         }}>
         {showBack ? (
           <Pressable
@@ -409,16 +418,17 @@ export function ScreenHeader({
             hitSlop={10}
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            android_ripple={{ color: theme.colors.ripple, borderless: true }}>
-            <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
+            android_ripple={{ color: theme.colors.ripple, borderless: true }}
+            style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="arrow-back" size={24} color={c.onSurface} />
           </Pressable>
         ) : null}
-        <View style={{ flex: 1 }}>
-          <AppText variant="title" numberOfLines={1}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <AppText variant="titleLarge" numberOfLines={1}>
             {title}
           </AppText>
           {subtitle ? (
-            <AppText variant="caption" tone="muted" numberOfLines={1}>
+            <AppText variant="bodyMedium" tone="muted" numberOfLines={1}>
               {subtitle}
             </AppText>
           ) : null}

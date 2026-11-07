@@ -1,12 +1,12 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
 import { Screen, IconName } from '@/components/ui/layout';
 import { AppText, MoneyText } from '@/components/ui/text';
-import { Button, Chip, IconButton, SegmentedControl } from '@/components/ui/controls';
+import { Button, Chip, IconButton, M3Switch, SegmentedControl } from '@/components/ui/controls';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/feedback';
 import { AppHeader, RoundIconButton } from '@/components/AppHeader';
 import { GradientBlobs } from '@/components/ui/backdrop';
@@ -780,12 +780,7 @@ function ViewOptionsSheet({
               Subtotal headers for each day, week or month.
             </AppText>
           </View>
-          <Switch
-            value={statementGroups}
-            onValueChange={onStatementGroupsChange}
-            trackColor={{ false: theme.colors.inputBackground, true: `${theme.colors.accent.base}88` }}
-            thumbColor={statementGroups ? theme.colors.accent.base : theme.colors.muted}
-          />
+          <M3Switch value={statementGroups} onValueChange={onStatementGroupsChange} />
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md }}>
@@ -795,12 +790,7 @@ function ViewOptionsSheet({
               Colour-coded icons with a review tick.
             </AppText>
           </View>
-          <Switch
-            value={showIcons}
-            onValueChange={onShowIconsChange}
-            trackColor={{ false: theme.colors.inputBackground, true: `${theme.colors.accent.base}88` }}
-            thumbColor={showIcons ? theme.colors.accent.base : theme.colors.muted}
-          />
+          <M3Switch value={showIcons} onValueChange={onShowIconsChange} />
         </View>
 
         <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
@@ -847,10 +837,8 @@ function BulkActionBar({ ids, onDone, onDelete }: { ids: string[]; onDone: () =>
         left: theme.spacing.lg,
         right: theme.spacing.lg,
         bottom: theme.spacing.xl,
-        backgroundColor: theme.colors.surfaceElevated,
-        borderColor: theme.colors.border,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderRadius: theme.radius.lg,
+        backgroundColor: theme.m3.color.surfaceContainerHigh,
+        borderRadius: theme.m3.shape.extraLarge,
         padding: theme.spacing.md,
         ...theme.shadow('lg'),
       }}>
@@ -940,8 +928,8 @@ function BulkButton({
         paddingVertical: theme.spacing.sm,
         opacity: pressed ? 0.6 : 1,
       })}>
-      <Ionicons name={icon} size={19} color={tone === 'negative' ? theme.colors.negative : theme.colors.text} />
-      <AppText variant="caption" tone={tone === 'negative' ? 'negative' : 'secondary'} style={{ fontSize: 10 }}>
+      <Ionicons name={icon} size={22} color={tone === 'negative' ? theme.m3.color.error : theme.m3.color.onSurfaceVariant} />
+      <AppText variant="labelSmall" tone={tone === 'negative' ? 'negative' : 'secondary'}>
         {label}
       </AppText>
     </Pressable>
@@ -1236,12 +1224,12 @@ function FilterBlock({
   return (
     <View style={{ gap: theme.spacing.sm }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <AppText variant="captionMedium" tone="secondary">
+        <AppText variant="titleSmall" tone="secondary">
           {label}
         </AppText>
         {actionLabel && onAction ? (
           <Pressable onPress={onAction} hitSlop={8}>
-            <AppText variant="caption" tone="accent">
+            <AppText variant="labelLarge" tone="accent">
               {actionLabel}
             </AppText>
           </Pressable>

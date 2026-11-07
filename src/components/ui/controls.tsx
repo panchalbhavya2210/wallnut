@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
@@ -42,9 +42,12 @@ export function Button({
   const theme = useTheme();
   const { background, foreground, border } = buttonColors(variant, theme);
 
-  const heights: Record<ButtonSize, number> = { sm: 34, md: 44, lg: 50 };
+  // M3 Expressive button heights: small 40, medium 56 is the spec default, but
+  // app forms are denser; our md stays 40 and lg 48 while keeping the M3 shape,
+  // label and color roles.
+  const heights: Record<ButtonSize, number> = { sm: 32, md: 40, lg: 48 };
   const padding: Record<ButtonSize, number> = { sm: theme.spacing.md, md: theme.spacing.xl, lg: theme.spacing.xxl };
-  const textVariant = size === 'sm' ? 'bodySmall' : 'bodyMedium';
+  const textVariant = 'labelLarge';
 
   return (
     <PressableBounce
@@ -58,17 +61,16 @@ export function Button({
         {
           backgroundColor: background,
           borderColor: border,
-          borderWidth: border ? StyleSheet.hairlineWidth * 2 : 0,
+          borderWidth: border ? 1 : 0,
           height: heights[size],
           paddingHorizontal: padding[size],
-          borderRadius: theme.radius.full,
+          borderRadius: theme.m3.shape.full,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
           gap: theme.spacing.sm,
-          opacity: disabled ? 0.45 : 1,
+          opacity: disabled ? 0.38 : 1,
         },
-        variant === 'primary' ? theme.shadow('sm') : null,
         // No forced alignment: column parents stretch it (full-width CTAs),
         // row/centered parents keep it intrinsic instead of hugging the left.
         fullWidth ? { alignSelf: 'stretch' } : null,
@@ -77,7 +79,7 @@ export function Button({
       {loading ? (
         <ActivityIndicator size="small" color={foreground} />
       ) : icon ? (
-        <Ionicons name={icon} size={size === 'sm' ? 14 : 17} color={foreground} />
+        <Ionicons name={icon} size={size === 'sm' ? 16 : 20} color={foreground} />
       ) : null}
       <AppText variant={textVariant} style={{ color: foreground }} numberOfLines={1}>
         {label}
@@ -87,18 +89,21 @@ export function Button({
 }
 
 function buttonColors(variant: ButtonVariant, theme: ReturnType<typeof useTheme>) {
+  const c = theme.m3.color;
   switch (variant) {
     case 'secondary':
-      return { background: theme.colors.surfaceElevated, foreground: theme.colors.text, border: theme.colors.border };
+      // M3 tonal button.
+      return { background: c.secondaryContainer, foreground: c.onSecondaryContainer, border: '' };
     case 'ghost':
-      return { background: 'transparent', foreground: theme.colors.accent.base, border: '' };
+      return { background: 'transparent', foreground: c.primary, border: '' };
     case 'danger':
-      return { background: theme.colors.negativeSoft, foreground: theme.colors.negative, border: '' };
+      // M3 filled error button — white label on the error fill.
+      return { background: c.error, foreground: c.onError, border: '' };
     case 'success':
-      return { background: theme.colors.positive, foreground: theme.mode === 'dark' ? theme.colors.textInverse : '#FFFFFF', border: '' };
+      return { background: c.positive, foreground: c.onPositive, border: '' };
     case 'primary':
     default:
-      return { background: theme.colors.accent.base, foreground: theme.colors.accent.on, border: '' };
+      return { background: c.primary, foreground: c.onPrimary, border: '' };
   }
 }
 
@@ -132,13 +137,13 @@ export function IconButton({
       style={{
         width: size,
         height: size,
-        borderRadius: theme.radius.md,
+        borderRadius: theme.m3.shape.full,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: background ?? 'transparent',
-        opacity: disabled ? 0.4 : 1,
+        opacity: disabled ? 0.38 : 1,
       }}>
-      <Ionicons name={icon} size={Math.round(size * 0.5)} color={color ?? theme.colors.text} />
+      <Ionicons name={icon} size={Math.round(size * 0.5)} color={color ?? theme.m3.color.onSurfaceVariant} />
     </PressableBounce>
   );
 }
@@ -163,8 +168,12 @@ export function Chip({
   accessibilityLabel?: string;
 }) {
   const theme = useTheme();
-  const activeColor = color ?? theme.colors.accent.base;
-  const selectedForeground = color ? '#FFFFFF' : theme.colors.accent.on;
+  const c = theme.m3.color;
+  const custom = Boolean(color);
+  const selectedBackground = custom ? `${color}2E` : c.secondaryContainer;
+  const selectedForeground = custom ? c.onSurface : c.onSecondaryContainer;
+  const unselectedForeground = c.onSurfaceVariant;
+
   return (
     <PressableBounce
       onPress={onPress}
@@ -175,24 +184,22 @@ export function Chip({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 5,
+        gap: 6,
         paddingHorizontal: size === 'sm' ? theme.spacing.md : theme.spacing.lg - 2,
-        height: size === 'sm' ? 28 : 36,
-        borderRadius: theme.radius.full,
-        // Selected chips are filled with the accent (the reference's segment
-        // pills); unselected chips are quiet white surfaces with a hairline.
-        backgroundColor: selected ? activeColor : theme.colors.surface,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: selected ? activeColor : theme.colors.border,
+        height: size === 'sm' ? 28 : 32,
+        borderRadius: theme.m3.shape.small,
+        backgroundColor: selected ? selectedBackground : 'transparent',
+        borderWidth: 1,
+        borderColor: selected ? (custom ? color : c.secondaryContainer) : c.outline,
       }}>
       {selected ? (
-        <Ionicons name="checkmark" size={12} color={selectedForeground} />
+        <Ionicons name="checkmark" size={14} color={selectedForeground} />
       ) : icon ? (
-        <Ionicons name={icon} size={13} color={theme.colors.textSecondary} />
+        <Ionicons name={icon} size={14} color={unselectedForeground} />
       ) : null}
       <AppText
-        variant={size === 'sm' ? 'captionMedium' : 'bodySmall'}
-        style={{ color: selected ? selectedForeground : theme.colors.textSecondary }}>
+        variant="labelLarge"
+        style={{ color: selected ? selectedForeground : unselectedForeground }}>
         {label}
       </AppText>
     </PressableBounce>
@@ -219,14 +226,17 @@ export function SegmentedControl<T extends string>({
   style?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
+  const c = theme.m3.color;
   const index = options.findIndex((option) => option.value === value);
   const selected = index >= 0;
   const width = useSharedValue(0);
   const animatedIndex = useSharedValue(Math.max(0, index));
 
   React.useEffect(() => {
-    animatedIndex.value = withSpring(Math.max(0, index), { damping: 22, stiffness: 260, overshootClamping: true });
-  }, [index, animatedIndex]);
+    animatedIndex.value = theme.motion.reduceMotion
+      ? Math.max(0, index)
+      : withSpring(Math.max(0, index), theme.motion.spring.effects);
+  }, [index, animatedIndex, theme.motion.reduceMotion, theme.motion.spring.effects]);
 
   const indicatorStyle = useAnimatedStyle(() => {
     const segment = width.value / Math.max(1, options.length);
@@ -239,52 +249,61 @@ export function SegmentedControl<T extends string>({
 
   return (
     <View
-      onLayout={(event) => {
-        width.value = event.nativeEvent.layout.width;
-      }}
       style={[
         {
           flexDirection: 'row',
-          backgroundColor: theme.colors.inputBackground,
-          borderRadius: theme.radius.md,
-          padding: 3,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: theme.colors.border,
+          backgroundColor: c.surface,
+          borderRadius: theme.m3.shape.full,
+          padding: 4,
+          borderWidth: 1,
+          borderColor: c.outline,
+          overflow: 'hidden',
         },
         style,
       ]}>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          {
-            position: 'absolute',
-            top: 3,
-            bottom: 3,
-            left: 3,
-            borderRadius: theme.radius.sm,
-            backgroundColor: theme.colors.surfaceElevated,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: theme.colors.border,
-          },
-          indicatorStyle,
-        ]}
-      />
-      {options.map((option) => {
-        const selected = option.value === value;
-        return (
-          <Pressable
-            key={option.value}
-            onPress={() => onChange(option.value)}
-            accessibilityRole="button"
-            accessibilityLabel={option.label}
-            accessibilityState={{ selected }}
-            style={{ flex: 1, height: 34, alignItems: 'center', justifyContent: 'center' }}>
-            <AppText variant="bodySmall" tone={selected ? 'primary' : 'secondary'} style={selected ? { fontFamily: theme.typography.bodyMedium.fontFamily } : undefined}>
-              {option.label}
-            </AppText>
-          </Pressable>
-        );
-      })}
+      <View
+        style={{ flex: 1, flexDirection: 'row', height: 36 }}
+        onLayout={(event) => {
+          width.value = event.nativeEvent.layout.width;
+        }}>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            {
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: 0,
+              borderRadius: theme.m3.shape.full,
+              backgroundColor: c.secondaryContainer,
+            },
+            indicatorStyle,
+          ]}
+        />
+        {options.map((option) => {
+          const selected = option.value === value;
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => onChange(option.value)}
+              accessibilityRole="button"
+              accessibilityLabel={option.label}
+              accessibilityState={{ selected }}
+              style={[
+                { flex: 1, height: 36, alignItems: 'center', justifyContent: 'center' },
+                // The browser's default focus ring spills outside the pill on
+                // web; the selected container already communicates focus.
+                Platform.OS === 'web' ? ({ outlineWidth: 0, outlineColor: 'transparent' } as ViewStyle) : null,
+              ]}>
+              <AppText
+                variant="labelLarge"
+                style={{ color: selected ? c.onSecondaryContainer : c.onSurfaceVariant }}>
+                {option.label}
+              </AppText>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -310,8 +329,10 @@ export function ProgressBar({
   const value = useSharedValue(0);
 
   React.useEffect(() => {
-    value.value = theme.motion.reduceMotion ? target : withTiming(target, { duration: 520 });
-  }, [target, theme.motion.reduceMotion, value]);
+    value.value = theme.motion.reduceMotion
+      ? target
+      : withSpring(target, theme.motion.spring.effects);
+  }, [target, theme.motion.reduceMotion, theme.motion.spring.effects, value]);
 
   const fillStyle = useAnimatedStyle(() => ({ width: `${value.value}%` }));
 
@@ -321,17 +342,92 @@ export function ProgressBar({
         {
           height,
           borderRadius: height / 2,
-          backgroundColor: trackColor ?? theme.colors.inputBackground,
+          backgroundColor: trackColor ?? theme.m3.color.surfaceContainerHighest,
           overflow: 'hidden',
         },
         style,
       ]}>
-      <Animated.View style={[{ height: '100%', borderRadius: height / 2, backgroundColor: color ?? theme.colors.accent.base }, fillStyle]} />
+      <Animated.View
+        style={[
+          { height: '100%', borderRadius: height / 2, backgroundColor: color ?? theme.m3.color.primary },
+          fillStyle,
+        ]}
+      />
     </View>
   );
 }
 
-/* ------------------------------- Setting row ------------------------------- */
+/* ------------------------------- M3 switch -------------------------------- */
+
+/**
+ * Material 3 switch. React Native's `Switch` ignores the M3 track/thumb roles on
+ * web (it fell back to the browser's teal/pink default), so the app renders its
+ * own: 52×32 track, 16dp off thumb / 24dp on thumb, spring-driven thumb.
+ */
+export function M3Switch({
+  value,
+  onValueChange,
+  disabled,
+}: {
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  const theme = useTheme();
+  const c = theme.m3.color;
+  const progress = useSharedValue(value ? 1 : 0);
+
+  React.useEffect(() => {
+    progress.value = theme.motion.reduceMotion
+      ? value
+        ? 1
+        : 0
+      : withSpring(value ? 1 : 0, theme.motion.spring.effectsFast);
+  }, [value, progress, theme.motion.reduceMotion, theme.motion.spring.effectsFast]);
+
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: progress.value * 20 }, { scale: 0.667 + progress.value * 0.333 }],
+  }));
+
+  return (
+    <Pressable
+      onPress={() => {
+        if (!disabled) onValueChange(!value);
+      }}
+      disabled={disabled}
+      accessibilityRole="switch"
+      accessibilityLabel={value ? 'On' : 'Off'}
+      accessibilityState={{ checked: value, disabled: Boolean(disabled) }}
+      hitSlop={6}
+      style={{ width: 52, height: 48, justifyContent: 'center', opacity: disabled ? 0.38 : 1 }}>
+      <View
+        style={{
+          width: 52,
+          height: 32,
+          borderRadius: 16,
+          justifyContent: 'center',
+          backgroundColor: value ? c.primary : c.surfaceContainerHighest,
+          borderWidth: value ? 0 : 2,
+          borderColor: c.outline,
+        }}>
+        <Animated.View
+          style={[
+            {
+              position: 'absolute',
+              left: 4,
+              top: 4,
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              backgroundColor: value ? c.onPrimary : c.outline,
+            },
+            thumbStyle,
+          ]}
+        />
+      </View>
+    </Pressable>
+  );
+}
 
 export function SettingSwitch({
   title,
@@ -347,6 +443,7 @@ export function SettingSwitch({
   icon?: IconName;
 }) {
   const theme = useTheme();
+  const c = theme.m3.color;
   return (
     <View
       style={{
@@ -355,23 +452,30 @@ export function SettingSwitch({
         gap: theme.spacing.md,
         paddingHorizontal: theme.spacing.lg,
         paddingVertical: theme.spacing.md,
-        minHeight: 56,
+        minHeight: 64,
       }}>
-      {icon ? <Ionicons name={icon} size={18} color={theme.colors.textSecondary} /> : null}
+      {icon ? (
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: theme.m3.shape.full,
+            backgroundColor: c.secondaryContainer,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <Ionicons name={icon} size={20} color={c.onSecondaryContainer} />
+        </View>
+      ) : null}
       <View style={{ flex: 1, gap: 2 }}>
-        <AppText variant="bodyMedium">{title}</AppText>
+        <AppText variant="bodyLarge">{title}</AppText>
         {subtitle ? (
-          <AppText variant="caption" tone="muted">
+          <AppText variant="bodyMedium" tone="muted">
             {subtitle}
           </AppText>
         ) : null}
       </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{ false: theme.colors.inputBackground, true: `${theme.colors.accent.base}88` }}
-        thumbColor={value ? theme.colors.accent.base : theme.colors.muted}
-      />
+      <M3Switch value={value} onValueChange={onValueChange} />
     </View>
   );
 }

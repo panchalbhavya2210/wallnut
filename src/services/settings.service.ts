@@ -28,6 +28,8 @@ export interface AppearanceSettings {
   fontFamily: string;
   /** Wallnut's own palette or a Material-style tonal palette. */
   palette: 'wallnut' | 'material';
+  /** M3 Expressive springs (default) or the calmer standard scheme. */
+  motionScheme: 'expressive' | 'standard';
   /** Surface corners: soft/round (default) or sharp-edged. */
   cornerStyle: CornerStyle;
   /** Use the device wallpaper palette as the Material seed (Android only). */
@@ -187,14 +189,15 @@ export const DEFAULT_SETTINGS: SettingsGroups = {
     theme: 'dark',
     accent: 'indigo',
     fontFamily: 'inter',
-    palette: 'wallnut',
+    palette: 'material',
+    motionScheme: 'expressive',
     cornerStyle: 'round',
     deviceColors: false,
     amoled: false,
     chartColors: 'theme',
     reduceMotion: false,
     fontScale: 'default',
-    themeVersion: 5,
+    themeVersion: 6,
   },
   dashboard: {
     defaultPeriod: 'thisMonth',
@@ -312,7 +315,14 @@ export async function loadAllSettings(): Promise<Partial<SettingsGroups>> {
             appearance.accent = DEFAULT_SETTINGS.appearance.accent;
           }
         }
-        appearance.themeVersion = 5;
+        // Pass 27 — Material 3 Expressive is the only design language. Existing
+        // installs move from the hand-tuned canvas to the tonal M3 palette and
+        // the expressive spring scheme once; later user choices are preserved.
+        if ((appearance.themeVersion ?? 0) < 6) {
+          appearance.palette = 'material';
+          appearance.motionScheme = 'expressive';
+        }
+        appearance.themeVersion = 6;
         result.appearance = appearance;
         continue;
       }

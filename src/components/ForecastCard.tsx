@@ -18,16 +18,16 @@ export function ForecastCard({ forecast }: { forecast: Forecast }) {
 
   return (
     <Card>
-      <AppText variant="label" tone="muted">
-        FORECAST TO MONTH END
+      <AppText variant="titleSmall" tone="muted">
+        Forecast to month end
       </AppText>
       <AppText
-        variant="numericLarge"
+        variant="headlineMedium"
         style={{ marginTop: 6 }}
         tone={forecast.projectedEndBalance >= forecast.startingBalance ? 'positive' : 'negative'}>
         {money.format(forecast.projectedEndBalance)}
       </AppText>
-      <AppText variant="caption" tone="muted" style={{ marginTop: 4 }}>
+      <AppText variant="bodyMedium" tone="muted" style={{ marginTop: 4 }}>
         Projected from today's {money.format(forecast.startingBalance)} with {forecast.daysRemaining} day
         {forecast.daysRemaining === 1 ? '' : 's'} left.
       </AppText>
@@ -48,7 +48,7 @@ export function ForecastCard({ forecast }: { forecast: Forecast }) {
           marginTop: theme.spacing.md,
           paddingTop: theme.spacing.md,
           borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: theme.colors.border,
+          borderTopColor: theme.m3.color.outlineVariant,
         }}>
         <Row justify="space-between">
           <AppText variant="bodyMedium">Projected balance</AppText>

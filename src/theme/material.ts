@@ -29,12 +29,18 @@ export interface MaterialPalette {
   surfaceContainer: string;
   surfaceContainerHigh: string;
   surfaceContainerHighest: string;
+  surfaceVariant: string;
+  surfaceDim: string;
+  surfaceBright: string;
   onSurface: string;
   onSurfaceVariant: string;
   outline: string;
   outlineVariant: string;
   inverseSurface: string;
   inverseOnSurface: string;
+  inversePrimary: string;
+  scrim: string;
+  shadow: string;
 }
 
 export type Tone = 0 | 10 | 20 | 30 | 40 | 50 | 60 | 70 | 80 | 90 | 95 | 99 | 100;
@@ -143,6 +149,9 @@ export function generateMaterialPalette(seedHex: string, mode: 'light' | 'dark')
     surfaceContainer: hslToHex(h, neutralSat, toneToLightness(dark ? 15 : 94)),
     surfaceContainerHigh: hslToHex(h, neutralVariantSat, toneToLightness(dark ? 20 : 92)),
     surfaceContainerHighest: hslToHex(h, neutralVariantSat, toneToLightness(dark ? 24 : 90)),
+    surfaceVariant: hslToHex(h, neutralVariantSat, toneToLightness(dark ? 30 : 90)),
+    surfaceDim: hslToHex(h, neutralSat, toneToLightness(dark ? 6 : 87)),
+    surfaceBright: hslToHex(h, neutralSat, toneToLightness(dark ? 24 : 98)),
 
     onSurface: hslToHex(h, neutralVariantSat, toneToLightness(dark ? 90 : 12)),
     onSurfaceVariant: hslToHex(h, neutralVariantSat, toneToLightness(dark ? 80 : 32)),
@@ -151,6 +160,9 @@ export function generateMaterialPalette(seedHex: string, mode: 'light' | 'dark')
 
     inverseSurface: hslToHex(h, neutralVariantSat, toneToLightness(dark ? 90 : 20)),
     inverseOnSurface: hslToHex(h, neutralVariantSat, toneToLightness(dark ? 20 : 95)),
+    inversePrimary: role(dark ? 40 : 80),
+    scrim: '#000000',
+    shadow: '#000000',
   };
 }
 

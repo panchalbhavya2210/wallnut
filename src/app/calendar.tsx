@@ -94,12 +94,12 @@ export default function CalendarScreen() {
       return (
         <View style={{ gap: 0.5 }}>
           {entry.income > 0 ? (
-            <AppText variant="caption" tone="positive" style={{ fontSize: 8.5, lineHeight: 10 }} numberOfLines={1}>
+            <AppText variant="labelSmall" tone="positive" style={{ fontSize: 9, lineHeight: 11 }} numberOfLines={1}>
               +{money.format(entry.income, { compact: true })}
             </AppText>
           ) : null}
           {entry.expense > 0 ? (
-            <AppText variant="caption" tone="negative" style={{ fontSize: 8.5, lineHeight: 10 }} numberOfLines={1}>
+            <AppText variant="labelSmall" tone="negative" style={{ fontSize: 9, lineHeight: 11 }} numberOfLines={1}>
               −{money.format(entry.expense, { compact: true })}
             </AppText>
           ) : null}
@@ -155,16 +155,16 @@ export default function CalendarScreen() {
               paddingTop: theme.spacing.md,
               paddingHorizontal: theme.spacing.lg,
               borderTopWidth: StyleSheet.hairlineWidth,
-              borderTopColor: theme.colors.border,
+              borderTopColor: theme.m3.color.outlineVariant,
             }}>
             <View>
-              <AppText variant="caption" tone="muted">
+              <AppText variant="labelMedium" tone="muted">
                 Month income
               </AppText>
               <MoneyText amount={monthTotals.income} variant="numericSmall" tone="positive" />
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <AppText variant="caption" tone="muted">
+              <AppText variant="labelMedium" tone="muted">
                 Month spending
               </AppText>
               <MoneyText amount={-monthTotals.expense} variant="numericSmall" tone="negative" />
@@ -173,11 +173,11 @@ export default function CalendarScreen() {
         </Card>
 
         <Card>
-          <AppText variant="label" tone="muted">
+          <AppText variant="titleSmall" tone="muted">
             {selected ? selected.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }) : 'Pick a day'}
           </AppText>
           {selectedTransactions.length === 0 ? (
-            <AppText variant="caption" tone="muted" style={{ marginTop: theme.spacing.sm }}>
+            <AppText variant="bodyMedium" tone="muted" style={{ marginTop: theme.spacing.sm }}>
               No transactions recorded on this day.
               {selectedKey && scheduledByDay.get(selectedKey) ? ` ${money.format(scheduledByDay.get(selectedKey)!)} scheduled.` : ''}
             </AppText>

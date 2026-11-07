@@ -25,7 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useTheme } from '@/theme/theme';
 import { AppText } from './text';
-import { Button } from './controls';
+import { Button, Chip } from './controls';
 import { PressableBounce } from './bounce';
 import { EmptyState } from './feedback';
 import { AppCalendar, PickerDayCell } from './calendar';
@@ -65,6 +65,7 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
   const visibleRef = useRef(visible);
   const firstRender = useRef(true);
   const onCloseRef = useRef(onClose);
+  const c = theme.m3.color;
 
   useEffect(() => {
     visibleRef.current = visible;
@@ -113,7 +114,7 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
-        opacity={0.6}
+        opacity={0.4}
         pressBehavior="close"
       />
     ),
@@ -122,17 +123,18 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
 
   const renderHandle = useCallback(
     () => (
-      <View style={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.sm, alignItems: 'center' }}>
+      <View style={{ paddingTop: theme.spacing.lg, paddingBottom: theme.spacing.sm, alignItems: 'center' }}>
         <View
           style={{
-            width: 38,
-            height: 4,
-            borderRadius: 2,
-            backgroundColor: theme.colors.borderStrong,
+            width: theme.m3.size.sheetHandleWidth,
+            height: theme.m3.size.sheetHandleHeight,
+            borderRadius: theme.m3.size.sheetHandleHeight / 2,
+            backgroundColor: c.onSurfaceVariant,
+            opacity: 0.4,
           }}
         />
         {title ? (
-          <AppText variant="titleSmall" style={{ marginTop: theme.spacing.md }}>
+          <AppText variant="titleLarge" style={{ marginTop: theme.spacing.md }}>
             {title}
           </AppText>
         ) : null}
@@ -143,22 +145,22 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
           accessibilityLabel="Close"
           style={({ pressed }) => ({
             position: 'absolute',
-            top: theme.spacing.md,
+            top: theme.spacing.sm,
             right: theme.spacing.lg,
-            width: 34,
-            height: 34,
-            borderRadius: theme.radius.full,
+            width: 40,
+            height: 40,
+            borderRadius: theme.m3.shape.full,
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: pressed ? theme.colors.pressed : 'transparent',
           })}>
-          <Ionicons name="close" size={19} color={theme.colors.muted} />
+          <Ionicons name="close" size={22} color={c.onSurfaceVariant} />
         </Pressable>
       </View>
     ),
     // `onClose` is read through a ref so typing in a field never remounts the
     // handle (which would interrupt an in-flight drag).
-    [theme, title],
+    [theme, title, c.onSurfaceVariant],
   );
 
   const renderFooter = useCallback(
@@ -169,15 +171,15 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
             paddingHorizontal: theme.spacing.lg,
             paddingTop: theme.spacing.sm,
             paddingBottom: theme.spacing.md,
-            backgroundColor: theme.colors.surfaceElevated,
+            backgroundColor: c.surfaceContainerLow,
             borderTopWidth: StyleSheet.hairlineWidth,
-            borderTopColor: theme.colors.border,
+            borderTopColor: c.outlineVariant,
           }}>
           {footer}
         </View>
       </BottomSheetFooter>
     ),
-    [footer, insets.bottom, theme],
+    [footer, insets.bottom, theme, c.outlineVariant, c.surfaceContainerLow],
   );
 
   return (
@@ -201,11 +203,9 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
       accessible
       accessibilityLabel={title}
       backgroundStyle={{
-        backgroundColor: theme.colors.surfaceElevated,
-        borderTopLeftRadius: theme.radius.xxl,
-        borderTopRightRadius: theme.radius.xxl,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.border,
+        backgroundColor: c.surfaceContainerLow,
+        borderTopLeftRadius: theme.m3.shape.extraLarge,
+        borderTopRightRadius: theme.m3.shape.extraLarge,
       }}>
       <BottomSheetScrollView
         contentContainerStyle={{
@@ -301,26 +301,24 @@ export function PickerSheet({
           flexDirection: 'row',
           alignItems: 'center',
           gap: theme.spacing.sm,
-          backgroundColor: theme.colors.inputBackground,
-          borderRadius: theme.radius.md,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: theme.colors.border,
-          paddingHorizontal: theme.spacing.md,
-          height: 42,
+          backgroundColor: theme.m3.color.surfaceContainerHigh,
+          borderRadius: theme.m3.shape.full,
+          paddingHorizontal: theme.spacing.lg,
+          height: theme.m3.size.searchBar,
           marginBottom: theme.spacing.md,
         }}>
-        <Ionicons name="search-outline" size={16} color={theme.colors.muted} />
+        <Ionicons name="search" size={22} color={theme.m3.color.onSurfaceVariant} />
         <TextInput
           value={search}
           onChangeText={setSearch}
           placeholder={searchPlaceholder}
-          placeholderTextColor={theme.colors.muted}
-          style={{ flex: 1, color: theme.colors.text, fontFamily: theme.typography.body.fontFamily, fontSize: 15, paddingVertical: 0 }}
+          placeholderTextColor={theme.m3.color.onSurfaceVariant}
+          style={{ flex: 1, color: theme.m3.color.onSurface, fontFamily: theme.typography.bodyLarge.fontFamily, fontSize: theme.typography.bodyLarge.fontSize, paddingVertical: 0 }}
           autoCorrect={false}
         />
         {search ? (
           <Pressable onPress={() => setSearch('')} hitSlop={8}>
-            <Ionicons name="close-circle" size={16} color={theme.colors.muted} />
+            <Ionicons name="close-circle" size={20} color={theme.m3.color.onSurfaceVariant} />
           </Pressable>
         ) : null}
       </View>
@@ -458,26 +456,16 @@ export function DatePickerSheet({
     <BottomSheet visible={visible} onClose={onClose} title={title} maxHeightRatio={0.86}>
       <View style={{ flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.md }}>
         {quick.map((entry) => (
-          <Pressable
+          <Chip
             key={entry.label}
+            size="sm"
+            label={entry.label}
+            selected={toISODate(entry.date) === toISODate(value)}
             onPress={() => {
               onSelect(entry.date);
               onClose();
             }}
-            style={{
-              paddingHorizontal: theme.spacing.lg,
-              height: 32,
-              borderRadius: theme.radius.full,
-              backgroundColor: theme.colors.inputBackground,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: theme.colors.border,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-            <AppText variant="captionMedium" tone="secondary">
-              {entry.label}
-            </AppText>
-          </Pressable>
+          />
         ))}
       </View>
 
@@ -576,10 +564,12 @@ export function Field({
   const theme = useTheme();
   const grouping = useSettingsStore((state) => state.general.numberGrouping);
   const displayValue = money ? formatAmountInput(value, grouping) : value;
+  const [focused, setFocused] = React.useState(false);
+  const c = theme.m3.color;
   return (
     <View style={[{ gap: theme.spacing.xs }, style]}>
       {label ? (
-        <AppText variant="captionMedium" tone="secondary">
+        <AppText variant="labelMedium" tone="secondary">
           {label}
         </AppText>
       ) : null}
@@ -588,41 +578,44 @@ export function Field({
           flexDirection: 'row',
           alignItems: multiline ? 'flex-start' : 'center',
           gap: theme.spacing.sm,
-          backgroundColor: theme.colors.inputBackground,
-          borderRadius: theme.radius.md,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: theme.colors.border,
+          backgroundColor: c.surfaceContainerHighest,
+          borderTopLeftRadius: theme.m3.shape.extraSmall,
+          borderTopRightRadius: theme.m3.shape.extraSmall,
+          borderBottomWidth: focused ? 2 : 1,
+          borderBottomColor: focused ? c.primary : c.onSurfaceVariant,
           paddingHorizontal: theme.spacing.lg,
           paddingVertical: multiline ? theme.spacing.md : 0,
-          minHeight: 46,
+          minHeight: 56,
           minWidth: 0,
         }}>
         {prefix ? (
-          <AppText variant="bodyMedium" tone="muted">
+          <AppText variant="bodyLarge" tone="muted">
             {prefix}
           </AppText>
         ) : null}
         <TextInput
           value={displayValue}
           onChangeText={(next) => onChangeText(money ? normalizeAmountInput(next) : next)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder={placeholder}
-          placeholderTextColor={theme.colors.muted}
+          placeholderTextColor={c.onSurfaceVariant}
           keyboardType={keyboardType}
           multiline={multiline}
           autoFocus={autoFocus}
           style={{
             flex: 1,
             minWidth: 0,
-            color: theme.colors.text,
-            fontFamily: theme.typography.body.fontFamily,
-            fontSize: 15,
+            color: c.onSurface,
+            fontFamily: theme.typography.bodyLarge.fontFamily,
+            fontSize: theme.typography.bodyLarge.fontSize,
             paddingVertical: 0,
             minHeight: multiline ? 64 : undefined,
             textAlignVertical: multiline ? 'top' : 'center',
           }}
         />
         {suffix ? (
-          <AppText variant="bodyMedium" tone="muted">
+          <AppText variant="bodyLarge" tone="muted">
             {suffix}
           </AppText>
         ) : null}
@@ -667,7 +660,6 @@ export function AmountField({
   currencySymbol: string;
   autoFocus?: boolean;
 }) {
-  const theme = useTheme();
   const [text, setText] = useState(() => (valueMinor ? (valueMinor / 100).toFixed(2).replace(/\.00$/, '') : ''));
 
   useEffect(() => {
@@ -692,7 +684,6 @@ export function AmountField({
       prefix={currencySymbol}
       money
       autoFocus={autoFocus}
-      style={{ backgroundColor: theme.colors.inputBackground }}
     />
   );
 }

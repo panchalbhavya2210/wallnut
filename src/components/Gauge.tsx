@@ -51,18 +51,19 @@ export function Gauge({
   style,
 }: GaugeProps) {
   const theme = useTheme();
+  const c = theme.m3.color;
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(100, progress));
 
   const sweep = useSharedValue(0);
   useEffect(() => {
-    // Springy sweep — the ring settles with a small overshoot so progress feels
-    // tangible rather than merely redrawn.
+    // M3 expressive spatial spring: the ring settles with a small overshoot so
+    // progress feels tangible rather than merely redrawn.
     sweep.value = theme.motion.reduceMotion
       ? clamped
-      : withSpring(clamped, { damping: 14, stiffness: 130, mass: 0.9, overshootClamping: false });
-  }, [clamped, sweep, theme.motion.reduceMotion]);
+      : withSpring(clamped, theme.motion.spring.spatialSlow);
+  }, [clamped, sweep, theme.motion.reduceMotion, theme.motion.spring.spatialSlow]);
 
   const animatedProps = useAnimatedProps(() => ({
     strokeDashoffset: circumference * (1 - sweep.value / 100),
@@ -71,12 +72,12 @@ export function Gauge({
   const strokeColor =
     color ??
     (tone === 'positive'
-      ? theme.colors.positive
+      ? c.positive
       : tone === 'warning'
-        ? theme.colors.warning
+        ? c.warning
         : tone === 'negative'
-          ? theme.colors.negative
-          : theme.chart.series[0] ?? theme.colors.accent.base);
+          ? c.error
+          : c.primary);
 
   const over = progress > 100;
 
@@ -88,7 +89,7 @@ export function Gauge({
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke={theme.colors.inputBackground}
+            stroke={c.surfaceContainerHighest}
             strokeWidth={thickness}
             fill="none"
           />
@@ -109,14 +110,14 @@ export function Gauge({
         {amount !== undefined ? (
           <MoneyText amount={amount} variant={size >= 150 ? 'numericMedium' : 'numericSmall'} tone="neutral" showSign={false} />
         ) : label ? (
-          <AppText variant={size >= 150 ? 'numericMedium' : 'numericSmall'}>{label}</AppText>
+          <AppText variant={size >= 150 ? 'headlineSmall' : 'titleLarge'}>{label}</AppText>
         ) : showPercent ? (
-          <AppText variant={size >= 150 ? 'numericMedium' : 'numericSmall'}>
+          <AppText variant={size >= 150 ? 'headlineSmall' : 'titleLarge'}>
             {`${Math.round(progress)}%`}
           </AppText>
         ) : null}
         {caption ? (
-          <AppText variant="caption" tone={over ? 'negative' : 'muted'} style={{ textAlign: 'center' }}>
+          <AppText variant="labelMedium" tone={over ? 'negative' : 'muted'} style={{ textAlign: 'center' }}>
             {caption}
           </AppText>
         ) : null}

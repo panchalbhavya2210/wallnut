@@ -1,7 +1,7 @@
 # Wallnut — project status & living task list
 
 > **Read this first.** This file is the handoff document for any new session
-> (human or agent). Keep it updated as work lands. Last updated: 2026-11-07 (Pass 26: Android sheet/modal reliability — every native `Modal` sheet replaced by one portal-based `@gorhom/bottom-sheet` engine, nested filter → picker → date stacks, back button + keyboard handling, global drawer overlay; Pass 25: Wallnut 2.0 overhaul — black/indigo design system, five-tab navigation + floating add, drawer query prefetch, Insights Overview/Categories/Trends/Merchants, correct merchant net spend + drill-down, category delete history safety, export CSV/JSON repair, amount calculator, daily notification check-in; Pass 24: global drawer access on pushed screens, boxy/round shape setting, settings cleanup, seamless gradients; Pass 23: drawer/navigation fix; Pass 22: Home polish; Pass 21: statement import P1 + Quick Actions + performance).
+> (human or agent). Keep it updated as work lands. Last updated: 2026-11-07 (Pass 27: Material 3 Expressive overhaul — M3 token system, compact M3 type scale, tonal palette default, phone-width web preview, always-visible bottom navigation, M3 components + calendar/ledger cells, Android back-stack policy and double-back-to-exit; Pass 26: Android sheet/modal reliability — every native `Modal` sheet replaced by one portal-based `@gorhom/bottom-sheet` engine, nested filter → picker → date stacks, back button + keyboard handling, global drawer overlay; Pass 25: Wallnut 2.0 overhaul — black/indigo design system, five-tab navigation + floating add, drawer query prefetch, Insights Overview/Categories/Trends/Merchants, correct merchant net spend + drill-down, category delete history safety, export CSV/JSON repair, amount calculator, daily notification check-in; Pass 24: global drawer access on pushed screens, boxy/round shape setting, settings cleanup, seamless gradients; Pass 23: drawer/navigation fix; Pass 22: Home polish; Pass 21: statement import P1 + Quick Actions + performance).
 
 ---
 
@@ -48,6 +48,10 @@ powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1   # widgets need 
   plus button → quick-add, composer, global drawer, filter → nested picker →
   date picker → apply, and view-options → filter in one tick (33 checks). Run it
   after any change to `src/components/ui/sheets.tsx` or the root providers.
+* `scripts/verify-m3.mjs` — Material 3 regression pass: 392dp web phone frame,
+  drawer Settings push/back, global bottom nav, segmented-control geometry,
+  date-picker + ledger calendar, compact type (13 checks). Run it after touching
+  M3 tokens, the segmented control, the calendar or navigation.
 * Screenshots for the user live in `screenshots/`.
 * **Never re-introduce `metro.config.js` beyond `config.resolver.assetExts.push('wasm')`**:
   overriding the middleware or Babel transformer breaks Metro's worker chunking
@@ -135,8 +139,10 @@ src/
   security/                app lock (pin.ts hashing, PinPad, LockScreen), enforced by app/_layout
   theme/fonts.ts           font registry (Inter, Poppins, Manrope, DM Sans, Sora, Outfit, Space Grotesk, Lora)
   theme/colors.ts          19 accents (incl. red + neon set) with dark/light tokens
-  components/              ui kit, charts (react-native-svg), widgets, editors, DrawerContent, BottomNav, ForecastCard
-  theme/                   colors (dark/light + 19 accents), typography, spacing, radius, shadows, material
+  components/              ui kit, charts (react-native-svg), widgets, editors, DrawerContent, BottomNav, ForecastCard,
+                           PhonePreviewFrame (392dp web frame), AndroidBackTrap (back policy)
+  theme/                   colors (dark/light + 19 accents), m3 (Material 3 Expressive tokens: color roles, type,
+                           shape, spacing, sizes, springs), typography, spacing, radius, shadows, material
   stores/                  zustand: settings, db revision, ui (toasts/selection/account scope/chart lock)
   hooks/                   useQuery (re-runs on db revision), useMoney, useNow, useKeyboardHeight
 scripts/                   build-migrations, serve-web, verify-web
@@ -358,6 +364,19 @@ index.ts                   custom entry: registers widget task handler, then exp
   - **Android back + keyboard**: the portal is not a native window, so `BottomSheet` registers `BackHandler` while open (top-most sheet first) and uses the library's `interactive` keyboard behavior with `android_keyboardInputMode="adjustResize"`. Dynamic sizing caps at the previous `maxHeightRatio` and the pinned footer stays visible. `GlobalDrawer` also dropped its native `Modal` for a plain root overlay (with back-button handling), leaving the app with **zero** RN `Modal` windows.
   - **Verification**: `scripts/verify-modals.mjs` (33 checks) drives plus button → quick-add sheet → close, quick-add → expense composer, global drawer over a pushed Settings screen, filter sheet → nested account picker → nested date picker → apply, and view-options → filter in one tick. Two consecutive full runs pass. `tsc --noEmit` clean, 180 unit tests green, web export rebuilt; screenshots `modal-quick-add.png`, `modal-filter.png`, `modal-filter-picker.png`, `modal-filter-date.png`, `modal-global-drawer.png`. A device APK rebuild is still required to confirm on Android hardware (no emulator on this machine), but the failing component (native `Modal`) is no longer in the code path.
 
+* **Pass 27 (Material 3 Expressive overhaul — 2026-11-07)**:
+  - **Research (official sources)**: M3 Expressive is an evolution of M3, not “M4” — 14 expressive components, spring-based motion physics (spatial + effects springs, fast/default/slow), emphasized typography, a 35-shape library with morph, and richer color. I/O 2026 adds the expressive layout system, an 8dp spacing system, expressive lists/menus/search, and Compose-first Android. Material Web exists but this app is React Native + react-native-web, so Wallnut implements the **system tokens** natively rather than importing `@material/web` components. Sources: `m3.material.io/blog/building-with-m3-expressive`, `m3.material.io/blog/whats-new-at-io26`, `m3.material.io/foundations/design-tokens`, `m3.material.io/styles/color/roles`, `m3.material.io/styles/motion/overview`, `m3.material.io/components/*`, `m3.material.io/develop/web`.
+  - **Tokens**: new `src/theme/m3.ts` is the single source of truth — full M3 color-role type, shape scale (4/8/12/16/28/32/48/full), 8dp spacing scale, component sizes (48 touch target, 64 app bar/nav bar, 56 search bar, 32 chip), the M3 type scale and expressive/standard spring schemes. `theme.m3` exposes `color`, `shape`, `spacing`, `size`, `type`, `motion`; `theme.colors` remains a mapped compatibility layer so old screens keep working.
+  - **Color**: `src/theme/material.ts` now generates the missing roles (`surfaceVariant`, `surfaceDim`, `surfaceBright`, `inversePrimary`, `scrim`, `shadow`); `src/theme/palette.ts` maps every legacy token onto M3 roles. Material 3 tonal is the **default** palette (`themeVersion 6` migrates existing installs once; explicit choices after that are preserved). Semantic money colours (positive/negative/warning) are identical in every palette and are unit-tested.
+  - **Type**: `buildM3Typography` implements the official scale; Wallnut runs it at **92% density** (`theme.tsx`) because the finance UI is data-dense — this fixed the “everything is too large” feedback. The old variant names (`title`, `body`, `bodySmall`, `caption`, `label`…) now resolve to M3 roles, so every screen shrank without edits; new code should use `theme.m3.type` or the M3 role names directly.
+  - **Shape/spacing**: `radius.ts` and `spacing.ts` now follow the M3 scale. Cards/lists/buttons/chips/sheets/inputs/FAB/nav use `theme.m3.shape`; hard-coded radii were removed from the touched components.
+  - **Components**: `controls.tsx` — M3 filled/tonal/text/error buttons, filter chips, connected-button-group segmented control (fixed indicator **overflow**: the indicator now measures the inner track and is clipped), linear progress, and a custom **M3 switch** (React Native's `Switch` fell back to browser teal/pink on web). `layout.tsx` — M3 filled/elevated/outlined cards, navigation-drawer-style list groups, 56/64dp rows, M3 section headers, 64dp top app bar with 48dp actions. `AppHeader`, `HeaderMenuButton`, `BottomNav` (flexible floating nav with secondary-container active indicator), `QuickAddFab` (primary-container FAB), `ui/sheets.tsx` (28dp top radius, surfaceContainerLow, M3 search field, filled text fields), `feedback.tsx` (inverse-surface snackbar with countdown), `Calendar` (`PickerDayCell` + redesigned `LedgerDayCell`), `PeriodPicker`, `AccountScope`, `AmountKeypad`, `AmountCalculator`, `DrawerContent`, `ScreenHint`, `AiInsightCard`, Home quick-action/flow tiles, transactions filter/bulk bars.
+  - **Web phone frame**: `src/components/PhonePreviewFrame.tsx` centers the web build in a **392dp** phone frame (testID `phone-preview-frame`); native is untouched. All screenshots are now at realistic phone width with dark mat gutters.
+  - **Navigation**: the bottom navigation is rendered **once at the root** (`RootBottomNav`), so it stays visible on pushed screens (Settings, detail, composer). Shell tabs use `router.navigate`; tabs from a pushed screen use `router.dismissTo`. Screen bottom padding/fixed bars were lifted by 72dp (composer, quick entry, shared expense, AI input) so the nav never covers controls.
+  - **Back policy**: `AndroidBackTrap` — Home: first back shows “Press back again to exit”, second within 2s exits; every other route: navigator pops, and if there is no history (deep link / replaced route) it goes Home instead of closing the app. The native drawer mirrors its open state into `ui.store.nativeDrawerOpen` so the trap defers to the drawer. `WallnutDrawerContent`/`GlobalDrawer` now use `router.navigate` (push) for Settings and other pages — `dismissTo` was **replacing** Home, so Android back had nothing to pop.
+  - **Verification**: `scripts/verify-m3.mjs` (13 checks: phone frame, drawer Settings push + back, bottom nav on pushed screens, segmented-control geometry, date-picker calendar, ledger calendar, compact type) and `scripts/verify-modals.mjs` (33 checks) — `verify-m3` passes 13/13; `verify-modals` needs a final rerun after the global-nav tab fix. `tsc --noEmit` clean, 185 unit tests green (5 new M3 token tests), web export rebuilt. Screenshots: `m3-phone-frame.png`, `m3-segmented.png`, `m3-calendar.png`, `m3-ledger-calendar.png`, `appearance-m3.png`, `home-m3.png`, `transactions-m3.png`, `insights-m3.png`, `budgets-m3.png`, `settings-m3.png`.
+  - **Remaining**: see §11 for the component/screen status board and the exact next steps. The biggest remaining items are the rest of the custom inner cards (analytics metric tiles, AI monthly review, forecast, settle sheet, account editor), the composer's custom header, reports/detail headers, onboarding/lock screen, tablet navigation rail, and a device APK pass for the back policy, switches and keyboard.
+
 ### Priorities (user-set, 2026-10-16)
 1. **Transaction Inbox + statement import + merchant memory** — **P1 landed (Pass 21)**: staging tables,
    review screen, capture source, suggest-mode merchant memory. Remaining: OFX/QFX (cheap, same staging),
@@ -424,6 +443,13 @@ report path) — import and export are different problems.
 | Recurring "31st" payment drifts to the 28th | date-fns `addMonths` clamps month-end | `anchor_day` column + skip months without the anchored day (`advanceRecurrence`) |
 | Inputs hidden behind the keyboard (Android) | RN `Modal` windows do not `adjustResize` | `useKeyboardHeight` lifts the bottom sheet and caps its max height — **Pass 26**: sheets are now `@gorhom/bottom-sheet` portals and use its `interactive` keyboard behavior + `android_keyboardInputMode="adjustResize"` |
 | Sheets/modals open squashed, invisible, or a second sheet never appears — Android only, web fine | RN `Modal` + Reanimated on the new architecture (`reanimated#6659`) and multiple native Modal windows | never use React Native `Modal` for app dialogs: `src/components/ui/sheets.tsx` is a single `@gorhom/bottom-sheet` portal (`stackBehavior="push"` for nesting), `GlobalDrawer` is a plain root overlay, and the provider lives in `src/app/_layout.tsx`. Re-run `node scripts/verify-modals.mjs` after touching any of them |
+| M3 typography feels enormous on a data-dense finance screen | the official M3 scale is tuned for larger editorial layouts | `theme.tsx` applies a **0.92 density factor** on top of the M3 scale; the user's text-size setting stacks on it. Do not remove this without a device screenshot review |
+| Segmented control’s selected pill spills past the right edge | indicator width was measured from the padded/bordered outer container | measure the **inner track** (the `View` with `flex:1, height:36`), keep the indicator as its absolute child, and clip the outer container (`overflow:'hidden'`). Re-run `verify-m3.mjs` (it asserts the geometry) |
+| Switches look like the browser default (pink track/teal thumb), not M3 | React Native Web’s `Switch` ignores the M3 `trackColor`/`thumbColor` pair | use `M3Switch` from `ui/controls` everywhere; never render a raw RN `Switch` |
+| Bottom nav disappears on Settings/detail screens | it was rendered inside `(app)/_layout`’s drawer scenes only | `RootBottomNav` renders once in `src/app/_layout.tsx`; shell tabs use `router.navigate`, pushed screens use `router.dismissTo`. Any fixed bottom bar must add **72dp** clearance |
+| Android back on Settings closes the whole app | the drawer used `router.dismissTo('/settings')`, which **replaced** Home instead of pushing Settings (no history to pop) | use `router.navigate` for pushed destinations; `AndroidBackTrap` falls back to Home when there is no history, and Home uses double-back-to-exit (2 s window) |
+| Ledger calendar days become red blocks / white focus rings | activity days were filled with `primaryContainer`, and web focus outlines weren’t suppressed | use `surfaceContainerHigh` for activity, `primaryContainer` only for the selected day, and set `outlineWidth: 0` on calendar day Pressables on web |
+| Web preview stretches to the desktop width | there was no viewport constraint | `PhonePreviewFrame` max-width **392dp**, `testID="phone-preview-frame"`; never position fixed overlays outside it |
 | Widgets crash/blank after a React Compiler build | compiler memoizes widget components by adding hooks — widget primitives must not use hooks | `'use no memo';` at the top of `src/widgets/components.tsx` |
 | Widget data never updates / "Worker chunk" style startup errors | the widget task handler must be registered in the entry point | custom `index.ts` registers the handler, then imports `expo-router/entry` last |
 | `expo prebuild --platform android` deleted the release keystore | prebuild clears `android/` | keystore backed up to `%TEMP%\opencode` before prebuild; restore it after (or keep a copy outside `android/`) |
@@ -873,8 +899,17 @@ the period labels, with a per-budget override chip in the budget editor.
     is a plain root overlay too. `scripts/verify-modals.mjs` is the 33-check regression pass. Full detail in §4
     (Pass 26 entry).
 
+- **Pass 27 — Material 3 Expressive overhaul (2026-11-07)**:
+  - New `theme/m3.ts` token system (color roles, type scale, shape, spacing, sizes, expressive/standard springs) and
+    a Material 3 tonal palette default (`themeVersion 6`). Type runs at 92% M3 density; semantic money colours stay
+    fixed. Shared components (buttons, chips, connected button group, cards, lists, app/nav bars, FAB, sheets,
+    fields, snackbar, calendar, keypad, calculator, drawer, switches) were rebuilt on the M3 roles. The web preview
+    is a 392dp phone frame; the bottom nav is global; Android back pops pages and double-back exits; the ledger
+    calendar no longer paints red blocks. `scripts/verify-m3.mjs` (13 checks) covers the frame, drawer push/back,
+    global nav, segmented geometry, date picker and ledger calendar. Full status board in §11.
+
 ### Verification commands
-`npm run typecheck` · `npm test` · `npx expo export --platform web` · `node scripts/serve-web.mjs 8081` · `node scripts/verify-modals.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081 home 390 844 "Assets"` · `node scripts/verify-statement.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/quick-entry quick-entry 390 844 "Quick Entry"` · `node scripts/verify-web.mjs http://localhost:8081/settings/widgets settings-widgets 390 844 "Widgets enabled"` · `node scripts/capture-screens.mjs http://localhost:8081 390 844` · `node scripts/verify-lock.mjs http://localhost:8081` · `node scripts/verify-shopping.mjs http://localhost:8081` · `node scripts/verify-shared.mjs http://localhost:8081` · `node scripts/verify-trip.mjs http://localhost:8081` · `node scripts/verify-inbox.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/transactions transactions 390 844 "Transactions"` · `node scripts/verify-web.mjs http://localhost:8081/analytics insights 390 844 "Total spending"` · `node scripts/verify-web.mjs http://localhost:8081/category-trends trends 390 844 "MONTH ON MONTH"` · `node scripts/verify-web.mjs http://localhost:8081/settings/dashboard widgets 390 844 "Widgets"`
+`npm run typecheck` · `npm test` · `npx expo export --platform web` · `node scripts/serve-web.mjs 8081` · `node scripts/verify-m3.mjs http://localhost:8081` · `node scripts/verify-modals.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081 home 390 844 "Assets"` · `node scripts/verify-statement.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/quick-entry quick-entry 390 844 "Quick Entry"` · `node scripts/verify-web.mjs http://localhost:8081/settings/widgets settings-widgets 390 844 "Widgets enabled"` · `node scripts/capture-screens.mjs http://localhost:8081 390 844` · `node scripts/verify-lock.mjs http://localhost:8081` · `node scripts/verify-shopping.mjs http://localhost:8081` · `node scripts/verify-shared.mjs http://localhost:8081` · `node scripts/verify-trip.mjs http://localhost:8081` · `node scripts/verify-inbox.mjs http://localhost:8081` · `node scripts/verify-web.mjs http://localhost:8081/transactions transactions 390 844 "Transactions"` · `node scripts/verify-web.mjs http://localhost:8081/analytics insights 390 844 "Total spending"` · `node scripts/verify-web.mjs http://localhost:8081/category-trends trends 390 844 "MONTH ON MONTH"` · `node scripts/verify-web.mjs http://localhost:8081/settings/dashboard widgets 390 844 "Widgets"`
 
 > Widgets are native: verify them only in a real build (`npx expo prebuild --platform android` then `scripts/build-apk.ps1`), never in Expo Go or the web preview.
 
@@ -970,3 +1005,108 @@ Merging `development` into `main` is what ships.
   (~16 min). The downloaded APK reports `versionCode=2`, `versionName=1.0.0+b2`,
   and its signer SHA-256 matches the local keystore exactly — so installed local
   builds update in place via `adb install -r`.
+
+---
+
+## 11. Material 3 Expressive overhaul — status board
+
+> **Resume here.** This is the living checklist for the M3 Expressive redesign.
+> Pass 27 landed the foundations and the high-traffic chrome; the rest of the
+> custom inner components and screens are listed below. Update the checkboxes as
+> work lands — the next session should not have to rediscover any decision.
+
+### Research & decisions
+
+| Source | What we took |
+| --- | --- |
+| [Start building with M3 Expressive](https://m3.material.io/blog/building-with-m3-expressive) | 14 expressive components, spring motion physics, emphasized typography, 35-shape library + morph, vibrant color, expressive tactics |
+| [What's new at I/O 2026](https://m3.material.io/blog/whats-new-at-io26) | Expressive layout system, 8dp spacing system, expressive lists/menus/search, Compose-first Android |
+| [Design tokens](https://m3.material.io/foundations/design-tokens) | Reference → system → component tokens; roles over raw values |
+| [Color roles](https://m3.material.io/styles/color/roles) | Primary/secondary/tertiary/error, surfaces + containers, outline, inverse, fixed roles |
+| [Motion](https://m3.material.io/styles/motion/overview) | Spatial springs (overshoot) vs effects springs (no overshoot), fast/default/slow |
+| [Components](https://m3.material.io/components) | Buttons, nav bar, bottom sheets, text fields, lists, menus, search, FAB menu, etc. |
+| [Develop: Web](https://m3.material.io/develop/web) | Material Web exists, but this app is React Native + react-native-web; we implement the tokens natively, not `@material/web` |
+
+**Non-negotiables**
+
+- One token source: `src/theme/m3.ts`; components never hardcode hex/radius/size values.
+- `theme.colors` is a compatibility map of M3 roles. New code uses `theme.m3.color`.
+- Semantic money colours never change with the palette (positive/negative/warning).
+- Type runs at **92% M3 density** (`theme.tsx`); intentional for a finance app.
+- The web preview is a **392dp phone frame**; native is unchanged.
+- The bottom navigation is rendered **once at the root** and stays visible on pushed screens.
+- Never reintroduce React Native `Modal` for app dialogs (see Pass 26 and §5).
+- Every screen with a fixed bottom bar needs **+72dp** bottom clearance for the global nav.
+
+**Calendar library decision (2026-11-07):** keep `react-native-calendars` (maintained, JS-only, works on native + web, already powers every date picker). The M3 work replaced the ledger day cells and theme; swapping in another library would duplicate the calendar and risk the sheet/nesting stack. Revisit only if the library is deprecated or a date-picker feature cannot be met.
+
+### Components
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| M3 tokens (`theme/m3.ts`, `material.ts`, `palette.ts`, `theme.tsx`) | ✅ Done | Roles, type scale, shape, spacing, sizes, springs, 0.92 density |
+| Typography (`typography.ts`, `AppText`) | ✅ Done | Legacy variants map to M3 roles; M3 role names accepted directly |
+| Color roles + tonal palette default + themeVersion 6 migration | ✅ Done | `palette: 'material'` default; `wallnut` classic preserved |
+| Button / IconButton / Chip / SegmentedControl / ProgressBar | ✅ Done | Filled/tonal/text/error buttons; connected button group; indicator overflow fixed |
+| Switch (`M3Switch`) | ✅ Done | Custom 52×32 M3 switch; RN Switch ignored M3 colors on web |
+| Card / ListGroup / ListRow / SectionHeader / ScreenHeader | ✅ Done | Filled cards, 64dp rows, M3 section headers |
+| AppHeader / HeaderMenuButton / BottomNav / QuickAddFab | ✅ Done | Global flexible nav, 48dp actions, primary-container FAB |
+| BottomSheet / Picker / Form / DatePicker / Field / AmountField | ✅ Done | Portal sheets, M3 search field, filled text fields |
+| Toast / Snackbar / EmptyState / ErrorBlock / InfoBanner | ✅ Done | Inverse-surface snackbar + countdown; inner states inherit M3 colors |
+| DrawerMenu / DrawerRow / GlobalDrawer | ✅ Done | M3 navigation drawer, secondary-container active row, back deferral |
+| Calendar (`PickerDayCell`, `LedgerDayCell`, `calendarTheme`) | ✅ Done | M3 date picker; ledger cells use surfaceContainerHigh for activity, primaryContainer for selected; web focus ring removed |
+| PeriodPicker / AccountScope / AmountKeypad / AmountCalculator | ✅ Done | M3 chips, pills, keypad/calculator keys |
+| Charts (`charts.tsx`) | 🟡 Partial | Colors/typography inherit M3; tooltip/legend styling and spring reveal still to polish |
+| Gauge / count-up | ✅ Done | M3 primary/track + expressive spring |
+| Home widgets (`widgets.tsx`) | 🟡 Partial | WidgetCard, quick actions, FlowTiles done; some inner cards still use legacy spacing/idioms |
+| Analytics inner (`MetricTile`, `ChangePill`, insight banner, tabs) | 🟡 Partial | Shared Card/SectionHeader/Type inherit M3; metric/change pills still to formalize |
+| Transactions inner (`TransactionRow`, `FilterSheet`, `ViewOptionsSheet`, `BulkActionBar`) | 🟡 Partial | Chips, switches, segmented, bulk bar done; row/period pills to review on device |
+| AI cards (`AiInsightCard`, `AiMonthlyReview`) | 🟡 Partial | Insight card done; monthly review still legacy |
+| ForecastCard / SettleSheet / QuickEntryBatchRow / AccountEditor | ⬜ To do | Still use pre-M3 inner layouts |
+| ColorField / SwipeableRow / WidgetBoundary / backdrop blobs | ⬜ To do | Low-risk polish; use M3 roles/shape |
+| Material 3 FAB menu / split button / toolbars / loading indicator / search view | ⬜ Future | Expressive additions from the I/O 2026 update; not required for the baseline |
+| Tablet navigation rail / medium window layouts | ⬜ Future | M3 adaptive layout; app is phone-first today |
+
+### Screens
+
+| Screen | Status | Notes |
+| --- | --- | --- |
+| Home | 🟡 Partial | Hero, scope pills, quick actions, flow tiles, section chrome done; inner widgets still being converted |
+| Transactions (Records) | 🟡 Partial | Header, tabs, period pill, filter sheet, view options, bulk bar done; row polish pending |
+| Insights (all four tabs) | 🟡 Partial | Chrome/cards/type done; metric tiles and some chart legends pending |
+| Budgets | 🟡 Partial | Header/cards/gauges inherit M3; editor inner fields to review |
+| Settings hub + Appearance | ✅ Done | ListGroup/ListRow/ScreenHeader, color system + motion controls, M3 switches |
+| Calendar (ledger) | ✅ Done | Red block cells removed; selected/today/activity states cleaned up |
+| Drawer + GlobalDrawer | ✅ Done | M3 drawer, search, net-worth card, active indicator |
+| Composer (`transaction/new`) | 🟡 Partial | Fields/keypad/sheets done; custom header still pre-M3; bottom nav clearance added |
+| Quick Entry | 🟡 Partial | Sheets/fields/buttons done; custom chrome/empty states pending |
+| Transaction detail | ⬜ To do | Header, action rows, split/tag/attachment sections |
+| Accounts / Account detail / Account editor | ⬜ To do | Cards/charts inherit colors; inner panes and editor need M3 |
+| Goals / Debts / Shared / Recurring / Installments / Investments / Shopping | ⬜ To do | Shared components already shift the visual language; each screen's custom cards/rows need a pass |
+| Review / Inbox / Rules / Templates / Tags / Merchants / Categories | ⬜ To do | ListGroup/rows inherit; custom hero/filter chrome pending |
+| Data & Import / statement review | ⬜ To do | Wizard cards, mapping/preview tables, review rows |
+| Reports (balance/spending/credit/assets/outlook) | ⬜ To do | Report cards/metric grids |
+| Settings subpages (finance, transactions, notifications, security, AI, widgets, dashboard) | 🟡 Partial | Shared list/field/switch M3; custom sections to review |
+| Onboarding / LockScreen / +not-found / AI screen | ⬜ To do | Old visual language; onboarding should become a single M3 expressive moment |
+
+### Next actions (in order)
+
+1. **Finish the inner components**: `MetricTile`/`ChangePill`, `AiMonthlyReview`, `ForecastCard`, `SettleSheet`, `QuickEntryBatchRow`, `AccountEditor`, `ColorField`, `SwipeableRow`, chart tooltip/legend, widget inner cards.
+2. **Screen passes**: Accounts → transaction detail → composer header → goals/debts/shared → recurring/installments/investments → review/inbox/rules/templates/tags/merchants/categories → data/import → reports → settings subpages → onboarding/lock/AI/404.
+3. **Device pass (must)**: build the APK (`scripts/build-apk.ps1`) and verify on Android: bottom nav on every screen, Settings back (pop, no exit), double-back-to-exit, drawer back, sheet back/keyboard, M3 switch appearance, calendar selection, 48dp touch targets.
+4. **Adaptive pass (optional)**: navigation rail/medium layouts for tablets and foldables; expressive FAB menu, split button, toolbars and loading indicator.
+5. **Accessibility/contrast audit**: check every M3 role pair on light/dark and all 19 accents; keep the semantic money colours fixed.
+
+### Verification commands
+
+```bash
+npm run typecheck
+npm test
+npx expo export --platform web
+node scripts/serve-web.mjs 8081
+node scripts/verify-m3.mjs http://localhost:8081
+node scripts/verify-modals.mjs http://localhost:8081
+node scripts/verify-web.mjs http://localhost:8081 home 390 844 "Net worth"
+```
+
+> The web build is the preview only. Android is the primary target; anything touching `BackHandler`, `Switch`, the keyboard or safe-area insets must be checked on a real APK.

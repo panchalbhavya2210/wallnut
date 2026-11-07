@@ -726,7 +726,7 @@ export default function SharedExpenseComposer() {
         {!loaded ? <AppText variant="caption" tone="muted">Loading…</AppText> : null}
       </ScrollView>
 
-      <View style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: Math.max(insets.bottom, theme.spacing.md) }}>
+      <View style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: Math.max(insets.bottom, theme.spacing.md) + 72 }}>
         <Button
           label={editingId ? 'Save changes' : 'Add shared expense'}
           size="lg"

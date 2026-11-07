@@ -1,14 +1,15 @@
 import type { TextStyle } from 'react-native';
 
 import { FONT_OPTIONS, fontFamiliesFor, type FontFamilies } from './fonts';
+import { buildM3Typography, numericStyle, type M3TypeRole } from './m3';
 
 /**
- * The type system. Every variant names a weight slot; the active font family
- * fills those slots (Inter by default, Poppins/Manrope/etc. from Appearance).
- * Financial figures use tabular numerals so columns of amounts align.
+ * Wallnut's text roles mapped onto the Material 3 type scale.
+ *
+ * The variant names are kept from the previous design system because every
+ * screen already uses them; their metrics now come from M3. New code should
+ * prefer the M3 role styles (`theme.m3.type.titleLarge`, etc.).
  */
-
-const tabular = { fontVariant: ['tabular-nums'] as TextStyle['fontVariant'] };
 
 export type TypographyVariant =
   | 'display'
@@ -26,69 +27,37 @@ export type TypographyVariant =
   | 'numericMedium'
   | 'numericSmall'
   | 'numericBody'
-  | 'numericCaption';
+  | 'numericCaption'
+  | M3TypeRole;
 
-export function buildTypography(families: FontFamilies, factor = 1): Record<TypographyVariant, TextStyle> {
-  const scale = (value: number) => Math.round(value * factor);
+export type AppTypography = Record<TypographyVariant, TextStyle> & Record<M3TypeRole, TextStyle>;
+
+export function buildTypography(families: FontFamilies, factor = 1): AppTypography {
+  const m3 = buildM3Typography(families, factor);
   return {
-    display: { fontFamily: families.bold, fontSize: scale(34), lineHeight: scale(40), letterSpacing: -0.8 },
-    headline: { fontFamily: families.semibold, fontSize: scale(26), lineHeight: scale(32), letterSpacing: -0.5 },
-    title: { fontFamily: families.semibold, fontSize: scale(20), lineHeight: scale(26), letterSpacing: -0.3 },
-    titleSmall: { fontFamily: families.semibold, fontSize: scale(17), lineHeight: scale(22), letterSpacing: -0.2 },
-    body: { fontFamily: families.regular, fontSize: scale(15), lineHeight: scale(21) },
-    bodyMedium: { fontFamily: families.medium, fontSize: scale(15), lineHeight: scale(21) },
-    bodySmall: { fontFamily: families.regular, fontSize: scale(13), lineHeight: scale(18) },
-    caption: { fontFamily: families.regular, fontSize: scale(12), lineHeight: scale(16) },
-    captionMedium: { fontFamily: families.medium, fontSize: scale(12), lineHeight: scale(16) },
-    label: {
-      fontFamily: families.semibold,
-      fontSize: scale(11),
-      lineHeight: scale(14),
-      letterSpacing: 0.9,
-      textTransform: 'uppercase',
-    },
-    overline: {
-      fontFamily: families.medium,
-      fontSize: scale(11),
-      lineHeight: scale(14),
-      letterSpacing: 0.4,
-    },
-    numericLarge: {
-      fontFamily: families.bold,
-      fontSize: scale(40),
-      lineHeight: scale(46),
-      letterSpacing: -1.2,
-      ...tabular,
-    },
-    numericMedium: {
-      fontFamily: families.semibold,
-      fontSize: scale(24),
-      lineHeight: scale(30),
-      letterSpacing: -0.6,
-      ...tabular,
-    },
-    numericSmall: {
-      fontFamily: families.semibold,
-      fontSize: scale(17),
-      lineHeight: scale(22),
-      letterSpacing: -0.3,
-      ...tabular,
-    },
-    numericBody: {
-      fontFamily: families.medium,
-      fontSize: scale(15),
-      lineHeight: scale(20),
-      letterSpacing: -0.2,
-      ...tabular,
-    },
-    numericCaption: {
-      fontFamily: families.medium,
-      fontSize: scale(12),
-      lineHeight: scale(16),
-      letterSpacing: -0.1,
-      ...tabular,
-    },
+    ...m3,
+    display: m3.displaySmall,
+    headline: m3.headlineMedium,
+    title: m3.titleLarge,
+    titleSmall: m3.titleMedium,
+    body: m3.bodyLarge,
+    // Emphasised body copy keeps the M3 metrics but uses the medium face.
+    bodyMedium: { ...m3.bodyLarge, fontFamily: families.medium },
+    bodySmall: m3.bodyMedium,
+    caption: m3.bodySmall,
+    captionMedium: m3.labelMedium,
+    label: m3.labelMedium,
+    overline: m3.labelSmall,
+    numericLarge: numericStyle({ ...m3.displaySmall, fontSize: round(40, factor), lineHeight: round(48, factor) }),
+    numericMedium: numericStyle({ ...m3.headlineMedium, fontSize: round(28, factor), lineHeight: round(36, factor) }),
+    numericSmall: numericStyle({ ...m3.titleLarge, fontSize: round(20, factor), lineHeight: round(28, factor) }),
+    numericBody: numericStyle(m3.bodyLarge),
+    numericCaption: numericStyle(m3.labelMedium),
   };
+}
+
+function round(value: number, factor: number) {
+  return Math.round(value * factor);
 }
 
 export const DEFAULT_FONT_ID = 'inter';

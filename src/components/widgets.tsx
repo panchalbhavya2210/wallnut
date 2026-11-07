@@ -110,11 +110,11 @@ export function WidgetCard({
         gap: theme.spacing.sm,
       }}>
       <View style={{ flex: 1, gap: 2 }}>
-        <AppText variant={bare ? 'bodyMedium' : 'titleSmall'} style={bare ? { color: 'rgba(255, 255, 255, 0.92)' } : undefined}>
+        <AppText variant={bare ? 'titleMedium' : 'titleSmall'} style={bare ? { color: 'rgba(255, 255, 255, 0.92)' } : undefined}>
           {title}
         </AppText>
         {subtitle ? (
-          <AppText variant="caption" tone={bare ? undefined : 'muted'} style={bare ? { color: 'rgba(255, 255, 255, 0.72)' } : undefined}>
+          <AppText variant="bodySmall" tone={bare ? undefined : 'muted'} style={bare ? { color: 'rgba(255, 255, 255, 0.72)' } : undefined}>
             {subtitle}
           </AppText>
         ) : null}
@@ -123,12 +123,9 @@ export function WidgetCard({
       {actionLabel && onAction ? (
         <Pressable onPress={onAction} hitSlop={10}>
           <AppText
-            variant="bodySmall"
+            variant="labelLarge"
             tone={bare ? undefined : 'accent'}
-            style={[
-              bare ? { color: '#FFFFFF' } : undefined,
-              { fontFamily: theme.typography.captionMedium.fontFamily },
-            ]}>
+            style={bare ? { color: '#FFFFFF' } : undefined}>
             {actionLabel}
           </AppText>
         </Pressable>
@@ -154,7 +151,7 @@ export function WidgetCard({
         end={{ x: 1, y: 1 }}
         style={{
           padding: theme.spacing.lg,
-          borderRadius: theme.radius.xl,
+          borderRadius: theme.m3.shape.extraLarge,
           overflow: 'hidden',
         }}>
         {header}
@@ -410,18 +407,18 @@ const QuickActionsWidget: React.FC<WidgetProps> = ({ onNavigate }) => {
               style={{
                 width: 48,
                 height: 48,
-                borderRadius: 24,
+                borderRadius: theme.m3.shape.large,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: action.filled ? theme.colors.accent.base : theme.colors.accent.soft,
+                backgroundColor: action.filled ? theme.m3.color.primary : theme.m3.color.secondaryContainer,
               }}>
               <Ionicons
                 name={action.icon}
                 size={22}
-                color={action.filled ? theme.colors.accent.on : theme.colors.accent.base}
+                color={action.filled ? theme.m3.color.onPrimary : theme.m3.color.onSecondaryContainer}
               />
             </View>
-            <AppText variant="caption" tone="secondary">
+            <AppText variant="labelMedium" tone="secondary">
               {action.label}
             </AppText>
           </Pressable>
@@ -541,36 +538,36 @@ function FlowTile({
         minWidth: 0,
         gap: theme.spacing.sm,
         padding: theme.spacing.md,
-        borderRadius: theme.radius.lg,
+        borderRadius: theme.m3.shape.large,
         backgroundColor: tone === 'positive' ? theme.colors.positiveSoft : theme.colors.negativeSoft,
       }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <View
           style={{
-            width: 28,
-            height: 28,
-            borderRadius: 14,
+            width: 32,
+            height: 32,
+            borderRadius: theme.m3.shape.full,
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: color,
           }}>
-          <Ionicons name={icon} size={15} color="#FFFFFF" />
+          <Ionicons name={icon} size={16} color={theme.mode === 'dark' ? theme.colors.textInverse : '#FFFFFF'} />
         </View>
-        <AppText variant="caption" tone="secondary">
+        <AppText variant="labelMedium" tone="secondary">
           {label}
         </AppText>
       </View>
-      <MoneyText amount={amount} variant="numericSmall" tone="neutral" absolute showSign={false} numberOfLines={1} />
+      <MoneyText amount={amount} variant="numericBody" tone="neutral" absolute showSign={false} numberOfLines={1} />
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 6 }}>
         {change !== null ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-            <Ionicons name={change >= 0 ? 'arrow-up' : 'arrow-down'} size={11} color={improving ? theme.colors.positive : theme.colors.negative} />
-            <AppText variant="caption" tone={changeTone} style={{ fontSize: 11 }}>
+            <Ionicons name={change >= 0 ? 'arrow-up' : 'arrow-down'} size={12} color={improving ? theme.colors.positive : theme.colors.negative} />
+            <AppText variant="labelSmall" tone={changeTone}>
               {formatPercent(Math.abs(change), 1)}
             </AppText>
           </View>
         ) : (
-          <AppText variant="caption" tone="muted" style={{ fontSize: 11 }}>
+          <AppText variant="labelSmall" tone="muted">
             new
           </AppText>
         )}

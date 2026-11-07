@@ -878,7 +878,7 @@ function MetricTile({
   return (
     <Card style={{ flex: 1 }}>
       <View style={{ gap: 4 }}>
-        <AppText variant="caption" tone="muted" numberOfLines={1}>
+        <AppText variant="labelMedium" tone="muted" numberOfLines={1}>
           {label}
         </AppText>
         <MoneyText amount={amount} variant="numericMedium" tone={tone} showSign={false} numberOfLines={1} adjustsFontSizeToFit />
@@ -892,8 +892,8 @@ function ChangePill({ change, invert = false, compact }: { change: number | null
   const theme = useTheme();
   if (change === null) {
     return (
-      <View style={{ paddingHorizontal: compact ? 6 : theme.spacing.sm, paddingVertical: 3, borderRadius: theme.radius.full, backgroundColor: theme.colors.pressed, alignSelf: 'flex-start' }}>
-        <AppText variant="caption" tone="muted" style={{ fontSize: compact ? 10 : 12 }}>
+      <View style={{ paddingHorizontal: compact ? 8 : theme.spacing.sm, paddingVertical: 3, borderRadius: theme.m3.shape.small, backgroundColor: theme.m3.color.surfaceContainerHighest, alignSelf: 'flex-start' }}>
+        <AppText variant="labelSmall" tone="muted">
           No prior period
         </AppText>
       </View>
@@ -901,21 +901,21 @@ function ChangePill({ change, invert = false, compact }: { change: number | null
   }
   const up = change >= 0;
   const good = invert ? !up : up;
-  const color = good ? theme.colors.positive : theme.colors.negative;
+  const color = good ? theme.m3.color.positive : theme.m3.color.error;
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         gap: 3,
-        paddingHorizontal: compact ? 6 : theme.spacing.sm,
+        paddingHorizontal: compact ? 8 : theme.spacing.sm,
         paddingVertical: compact ? 2 : 4,
-        borderRadius: theme.radius.full,
+        borderRadius: theme.m3.shape.small,
         backgroundColor: `${color}1A`,
         alignSelf: 'flex-start',
       }}>
-      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={compact ? 10 : 12} color={color} />
-      <AppText variant="numericCaption" style={{ color, fontSize: compact ? 10 : 12 }}>
+      <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={compact ? 11 : 12} color={color} />
+      <AppText variant="labelSmall" style={{ color }}>
         {Math.abs(change) < 10 ? `${Math.abs(change).toFixed(1)}%` : `${Math.round(Math.abs(change))}%`}
       </AppText>
     </View>

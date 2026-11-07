@@ -35,32 +35,34 @@ export function AppHeader({
   sticky?: boolean;
 }) {
   const theme = useTheme();
+  const c = theme.m3.color;
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         gap: theme.spacing.sm,
-        paddingTop: theme.spacing.md,
-        paddingBottom: theme.spacing.md,
-        ...(sticky ? { backgroundColor: theme.colors.background } : null),
+        minHeight: theme.m3.size.appBar,
+        paddingTop: theme.spacing.sm,
+        paddingBottom: theme.spacing.sm,
+        ...(sticky ? { backgroundColor: c.surface } : null),
       }}>
       {brand ? (
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
           <Image
             source={theme.mode === 'dark' ? require('../../assets/images/logo-mark-dark.png') : require('../../assets/images/logo-mark-light.png')}
-            style={{ width: 30, height: 30 }}
+            style={{ width: 28, height: 28 }}
             resizeMode="contain"
           />
-          <AppText variant="title">Wallnut</AppText>
+          <AppText variant="titleLarge">Wallnut</AppText>
         </View>
       ) : (
         <View style={{ flex: 1, minWidth: 0 }}>
-          <AppText variant="title" numberOfLines={1}>
+          <AppText variant="titleLarge" numberOfLines={1}>
             {title}
           </AppText>
           {subtitle ? (
-            <AppText variant="caption" tone="muted" numberOfLines={1}>
+            <AppText variant="bodyMedium" tone="muted" numberOfLines={1}>
               {subtitle}
             </AppText>
           ) : null}
@@ -86,20 +88,21 @@ function HeaderAction({ icon, onPress, label }: { icon: keyof typeof Ionicons.gl
       accessibilityLabel={label}
       android_ripple={{ color: theme.colors.ripple, borderless: true }}
       style={({ pressed }) => ({
-        width: 38,
-        height: 38,
-        borderRadius: theme.radius.full,
+        width: 48,
+        height: 48,
+        borderRadius: theme.m3.shape.full,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: pressed ? theme.colors.pressed : 'transparent',
       })}>
-      <Ionicons name={icon} size={21} color={theme.colors.text} />
+      <Ionicons name={icon} size={24} color={theme.m3.color.onSurface} />
     </Pressable>
   );
 }
 
 export function HeaderBell({ count = 0 }: { count?: number }) {
   const theme = useTheme();
+  const c = theme.m3.color;
   return (
     <Pressable
       onPress={() => router.push('/review' as never)}
@@ -108,29 +111,29 @@ export function HeaderBell({ count = 0 }: { count?: number }) {
       accessibilityLabel={count > 0 ? `${count} transactions to review` : 'Notifications'}
       android_ripple={{ color: theme.colors.ripple, borderless: true }}
       style={({ pressed }) => ({
-        width: 38,
-        height: 38,
-        borderRadius: theme.radius.full,
+        width: 48,
+        height: 48,
+        borderRadius: theme.m3.shape.full,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: pressed ? theme.colors.pressed : 'transparent',
       })}>
-      <Ionicons name="notifications-outline" size={21} color={theme.colors.text} />
+      <Ionicons name="notifications-outline" size={24} color={c.onSurface} />
       {count > 0 ? (
         <View
           style={{
             position: 'absolute',
-            top: 6,
-            right: 6,
-            minWidth: 15,
-            height: 15,
-            borderRadius: 8,
-            paddingHorizontal: 3,
-            backgroundColor: theme.colors.negative,
+            top: 7,
+            right: 7,
+            minWidth: 17,
+            height: 17,
+            borderRadius: 9,
+            paddingHorizontal: 4,
+            backgroundColor: c.error,
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-          <AppText variant="caption" style={{ color: '#FFFFFF', fontSize: 9, lineHeight: 12 }}>
+          <AppText variant="labelSmall" style={{ color: c.onError, fontSize: 10, lineHeight: 12 }}>
             {count > 9 ? '9+' : count}
           </AppText>
         </View>
@@ -207,6 +210,7 @@ export function RoundIconButton({
   tone?: 'neutral' | 'accent';
 }) {
   const theme = useTheme();
+  const c = theme.m3.color;
   return (
     <Pressable
       onPress={onPress}
@@ -214,17 +218,15 @@ export function RoundIconButton({
       accessibilityLabel={label}
       android_ripple={{ color: theme.colors.ripple, borderless: true }}
       style={({ pressed }) => ({
-        width: 38,
-        height: 38,
-        borderRadius: theme.radius.full,
+        width: 48,
+        height: 48,
+        borderRadius: theme.m3.shape.full,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: tone === 'accent' ? theme.colors.accent.soft : theme.colors.surface,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.border,
+        backgroundColor: tone === 'accent' ? c.primaryContainer : c.surfaceContainerHigh,
         opacity: pressed ? 0.7 : 1,
       })}>
-      <Ionicons name={icon} size={18} color={tone === 'accent' ? theme.colors.accent.base : theme.colors.text} />
+      <Ionicons name={icon} size={22} color={tone === 'accent' ? c.onPrimaryContainer : c.onSurfaceVariant} />
     </Pressable>
   );
 }

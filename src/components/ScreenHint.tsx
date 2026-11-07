@@ -26,21 +26,19 @@ export function ScreenHint({ id, message }: { id: string; message: string }) {
         alignItems: 'flex-start',
         gap: theme.spacing.sm,
         padding: theme.spacing.lg,
-        borderRadius: theme.radius.lg,
-        backgroundColor: theme.colors.accent.soft,
-        borderWidth: 1,
-        borderColor: `${theme.colors.accent.base}33`,
+        borderRadius: theme.m3.shape.large,
+        backgroundColor: theme.m3.color.tertiaryContainer,
         marginBottom: theme.spacing.lg,
       }}>
-      <Ionicons name="bulb-outline" size={16} color={theme.colors.accent.base} style={{ marginTop: 1 }} />
-      <AppText variant="caption" tone="secondary" style={{ flex: 1 }}>
+      <Ionicons name="bulb-outline" size={18} color={theme.m3.color.onTertiaryContainer} style={{ marginTop: 1 }} />
+      <AppText variant="bodyMedium" style={{ flex: 1, color: theme.m3.color.onTertiaryContainer }}>
         {message}
       </AppText>
       <Pressable
         onPress={() => update('hints', { dismissed: [...useSettingsStore.getState().hints.dismissed, id] })}
         hitSlop={10}
         accessibilityLabel="Dismiss hint">
-        <Ionicons name="close" size={15} color={theme.colors.muted} />
+        <Ionicons name="close" size={18} color={theme.m3.color.onTertiaryContainer} />
       </Pressable>
     </View>
   );

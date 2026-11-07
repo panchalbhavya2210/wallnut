@@ -43,6 +43,8 @@ interface UiState {
   accountScopeId: string | null;
   /** Root-level drawer overlay, used on screens outside the drawer shell. */
   drawerOpen: boolean;
+  /** Native drawer state, mirrored here so the root back handler can defer. */
+  nativeDrawerOpen: boolean;
 
   setSelectionMode: (enabled: boolean) => void;
   toggleSelected: (id: string) => void;
@@ -54,6 +56,7 @@ interface UiState {
   setAccountScope: (accountId: string | null) => void;
   openDrawer: () => void;
   closeDrawer: () => void;
+  setNativeDrawerOpen: (open: boolean) => void;
   showToast: (toast: Omit<ToastMessage, 'id' | 'durationMs'> & { durationMs?: number }) => void;
   dismissToast: (id: number) => void;
 }
@@ -69,6 +72,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   chartScrubbing: false,
   accountScopeId: null,
   drawerOpen: false,
+  nativeDrawerOpen: false,
 
   setSelectionMode: (enabled) =>
     set({ selectionMode: enabled, selectedIds: enabled ? get().selectedIds : [] }),
@@ -88,6 +92,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   setAccountScope: (accountId) => set({ accountScopeId: accountId }),
   openDrawer: () => set({ drawerOpen: true }),
   closeDrawer: () => set({ drawerOpen: false }),
+  setNativeDrawerOpen: (open) => {
+    if (get().nativeDrawerOpen !== open) set({ nativeDrawerOpen: open });
+  },
 
   showToast: (toast) => {
     const id = ++toastId;

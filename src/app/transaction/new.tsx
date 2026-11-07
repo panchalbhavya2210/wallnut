@@ -329,18 +329,18 @@ export default function TransactionComposer() {
     <View style={{ flex: 1, backgroundColor: theme.colors.background, paddingTop: insets.top }}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.sm }}>
-        <IconButton icon="close" onPress={() => router.back()} accessibilityLabel="Close" />
-        <AppText variant="titleSmall">{editingId ? 'Edit transaction' : 'New transaction'}</AppText>
+        <IconButton icon="close" size={44} onPress={() => router.back()} accessibilityLabel="Close" />
+        <AppText variant="titleLarge">{editingId ? 'Edit transaction' : 'New transaction'}</AppText>
         {editingId ? (
-          <IconButton icon="trash-outline" onPress={remove} color={theme.colors.negative} accessibilityLabel="Delete" />
+          <IconButton icon="trash-outline" size={44} onPress={remove} color={theme.m3.color.error} accessibilityLabel="Delete" />
         ) : (
-          <View style={{ width: 40 }} />
+          <View style={{ width: 44 }} />
         )}
       </View>
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg }}
+        contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.colossal * 2 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
         {/* Amount */}
@@ -606,7 +606,7 @@ export default function TransactionComposer() {
       </ScrollView>
 
       {/* Keypad + save */}
-      <View style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: Math.max(insets.bottom, theme.spacing.md), gap: theme.spacing.md }}>
+      <View style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: Math.max(insets.bottom, theme.spacing.md) + 72, gap: theme.spacing.md }}>
         <AmountKeypad value={amountText} onChange={setAmountText} onSubmit={save} />
         <Button
           label={editingId ? 'Save changes' : `Add ${type === 'transfer' ? 'transfer' : type}`}

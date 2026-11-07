@@ -98,14 +98,14 @@ export function AiInsightCard() {
     return (
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
-          <View style={[styles.badge, { backgroundColor: theme.colors.accent.soft }]}>
-            <Ionicons name="sparkles-outline" size={13} color={theme.colors.accent.base} />
+          <View style={[styles.badge, { backgroundColor: theme.m3.color.tertiaryContainer }]}>
+            <Ionicons name="sparkles-outline" size={14} color={theme.m3.color.onTertiaryContainer} />
           </View>
-          <AppText variant="label" tone="muted">
-            AI INSIGHT
+          <AppText variant="titleSmall" tone="muted">
+            AI insight
           </AppText>
         </View>
-        <AppText variant="bodySmall" tone="muted" style={{ marginTop: theme.spacing.md }}>
+        <AppText variant="bodyMedium" tone="muted" style={{ marginTop: theme.spacing.md }}>
           Reading your month…
         </AppText>
       </Card>
@@ -117,20 +117,20 @@ export function AiInsightCard() {
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
-            <View style={[styles.badge, { backgroundColor: theme.colors.neutralSoft }]}>
-              <Ionicons name="sparkles-outline" size={13} color={theme.colors.muted} />
+            <View style={[styles.badge, { backgroundColor: theme.m3.color.surfaceContainerHighest }]}>
+              <Ionicons name="sparkles-outline" size={14} color={theme.m3.color.onSurfaceVariant} />
             </View>
-            <AppText variant="label" tone="muted">
-              AI INSIGHT
+            <AppText variant="titleSmall" tone="muted">
+              AI insight
             </AppText>
           </View>
           <Pressable onPress={() => void load(true)} hitSlop={10}>
-            <AppText variant="captionMedium" tone="accent">
+            <AppText variant="labelLarge" tone="accent">
               Retry
             </AppText>
           </Pressable>
         </View>
-        <AppText variant="caption" tone="muted" style={{ marginTop: theme.spacing.md }}>
+        <AppText variant="bodyMedium" tone="muted" style={{ marginTop: theme.spacing.md }}>
           {state.message}
         </AppText>
       </Card>
@@ -140,10 +140,10 @@ export function AiInsightCard() {
   const { insight } = state;
   const tint =
     insight.severity === 'positive'
-      ? theme.colors.positive
+      ? theme.m3.color.positive
       : insight.severity === 'warning'
-        ? theme.colors.warning
-        : theme.colors.accent.base;
+        ? theme.m3.color.warning
+        : theme.m3.color.tertiary;
   const link = insight.focus ? FOCUS_LINKS[insight.focus] : null;
 
   return (
@@ -151,20 +151,20 @@ export function AiInsightCard() {
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
           <View style={[styles.badge, { backgroundColor: `${tint}22` }]}>
-            <Ionicons name="sparkles-outline" size={13} color={tint} />
+            <Ionicons name="sparkles-outline" size={14} color={tint} />
           </View>
-          <AppText variant="label" tone="muted">
-            AI INSIGHT
+          <AppText variant="titleSmall" tone="muted">
+            AI insight
           </AppText>
         </View>
-        <AppText variant="caption" tone="muted">
+        <AppText variant="labelMedium" tone="muted">
           {state.cached ? 'cached' : 'just now'}
         </AppText>
       </View>
-      <AppText variant="bodyMedium" style={{ marginTop: theme.spacing.md }}>
+      <AppText variant="titleMedium" style={{ marginTop: theme.spacing.md }}>
         {insight.title}
       </AppText>
-      <AppText variant="bodySmall" tone="secondary" style={{ marginTop: theme.spacing.xs }}>
+      <AppText variant="bodyMedium" tone="secondary" style={{ marginTop: theme.spacing.xs }}>
         {insight.summary}
       </AppText>
       {link ? (

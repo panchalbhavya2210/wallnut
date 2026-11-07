@@ -40,14 +40,14 @@ export function PressableBounce({
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   const onPressIn = useCallback(() => {
-    if (animate) scale.value = withTiming(scaleTo, { duration: 80 });
-  }, [animate, scale, scaleTo]);
+    if (animate) scale.value = withSpring(scaleTo, theme.motion.spring.spatialFast);
+  }, [animate, scale, scaleTo, theme.motion.spring.spatialFast]);
 
   const onPressOut = useCallback(() => {
     if (!animate) return;
     // Settle straight back to 1 — damped, no overshoot.
-    scale.value = withSpring(1, { damping: 22, stiffness: 340, mass: 0.7 });
-  }, [animate, scale]);
+    scale.value = withSpring(1, theme.motion.spring.effects);
+  }, [animate, scale, theme.motion.spring.effects]);
 
   return (
     <AnimatedPressable

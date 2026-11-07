@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
@@ -34,6 +34,7 @@ async function tapFeedback(enabled: boolean) {
 
 export function AmountKeypad({ value, onChange, onSubmit, hapticsEnabled = true }: AmountKeypadProps) {
   const theme = useTheme();
+  const c = theme.m3.color;
 
   const press = (key: string | 'backspace') => {
     void tapFeedback(hapticsEnabled && !theme.motion.reduceMotion);
@@ -64,18 +65,16 @@ export function AmountKeypad({ value, onChange, onSubmit, hapticsEnabled = true 
               onPress={() => press(key)}
               onLongPress={key === 'backspace' ? () => onChange('') : undefined}
               style={({ pressed }) => ({
-                height: 54,
-                borderRadius: theme.radius.md,
+                height: 56,
+                borderRadius: theme.m3.shape.medium,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: pressed ? theme.colors.pressed : theme.colors.surface,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: theme.colors.border,
+                backgroundColor: pressed ? c.secondaryContainer : c.surfaceContainerHigh,
               })}>
               {key === 'backspace' ? (
-                <Ionicons name="backspace-outline" size={22} color={theme.colors.text} />
+                <Ionicons name="backspace-outline" size={24} color={c.onSurfaceVariant} />
               ) : (
-                <AppText variant="titleSmall">{key}</AppText>
+                <AppText variant="headlineSmall">{key}</AppText>
               )}
             </Pressable>
           </View>

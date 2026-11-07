@@ -144,17 +144,25 @@ export function PeriodSheet({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 paddingVertical: theme.spacing.md,
-                opacity: pressed ? 0.7 : 1,
+                paddingHorizontal: theme.spacing.md,
+                borderRadius: theme.m3.shape.medium,
+                backgroundColor: selected
+                  ? theme.m3.color.secondaryContainer
+                  : pressed
+                    ? theme.colors.pressed
+                    : 'transparent',
               })}>
               <View style={{ gap: 2 }}>
-                <AppText variant="bodyMedium">{PERIOD_LABELS[option]}</AppText>
+                <AppText variant="bodyLarge" style={selected ? { color: theme.m3.color.onSecondaryContainer } : undefined}>
+                  {PERIOD_LABELS[option]}
+                </AppText>
                 {range ? (
-                  <AppText variant="caption" tone="muted">
+                  <AppText variant="bodyMedium" tone="muted">
                     {formatMonthYear(range.start)} – {formatMonthYear(range.end)}
                   </AppText>
                 ) : null}
               </View>
-              {selected ? <Ionicons name="checkmark-circle" size={20} color={theme.colors.accent.base} /> : null}
+              {selected ? <Ionicons name="checkmark" size={20} color={theme.m3.color.onSecondaryContainer} /> : null}
             </Pressable>
           );
         })}
@@ -351,34 +359,38 @@ function groupingLabel(grouping: 'day' | 'week' | 'month'): string {
             style={({ pressed }) => ({
               flex: 1,
               gap: 2,
-              padding: theme.spacing.md,
-              borderRadius: theme.radius.md,
-              backgroundColor: theme.colors.inputBackground,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: theme.colors.border,
+              paddingHorizontal: theme.spacing.md,
+              paddingVertical: theme.spacing.md,
+              borderTopLeftRadius: theme.m3.shape.extraSmall,
+              borderTopRightRadius: theme.m3.shape.extraSmall,
+              borderBottomWidth: 1,
+              borderBottomColor: theme.m3.color.onSurfaceVariant,
+              backgroundColor: theme.m3.color.surfaceContainerHighest,
               opacity: pressed ? 0.8 : 1,
             })}>
-            <AppText variant="caption" tone="muted">
+            <AppText variant="labelMedium" tone="muted">
               From
             </AppText>
-            <AppText variant="bodySmall">{toISODate(from)}</AppText>
+            <AppText variant="bodyLarge">{toISODate(from)}</AppText>
           </Pressable>
           <Pressable
             onPress={() => setPicker('to')}
             style={({ pressed }) => ({
               flex: 1,
               gap: 2,
-              padding: theme.spacing.md,
-              borderRadius: theme.radius.md,
-              backgroundColor: theme.colors.inputBackground,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: theme.colors.border,
+              paddingHorizontal: theme.spacing.md,
+              paddingVertical: theme.spacing.md,
+              borderTopLeftRadius: theme.m3.shape.extraSmall,
+              borderTopRightRadius: theme.m3.shape.extraSmall,
+              borderBottomWidth: 1,
+              borderBottomColor: theme.m3.color.onSurfaceVariant,
+              backgroundColor: theme.m3.color.surfaceContainerHighest,
               opacity: pressed ? 0.8 : 1,
             })}>
-            <AppText variant="caption" tone="muted">
+            <AppText variant="labelMedium" tone="muted">
               To
             </AppText>
-            <AppText variant="bodySmall">{toISODate(to)}</AppText>
+            <AppText variant="bodyLarge">{toISODate(to)}</AppText>
           </Pressable>
         </Row>
 
@@ -439,17 +451,17 @@ export function PeriodPill({
           alignItems: 'center',
           gap: 5,
           paddingHorizontal: theme.spacing.md,
-          height: 30,
-          borderRadius: theme.radius.full,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: onDark ? 'rgba(255, 255, 255, 0.35)' : theme.colors.border,
-          backgroundColor: onDark ? 'rgba(255, 255, 255, 0.14)' : theme.colors.surface,
+          height: 32,
+          borderRadius: theme.m3.shape.small,
+          borderWidth: 1,
+          borderColor: onDark ? 'rgba(255, 255, 255, 0.35)' : theme.m3.color.outline,
+          backgroundColor: onDark ? 'rgba(255, 255, 255, 0.14)' : theme.m3.color.surfaceContainerHigh,
           opacity: pressed ? 0.75 : 1,
         })}>
-        <AppText variant="captionMedium" style={onDark ? { color: '#FFFFFF' } : undefined}>
+        <AppText variant="labelLarge" style={onDark ? { color: '#FFFFFF' } : undefined}>
           {PERIOD_LABELS[value]}
         </AppText>
-        <Ionicons name="chevron-down" size={12} color={onDark ? 'rgba(255, 255, 255, 0.9)' : theme.colors.muted} />
+        <Ionicons name="chevron-down" size={14} color={onDark ? 'rgba(255, 255, 255, 0.9)' : theme.m3.color.onSurfaceVariant} />
       </Pressable>
 
       <BottomSheet visible={open} onClose={() => setOpen(false)} title="Period">
@@ -473,18 +485,24 @@ export function PeriodPill({
                   justifyContent: 'space-between',
                   paddingVertical: theme.spacing.md,
                   paddingHorizontal: theme.spacing.sm,
-                  borderRadius: theme.radius.md,
-                  backgroundColor: pressed || selected ? theme.colors.pressed : 'transparent',
+                  borderRadius: theme.m3.shape.medium,
+                  backgroundColor: selected
+                    ? theme.m3.color.secondaryContainer
+                    : pressed
+                      ? theme.colors.pressed
+                      : 'transparent',
                 })}>
                 <View style={{ gap: 2 }}>
-                  <AppText variant="bodyMedium" tone={selected ? 'accent' : 'primary'}>
+                  <AppText
+                    variant="bodyLarge"
+                    style={selected ? { color: theme.m3.color.onSecondaryContainer } : undefined}>
                     {PERIOD_LABELS[option]}
                   </AppText>
-                  <AppText variant="caption" tone="muted">
+                  <AppText variant="bodyMedium" tone="muted">
                     {formatDayMonth(range.start)} – {formatDayMonth(range.end)}
                   </AppText>
                 </View>
-                {selected ? <Ionicons name="checkmark" size={18} color={theme.colors.accent.base} /> : null}
+                {selected ? <Ionicons name="checkmark" size={18} color={theme.m3.color.onSecondaryContainer} /> : null}
               </Pressable>
             );
           })}
@@ -518,11 +536,11 @@ export function PeriodPill({
         gap: theme.spacing.md,
       }}>
       <View style={{ flex: 1, gap: 2 }}>
-        <AppText variant="label" tone="muted">
+        <AppText variant="titleSmall" tone="muted">
           {title}
         </AppText>
         {subtitle ? (
-          <AppText variant="caption" tone="secondary">
+          <AppText variant="bodyMedium" tone="secondary">
             {subtitle}
           </AppText>
         ) : null}
@@ -530,7 +548,7 @@ export function PeriodPill({
       {right}
       {actionLabel && onAction ? (
         <Pressable onPress={onAction} hitSlop={10}>
-          <AppText variant="captionMedium" tone="accent">
+          <AppText variant="labelLarge" tone="accent">
             {actionLabel}
           </AppText>
         </Pressable>

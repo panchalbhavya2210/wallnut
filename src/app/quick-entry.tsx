@@ -479,7 +479,7 @@ export default function QuickEntryScreen() {
         contentContainerStyle={{
           paddingHorizontal: theme.spacing.lg,
           paddingTop: theme.spacing.sm,
-          paddingBottom: theme.spacing.xxl + keyboard,
+          paddingBottom: theme.spacing.colossal * 2 + keyboard,
         }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>

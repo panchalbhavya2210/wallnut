@@ -186,6 +186,7 @@ function ScopePill({
   onLongPress?: () => void;
 }) {
   const theme = useTheme();
+  const c = theme.m3.color;
   return (
     <Pressable
       onPress={onPress}
@@ -201,30 +202,30 @@ function ScopePill({
         paddingVertical: theme.spacing.sm,
         minWidth: 104,
         maxWidth: 190,
-        borderRadius: theme.radius.lg,
-        backgroundColor: selected ? theme.colors.accent.soft : theme.colors.surface,
+        borderRadius: theme.m3.shape.medium,
+        backgroundColor: selected ? c.secondaryContainer : c.surfaceContainerHigh,
         borderWidth: 1,
-        borderColor: selected ? theme.colors.accent.base : `${tone}33`,
+        borderColor: selected ? c.secondaryContainer : c.outlineVariant,
         gap: 2,
         opacity: pressed ? 0.85 : 1,
       })}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         {icon ? (
-          <Ionicons name={icon} size={13} color={selected ? theme.colors.accent.base : tone} />
+          <Ionicons name={icon} size={14} color={selected ? c.onSecondaryContainer : tone} />
         ) : (
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tone }} />
         )}
         <AppText
-          variant="caption"
+          variant="labelMedium"
           numberOfLines={1}
-          style={{ color: selected ? theme.colors.accent.base : theme.colors.textSecondary, flexShrink: 1 }}>
+          style={{ color: selected ? c.onSecondaryContainer : c.onSurfaceVariant, flexShrink: 1 }}>
           {label}
         </AppText>
       </View>
       <AppText
-        variant="numericCaption"
+        variant="numericSmall"
         numberOfLines={1}
-        style={{ color: selected ? theme.colors.accent.base : liability ? theme.colors.negative : theme.colors.text }}>
+        style={{ color: selected ? c.onSecondaryContainer : liability ? c.error : c.onSurface }}>
         {balance}
       </AppText>
     </Pressable>

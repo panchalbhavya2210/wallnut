@@ -1,8 +1,7 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useNavigation, usePathname } from 'expo-router';
-import { useDrawerStatus } from 'expo-router/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/theme/theme';
@@ -20,9 +19,11 @@ import type { IconName } from './ui/layout';
  */
 export function BottomNav() {
   const theme = useTheme();
+  const c = theme.m3.color;
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
-  const drawerStatus = useDrawerStatus();
+  const nativeDrawerOpen = useUiStore((state) => state.nativeDrawerOpen);
+  const overlayDrawerOpen = useUiStore((state) => state.drawerOpen);
   const navigation = useNavigation() as unknown as { openDrawer?: () => void };
 
   const openMore = () => {
@@ -33,6 +34,14 @@ export function BottomNav() {
     useUiStore.getState().openDrawer();
   };
 
+  const inShell =
+    pathname === '/' ||
+    pathname[0] === '/' && ['/transactions', '/budgets', '/analytics'].some((route) => pathname.startsWith(route));
+  const goTab = (href: string) => {
+    if (inShell) router.navigate(href as never);
+    else router.dismissTo(href as never);
+  };
+
   const tabs: { key: string; label: string; icon: IconName; activeIcon: IconName; active: boolean; onPress: () => void }[] = [
     {
       key: 'home',
@@ -40,7 +49,7 @@ export function BottomNav() {
       icon: 'home-outline',
       activeIcon: 'home',
       active: pathname === '/' || pathname === '/index',
-      onPress: () => router.navigate('/' as never),
+      onPress: () => goTab('/'),
     },
     {
       key: 'transactions',
@@ -48,7 +57,7 @@ export function BottomNav() {
       icon: 'receipt-outline',
       activeIcon: 'receipt',
       active: pathname.startsWith('/transactions') || pathname.startsWith('/transaction/'),
-      onPress: () => router.navigate('/transactions' as never),
+      onPress: () => goTab('/transactions'),
     },
     {
       key: 'budgets',
@@ -56,7 +65,7 @@ export function BottomNav() {
       icon: 'wallet-outline',
       activeIcon: 'wallet',
       active: pathname.startsWith('/budgets') || pathname.startsWith('/budget/'),
-      onPress: () => router.navigate('/budgets' as never),
+      onPress: () => goTab('/budgets'),
     },
     {
       key: 'insights',
@@ -64,14 +73,14 @@ export function BottomNav() {
       icon: 'stats-chart-outline',
       activeIcon: 'stats-chart',
       active: pathname.startsWith('/analytics') || pathname.startsWith('/merchant/') || pathname.startsWith('/category/'),
-      onPress: () => router.navigate('/analytics' as never),
+      onPress: () => goTab('/analytics'),
     },
     {
       key: 'more',
       label: 'More',
       icon: 'grid-outline',
       activeIcon: 'grid',
-      active: drawerStatus === 'open',
+      active: nativeDrawerOpen || overlayDrawerOpen,
       onPress: openMore,
     },
   ];
@@ -81,17 +90,16 @@ export function BottomNav() {
       <View
         style={{
           position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          paddingBottom: Math.max(insets.bottom, 8),
-          paddingTop: 6,
-          paddingHorizontal: 2,
+          left: theme.spacing.md,
+          right: theme.spacing.md,
+          bottom: Math.max(insets.bottom, theme.spacing.sm),
+          height: theme.m3.size.navBar,
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: theme.colors.surfaceTranslucent,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: theme.colors.border,
+          backgroundColor: c.surfaceContainerHigh,
+          borderRadius: theme.m3.shape.extraLarge,
+          paddingHorizontal: theme.spacing.xs,
+          ...theme.shadow('md'),
         }}>
         {tabs.map((tab) => (
           <PressableBounce
@@ -100,20 +108,36 @@ export function BottomNav() {
             accessibilityRole="button"
             accessibilityLabel={tab.label}
             accessibilityState={{ selected: tab.active }}
-            scaleTo={0.96}
-            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 6 }}>
-            <Ionicons
-              name={tab.active ? tab.activeIcon : tab.icon}
-              size={21}
-              color={tab.active ? theme.colors.accent.base : theme.colors.muted}
-            />
+            scaleTo={0.94}
+            style={{
+              flex: 1,
+              height: 56,
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 2,
+            }}>
+            <View
+              style={{
+                width: theme.m3.size.navIndicatorWidth,
+                height: theme.m3.size.navIndicatorHeight,
+                borderRadius: theme.m3.shape.full,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: tab.active ? c.secondaryContainer : 'transparent',
+              }}>
+              <Ionicons
+                name={tab.active ? tab.activeIcon : tab.icon}
+                size={22}
+                color={tab.active ? c.onSecondaryContainer : c.onSurfaceVariant}
+              />
+            </View>
             <AppText
-              variant="caption"
+              variant="labelMedium"
               numberOfLines={1}
               style={{
-                fontSize: 10,
-                color: tab.active ? theme.colors.accent.base : theme.colors.muted,
-                fontFamily: tab.active ? theme.typography.captionMedium.fontFamily : theme.typography.caption.fontFamily,
+                fontSize: 11,
+                lineHeight: 14,
+                color: tab.active ? c.onSecondaryContainer : c.onSurfaceVariant,
               }}>
               {tab.label}
             </AppText>
@@ -121,7 +145,7 @@ export function BottomNav() {
         ))}
       </View>
 
-      <QuickAddFab bottomOffset={48} />
+      <QuickAddFab bottomOffset={72} hidden={pathname.startsWith('/transaction/new') || pathname.startsWith('/quick-entry')} />
     </>
   );
 }

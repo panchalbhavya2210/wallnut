@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Calendar, type CalendarProps, type DateData } from 'react-native-calendars';
 
@@ -30,31 +30,32 @@ export interface CalendarDayComponentProps {
 }
 
 export function calendarTheme(theme: Theme): NonNullable<CalendarProps['theme']> {
-  const { colors, typography } = theme;
+  const { typography } = theme;
+  const c = theme.m3.color;
   return {
-    backgroundColor: colors.surface,
-    calendarBackground: colors.surface,
-    textSectionTitleColor: colors.muted,
-    textSectionTitleDisabledColor: colors.muted,
-    selectedDayBackgroundColor: colors.accent.base,
-    selectedDayTextColor: colors.accent.on,
-    todayTextColor: colors.accent.base,
+    backgroundColor: c.surfaceContainerLow,
+    calendarBackground: c.surfaceContainerLow,
+    textSectionTitleColor: c.onSurfaceVariant,
+    textSectionTitleDisabledColor: c.outline,
+    selectedDayBackgroundColor: c.primary,
+    selectedDayTextColor: c.onPrimary,
+    todayTextColor: c.primary,
     todayBackgroundColor: 'transparent',
-    dayTextColor: colors.text,
-    textDisabledColor: colors.muted,
-    textInactiveColor: colors.muted,
-    monthTextColor: colors.text,
-    textMonthFontFamily: typography.titleSmall.fontFamily,
+    dayTextColor: c.onSurface,
+    textDisabledColor: c.outline,
+    textInactiveColor: c.outline,
+    monthTextColor: c.onSurface,
+    textMonthFontFamily: typography.titleMedium.fontFamily,
     textMonthFontSize: 16,
     textMonthFontWeight: '600',
-    textDayFontFamily: typography.body.fontFamily,
-    textDayHeaderFontFamily: typography.captionMedium.fontFamily,
+    textDayFontFamily: typography.bodyLarge.fontFamily,
+    textDayHeaderFontFamily: typography.labelMedium.fontFamily,
     textDayFontSize: 14,
     textDayHeaderFontSize: 12,
-    arrowColor: colors.accent.base,
-    disabledArrowColor: colors.muted,
-    dotColor: colors.accent.base,
-    selectedDotColor: colors.accent.on,
+    arrowColor: c.primary,
+    disabledArrowColor: c.outline,
+    dotColor: c.primary,
+    selectedDotColor: c.onPrimary,
   };
 }
 
@@ -67,7 +68,7 @@ export function AppCalendar({ style, firstDay = 1, theme: overrides, ...props }:
       enableSwipeMonths
       hideExtraDays
       theme={{ ...calendarTheme(theme), ...overrides }}
-      style={[{ borderRadius: theme.radius.md, overflow: 'hidden' }, style] as StyleProp<ViewStyle>}
+      style={[{ borderRadius: theme.m3.shape.large, overflow: 'hidden' }, style] as StyleProp<ViewStyle>}
       {...props}
     />
   );
@@ -80,17 +81,18 @@ export function AppCalendar({ style, firstDay = 1, theme: overrides, ...props }:
 export function PickerDayCell({ date, state, marking, onPress, onLongPress }: CalendarDayComponentProps) {
   const theme = useTheme();
   if (!date) return <View style={{ flex: 1 }} />;
+  const c = theme.m3.color;
   const selected = Boolean(marking?.selected) || state === 'selected';
   const today = state === 'today';
   const disabled = state === 'disabled';
   const inactive = state === 'inactive';
   const textColor = selected
-    ? theme.colors.accent.on
+    ? c.onPrimary
     : disabled || inactive
-      ? theme.colors.muted
+      ? c.outline
       : today
-        ? theme.colors.accent.base
-        : theme.colors.text;
+        ? c.primary
+        : c.onSurface;
 
   return (
     <Pressable
@@ -100,19 +102,22 @@ export function PickerDayCell({ date, state, marking, onPress, onLongPress }: Ca
       accessibilityRole="button"
       accessibilityLabel={date.dateString}
       accessibilityState={{ selected, disabled }}
-      style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 }}>
+      style={[
+        { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
+        Platform.OS === 'web' ? ({ outlineWidth: 0, outlineColor: 'transparent' } as ViewStyle) : null,
+      ]}>
       <View
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: 18,
+          width: 40,
+          height: 40,
+          borderRadius: theme.m3.shape.full,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: selected ? theme.colors.accent.base : 'transparent',
-          borderWidth: today && !selected ? StyleSheet.hairlineWidth * 2 : 0,
-          borderColor: theme.colors.accent.base,
+          backgroundColor: selected ? c.primary : 'transparent',
+          borderWidth: today && !selected ? 1 : 0,
+          borderColor: c.primary,
         }}>
-        <AppText variant="bodySmall" style={{ color: textColor }}>
+        <AppText variant="bodyMedium" style={{ color: textColor }}>
           {date.day}
         </AppText>
       </View>
@@ -140,10 +145,11 @@ export function LedgerDayCell({
 }: LedgerDayCellProps) {
   const theme = useTheme();
   if (!date) return <View style={{ flex: 1 }} />;
+  const c = theme.m3.color;
   const selected = Boolean(marking?.selected);
   const today = state === 'today';
   const inactive = state === 'inactive';
-  const tint = highlighted ? theme.colors.accent.soft : 'transparent';
+
   return (
     <Pressable
       onPress={() => onPress?.(date)}
@@ -151,28 +157,34 @@ export function LedgerDayCell({
       accessibilityRole="button"
       accessibilityLabel={date.dateString}
       accessibilityState={{ selected }}
-      style={{ flex: 1, padding: 1 }}>
+      style={[
+        { flex: 1, padding: 2 },
+        Platform.OS === 'web' ? ({ outlineWidth: 0, outlineColor: 'transparent' } as ViewStyle) : null,
+      ]}>
       <View
         style={{
           flex: 1,
-          minHeight: 54,
-          borderRadius: theme.radius.sm,
-          paddingHorizontal: 3,
-          paddingVertical: 3,
+          minHeight: 64,
+          borderRadius: theme.m3.shape.medium,
+          paddingHorizontal: 5,
+          paddingVertical: 4,
           gap: 1,
           backgroundColor: selected
-            ? theme.colors.accent.soft
-            : today
-              ? theme.colors.neutralSoft
-              : tint,
-          borderWidth: today || selected ? StyleSheet.hairlineWidth * 2 : 0,
-          borderColor: theme.colors.accent.base,
+            ? c.primaryContainer
+            : highlighted
+              ? c.surfaceContainerHigh
+              : 'transparent',
+          borderWidth: today && !selected ? 1 : 0,
+          borderColor: c.primary,
           opacity: inactive ? 0.38 : 1,
         }}>
         <AppText
-          variant="captionMedium"
-          tone={today ? 'accent' : 'secondary'}
-          style={{ fontSize: 11.5, lineHeight: 14 }}>
+          variant="labelMedium"
+          style={{
+            color: selected ? c.onPrimaryContainer : today ? c.primary : c.onSurface,
+            fontSize: 11.5,
+            lineHeight: 14,
+          }}>
           {date.day}
         </AppText>
         {renderFooter ? renderFooter(date) : null}
@@ -180,10 +192,10 @@ export function LedgerDayCell({
           <View
             style={{
               height: 2.5,
-              width: 16,
+              width: 14,
               borderRadius: 2,
-              backgroundColor: theme.colors.accent.base,
-              opacity: Math.min(1, 0.25 + intensity * 0.75),
+              backgroundColor: selected ? c.onPrimaryContainer : c.primary,
+              opacity: Math.min(1, 0.3 + intensity * 0.7),
             }}
           />
         ) : null}

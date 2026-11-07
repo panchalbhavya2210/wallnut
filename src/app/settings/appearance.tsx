@@ -328,18 +328,18 @@ export default function AppearanceSettings() {
         <ListGroup title="Advanced">
           <View style={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
             <AppText variant="captionMedium" tone="secondary">
-              Palette
+              Color system
             </AppText>
             <Row gap="sm">
               <Chip
-                label="Wallnut"
-                selected={appearance.palette === 'wallnut'}
-                onPress={() => updateAppearance('appearance', { palette: 'wallnut' })}
-              />
-              <Chip
-                label="Material (tonal)"
+                label="Material 3 Expressive"
                 selected={appearance.palette === 'material'}
                 onPress={() => updateAppearance('appearance', { palette: 'material' })}
+              />
+              <Chip
+                label="Wallnut classic"
+                selected={appearance.palette === 'wallnut'}
+                onPress={() => updateAppearance('appearance', { palette: 'wallnut' })}
               />
             </Row>
             {appearance.palette === 'material' ? (
@@ -359,10 +359,31 @@ export default function AppearanceSettings() {
             ) : null}
             <AppText variant="caption" tone="muted">
               {appearance.palette === 'wallnut'
-                ? 'Wallnut is the hand-tuned default.'
+                ? 'Wallnut classic keeps the hand-tuned canvas; components still use M3 roles.'
                 : appearance.deviceColors
                   ? 'Tonal surfaces follow your wallpaper.'
                   : `Tonal surfaces derive from the ${accentLabel.toLowerCase()} accent.`}
+            </AppText>
+
+            <AppText variant="captionMedium" tone="secondary">
+              Motion
+            </AppText>
+            <Row gap="sm">
+              <Chip
+                label="Expressive"
+                selected={(appearance.motionScheme ?? 'expressive') === 'expressive'}
+                onPress={() => updateAppearance('appearance', { motionScheme: 'expressive' })}
+              />
+              <Chip
+                label="Standard"
+                selected={appearance.motionScheme === 'standard'}
+                onPress={() => updateAppearance('appearance', { motionScheme: 'standard' })}
+              />
+            </Row>
+            <AppText variant="caption" tone="muted">
+              {(appearance.motionScheme ?? 'expressive') === 'expressive'
+                ? 'Springy, physical motion for key interactions (M3 Expressive).'
+                : 'Minimal bounce for a calmer, utilitarian feel.'}
             </AppText>
 
             <AppText variant="captionMedium" tone="secondary">
@@ -389,8 +410,8 @@ export default function AppearanceSettings() {
         </ListGroup>
 
         <AppText variant="caption" tone="muted" style={{ paddingHorizontal: theme.spacing.xs }}>
-          Wallnut ships hand-tuned dark and light palettes. Dark leans on surface contrast and hairline borders; light uses an
-          off-white canvas so cards read as material, not paper.
+          Wallnut now follows Material 3 Expressive: color roles, the M3 type scale, expressive shapes and spring‑based motion.
+          Every screen inherits the tokens from the root provider.
         </AppText>
       </View>
     </ScrollScreen>

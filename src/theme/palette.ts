@@ -1,5 +1,6 @@
 import { accents, darkColors, lightColors, type AccentName, type AccentTokens, type ThemeColors } from './colors';
 import { generateMaterialPalette, hexToHsl, hslToHex } from './material';
+import type { M3ColorRoles } from './m3';
 
 export type PaletteChoice = 'wallnut' | 'material';
 
@@ -162,44 +163,141 @@ const AMOLED_OVERRIDES: Partial<ThemeColors> = {
   chartGrid: 'rgba(38, 38, 46, 0.9)',
 };
 
-export function buildThemeColors(input: BuildColorsInput): ThemeColors & { accent: AccentTokens } {
+/**
+ * Semantic finance colours are deliberately stable across palettes: income is
+ * always green, expense/error always red, attention always amber. The M3
+ * "error" roles carry the negative money colour; positive/warning are custom
+ * roles that follow the same light/dark tone rules.
+ */
+function semanticRoles(
+  mode: 'light' | 'dark',
+  base: ThemeColors,
+): Pick<
+  M3ColorRoles,
+  | 'error'
+  | 'onError'
+  | 'errorContainer'
+  | 'onErrorContainer'
+  | 'positive'
+  | 'onPositive'
+  | 'positiveContainer'
+  | 'onPositiveContainer'
+  | 'warning'
+  | 'onWarning'
+  | 'warningContainer'
+  | 'onWarningContainer'
+  | 'scrim'
+  | 'shadow'
+> {
+  return {
+    // Semantic money colours are identical in every palette: the test
+    // `import-and-theme` enforces this so changing the seed can never make
+    // income/expense change meaning.
+    error: base.negative,
+    onError: base.onNegative,
+    errorContainer: base.negativeSoft,
+    onErrorContainer: base.negative,
+    positive: base.positive,
+    onPositive: mode === 'dark' ? base.textInverse : '#FFFFFF',
+    positiveContainer: base.positiveSoft,
+    onPositiveContainer: base.positive,
+    warning: base.warning,
+    onWarning: mode === 'dark' ? base.textInverse : '#FFFFFF',
+    warningContainer: base.warningSoft,
+    onWarningContainer: base.warning,
+    scrim: '#000000',
+    shadow: '#000000',
+  };
+}
+
+export function buildM3ColorRoles(mode: 'light' | 'dark', seedHex: string, base: ThemeColors): M3ColorRoles {
+  const tonal = generateMaterialPalette(seedHex, mode);
+  const semantic = semanticRoles(mode, base);
+  return {
+    primary: tonal.primary,
+    onPrimary: tonal.onPrimary,
+    primaryContainer: tonal.primaryContainer,
+    onPrimaryContainer: tonal.onPrimaryContainer,
+    secondary: tonal.secondary,
+    onSecondary: tonal.onSecondary,
+    secondaryContainer: tonal.secondaryContainer,
+    onSecondaryContainer: tonal.onSecondaryContainer,
+    tertiary: tonal.tertiary,
+    onTertiary: tonal.onTertiary,
+    tertiaryContainer: tonal.tertiaryContainer,
+    onTertiaryContainer: tonal.onTertiaryContainer,
+    ...semantic,
+    surface: tonal.surface,
+    onSurface: tonal.onSurface,
+    surfaceVariant: tonal.surfaceVariant,
+    onSurfaceVariant: tonal.onSurfaceVariant,
+    surfaceDim: tonal.surfaceDim,
+    surfaceBright: tonal.surfaceBright,
+    surfaceContainerLowest: tonal.surfaceContainerLowest,
+    surfaceContainerLow: tonal.surfaceContainerLow,
+    surfaceContainer: tonal.surfaceContainer,
+    surfaceContainerHigh: tonal.surfaceContainerHigh,
+    surfaceContainerHighest: tonal.surfaceContainerHighest,
+    inverseSurface: tonal.inverseSurface,
+    inverseOnSurface: tonal.inverseOnSurface,
+    inversePrimary: tonal.inversePrimary,
+    outline: tonal.outline,
+    outlineVariant: tonal.outlineVariant,
+    scrim: tonal.scrim,
+    shadow: tonal.shadow,
+  };
+}
+
+export interface ResolvedThemeColors extends ThemeColors {
+  accent: AccentTokens;
+  m3: M3ColorRoles;
+}
+
+export function buildThemeColors(input: BuildColorsInput): ResolvedThemeColors {
   const { mode, accent, palette, deviceSeed, amoled } = input;
   const base = mode === 'dark' ? darkColors : lightColors;
   const accentTokens = mode === 'dark' ? accents[accent].dark : accents[accent].light;
-  const finalize = (colors: ThemeColors, tokens: AccentTokens) =>
-    amoled && mode === 'dark' ? { ...colors, ...AMOLED_OVERRIDES, accent: tokens } : { ...colors, accent: tokens };
+  const seed = deviceSeed ?? accentTokens.base;
+  const m3 = buildM3ColorRoles(mode, seed, base);
+  const tokens: AccentTokens = { base: m3.primary, soft: m3.primaryContainer, on: m3.onPrimary };
 
-  if (palette !== 'material') {
-    return finalize(base, accentTokens);
+  // Material 3 is the default system: every surface maps to an M3 role so
+  // cards, sheets, menus and navigation share the same tonal hierarchy.
+  if (palette === 'material') {
+    const colors: ThemeColors = {
+      background: m3.surface,
+      surface: m3.surfaceContainerLow,
+      surfaceElevated: m3.surfaceContainerHigh,
+      surfaceTranslucent: `${m3.surfaceContainerHigh}F2`,
+      border: m3.outlineVariant,
+      borderStrong: m3.outline,
+      text: m3.onSurface,
+      textSecondary: m3.onSurfaceVariant,
+      muted: m3.outline,
+      textInverse: m3.inverseOnSurface,
+      positive: m3.positive,
+      positiveSoft: m3.positiveContainer,
+      negative: m3.error,
+      negativeSoft: m3.errorContainer,
+      warning: m3.warning,
+      warningSoft: m3.warningContainer,
+      neutralSoft: m3.surfaceContainerHighest,
+      onNegative: m3.onError,
+      ripple: mode === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+      chartGrid: m3.outlineVariant,
+      overlay: mode === 'dark' ? 'rgba(0,0,0,0.58)' : 'rgba(0,0,0,0.40)',
+      inputBackground: m3.surfaceContainerHighest,
+      pressed: `${m3.primary}14`,
+    };
+    return amoled && mode === 'dark'
+      ? { ...colors, ...AMOLED_OVERRIDES, accent: tokens, m3 }
+      : { ...colors, accent: tokens, m3 };
   }
 
-  const seed = deviceSeed ?? accentTokens.base;
-  const tonal = generateMaterialPalette(seed, mode);
-
-  // Material 3 elevation: the canvas sits at surface, cards are *lighter*
-  // filled containers (surfaceContainer), inputs the highest container. This
-  // is what gives the palette its obvious, tonal "filled" look.
-  const colors: ThemeColors = {
-    ...base,
-    background: tonal.surface,
-    surface: tonal.surfaceContainer,
-    surfaceElevated: tonal.surfaceContainerHigh,
-    surfaceTranslucent: `${tonal.surfaceContainerHigh}F2`,
-    border: tonal.outlineVariant,
-    borderStrong: tonal.outline,
-    text: tonal.onSurface,
-    textSecondary: tonal.onSurfaceVariant,
-    muted: tonal.outline,
-    textInverse: tonal.inverseOnSurface,
-    inputBackground: mode === 'dark' ? tonal.surfaceContainerHighest : tonal.surfaceContainer,
-    chartGrid: tonal.outlineVariant,
-    neutralSoft: mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)',
-    pressed: mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
-  };
-
-  return finalize(colors, {
-    base: tonal.primary,
-    soft: tonal.primaryContainer,
-    on: tonal.onPrimary,
-  });
+  // Legacy Wallnut palette: keep the hand-tuned canvas, but the accent and the
+  // M3 role set still resolve from the same seed so components stay coherent.
+  const colors: ThemeColors = base;
+  return amoled && mode === 'dark'
+    ? { ...colors, ...AMOLED_OVERRIDES, accent: tokens, m3 }
+    : { ...colors, accent: tokens, m3 };
 }

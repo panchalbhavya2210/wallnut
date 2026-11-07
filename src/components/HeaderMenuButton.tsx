@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from 'expo-router';
 
@@ -17,6 +17,7 @@ import { toast, useUiStore } from '@/stores/ui.store';
  */
 export function HeaderMenuButton({ size = 20, compact }: { size?: number; compact?: boolean }) {
   const theme = useTheme();
+  const c = theme.m3.color;
   const navigation = useNavigation() as unknown as {
     openDrawer?: () => void;
     dispatch?: (action: { type: string }) => void;
@@ -49,18 +50,18 @@ export function HeaderMenuButton({ size = 20, compact }: { size?: number; compac
       accessibilityHint="Long-press to hide or show amounts"
       android_ripple={{ color: theme.colors.ripple, borderless: true }}
       style={({ pressed }) => ({
-        width: compact ? 34 : 40,
-        height: compact ? 34 : 40,
-        borderRadius: theme.radius.full,
+        width: compact ? 40 : 48,
+        height: compact ? 40 : 48,
+        borderRadius: theme.m3.shape.full,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: hideAmounts ? theme.colors.accent.soft : 'transparent',
-        borderWidth: hideAmounts ? StyleSheet.hairlineWidth : 0,
-        borderColor: theme.colors.accent.base,
+        backgroundColor: hideAmounts ? c.primaryContainer : 'transparent',
+        borderWidth: hideAmounts ? 1 : 0,
+        borderColor: c.primary,
         opacity: pressed ? 0.7 : 1,
       })}>
       <View>
-        <Ionicons name="menu" size={size} color={hideAmounts ? theme.colors.accent.base : theme.colors.text} />
+        <Ionicons name="menu" size={compact ? 22 : 24} color={hideAmounts ? c.onPrimaryContainer : c.onSurface} />
       </View>
     </Pressable>
   );

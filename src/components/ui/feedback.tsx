@@ -187,7 +187,7 @@ export function ToastHost() {
       pointerEvents="box-none"
       style={[
         StyleSheet.absoluteFill,
-        { justifyContent: 'flex-end', paddingHorizontal: theme.spacing.lg, paddingBottom: 104, gap: theme.spacing.sm },
+        { justifyContent: 'flex-end', paddingHorizontal: theme.spacing.lg, paddingBottom: 156, gap: theme.spacing.sm },
       ]}>
       {toasts.map((toast) => (
         <ToastCard key={toast.id} toast={toast} onDismiss={() => dismissToast(toast.id)} />
@@ -198,12 +198,13 @@ export function ToastHost() {
 
 function ToastCard({ toast, onDismiss }: { toast: ToastMessage; onDismiss: () => void }) {
   const theme = useTheme();
+  const c = theme.m3.color;
   const reduceMotion = theme.motion.reduceMotion;
   const color =
-    toast.tone === 'positive' ? theme.colors.positive : toast.tone === 'negative' ? theme.colors.negative : theme.colors.accent.base;
+    toast.tone === 'positive' ? c.positive : toast.tone === 'negative' ? c.error : c.inversePrimary;
   const icon = toast.tone === 'positive' ? 'checkmark-circle' : toast.tone === 'negative' ? 'alert-circle' : 'information-circle';
 
-  // The countdown shrinks a hairline under the card so the dismissal never
+  // The countdown shrinks a hairline under the snackbar so the dismissal never
   // feels abrupt — and Undo toasts visibly run out of time.
   const [barWidth, setBarWidth] = useState(0);
   const progress = useSharedValue(1);
@@ -225,10 +226,8 @@ function ToastCard({ toast, onDismiss }: { toast: ToastMessage; onDismiss: () =>
           flexDirection: 'row',
           alignItems: 'center',
           gap: theme.spacing.md,
-          backgroundColor: theme.colors.surfaceElevated,
-          borderColor: theme.colors.border,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderRadius: theme.radius.lg,
+          backgroundColor: c.inverseSurface,
+          borderRadius: theme.m3.shape.extraSmall,
           paddingHorizontal: theme.spacing.lg,
           paddingVertical: theme.spacing.md + 2,
           overflow: 'hidden',
@@ -239,7 +238,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastMessage; onDismiss: () =>
             width: 30,
             height: 30,
             borderRadius: 15,
-            backgroundColor: `${color}1F`,
+            backgroundColor: `${color}2A`,
             alignItems: 'center',
             justifyContent: 'center',
           }}>
@@ -249,15 +248,15 @@ function ToastCard({ toast, onDismiss }: { toast: ToastMessage; onDismiss: () =>
         <View style={{ flex: 1, gap: 1 }}>
           {toast.title ? (
             <>
-              <AppText variant="bodyMedium" numberOfLines={1}>
+              <AppText variant="bodyLarge" style={{ color: c.inverseOnSurface }} numberOfLines={1}>
                 {toast.title}
               </AppText>
-              <AppText variant="caption" tone="muted" numberOfLines={2}>
+              <AppText variant="bodyMedium" style={{ color: c.inverseOnSurface, opacity: 0.78 }} numberOfLines={2}>
                 {toast.text}
               </AppText>
             </>
           ) : (
-            <AppText variant="bodyMedium" numberOfLines={2}>
+            <AppText variant="bodyLarge" style={{ color: c.inverseOnSurface }} numberOfLines={2}>
               {toast.text}
             </AppText>
           )}
@@ -273,14 +272,13 @@ function ToastCard({ toast, onDismiss }: { toast: ToastMessage; onDismiss: () =>
             accessibilityRole="button"
             style={({ pressed }) => ({
               paddingHorizontal: 12,
-              height: 32,
-              borderRadius: theme.radius.full,
-              backgroundColor: theme.colors.accent.soft,
+              height: 36,
+              borderRadius: theme.m3.shape.full,
               alignItems: 'center',
               justifyContent: 'center',
               opacity: pressed ? 0.7 : 1,
             })}>
-            <AppText variant="captionMedium" tone="accent">
+            <AppText variant="labelLarge" style={{ color: c.inversePrimary }}>
               {toast.actionLabel}
             </AppText>
           </Pressable>
@@ -291,7 +289,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastMessage; onDismiss: () =>
             pointerEvents="none"
             onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
             style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 3 }}>
-            <Animated.View style={[{ height: 3, backgroundColor: color, opacity: 0.5 }, barStyle]} />
+            <Animated.View style={[{ height: 3, backgroundColor: c.inversePrimary, opacity: 0.55 }, barStyle]} />
           </View>
         ) : null}
       </Pressable>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { useMoney } from '@/hooks/useMoney';
 import { getNetWorthSummary } from '@/services/analytics.service';
 import { useDbStore } from '@/stores/db.store';
 import { useSettingsStore } from '@/stores/settings.store';
+import { useUiStore } from '@/stores/ui.store';
 import type { IconName } from './ui/layout';
 
 /**
@@ -163,6 +164,7 @@ export function DrawerMenu({
   const [search, setSearch] = useState('');
   const userName = useSettingsStore((state) => state.general.userName);
   const summary = useDrawerSummary(active);
+  const c = theme.m3.color;
 
   const query = search.trim().toLowerCase();
   const groups = useMemo(() => {
@@ -179,7 +181,7 @@ export function DrawerMenu({
   }, [query]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.surface, paddingTop: insets.top }}>
+    <View style={{ flex: 1, backgroundColor: c.surfaceContainerLow, paddingTop: insets.top }}>
       {/* Brand + net worth summary */}
       <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.lg, gap: theme.spacing.lg }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -190,21 +192,21 @@ export function DrawerMenu({
               resizeMode="contain"
             />
             <View>
-              <AppText variant="titleSmall">Wallnut</AppText>
-              <AppText variant="caption" tone="muted">
+              <AppText variant="titleLarge">Wallnut</AppText>
+              <AppText variant="bodyMedium" tone="muted">
                 {userName ? `Signed for ${userName}` : 'Local-first finance'}
               </AppText>
             </View>
           </View>
           <View
             style={{
-              paddingHorizontal: 8,
-              paddingVertical: 3,
-              borderRadius: theme.radius.full,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: theme.colors.borderStrong,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: theme.m3.shape.full,
+              borderWidth: 1,
+              borderColor: c.outlineVariant,
             }}>
-            <AppText variant="caption" tone="muted" style={{ fontSize: 10, letterSpacing: 0.6 }}>
+            <AppText variant="labelSmall" tone="muted">
               V1.0
             </AppText>
           </View>
@@ -215,18 +217,18 @@ export function DrawerMenu({
           android_ripple={{ color: theme.colors.ripple }}
           style={({ pressed }) => ({
             padding: theme.spacing.lg,
-            borderRadius: theme.radius.lg,
-            backgroundColor: theme.colors.accent.soft,
-            opacity: pressed ? 0.85 : 1,
+            borderRadius: theme.m3.shape.extraLarge,
+            backgroundColor: c.primaryContainer,
+            opacity: pressed ? 0.9 : 1,
             gap: 4,
           })}>
-          <AppText variant="caption" tone="secondary">
+          <AppText variant="labelMedium" style={{ color: c.onPrimaryContainer, opacity: 0.8 }}>
             Net worth
           </AppText>
-          <AppText variant="numericMedium" tone={summary ? 'primary' : 'muted'}>
+          <AppText variant="headlineMedium" style={{ color: c.onPrimaryContainer }}>
             {summary ? money.format(summary.netWorth) : '—'}
           </AppText>
-          <AppText variant="caption" tone="muted">
+          <AppText variant="bodyMedium" style={{ color: c.onPrimaryContainer, opacity: 0.8 }}>
             {summary
               ? `${summary.count} account${summary.count === 1 ? '' : 's'} · tap to manage`
               : 'Preparing your summary…'}
@@ -242,25 +244,23 @@ export function DrawerMenu({
           gap: theme.spacing.sm,
           marginHorizontal: theme.spacing.lg,
           marginTop: theme.spacing.lg,
-          backgroundColor: theme.colors.inputBackground,
-          borderRadius: theme.radius.md,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: theme.colors.border,
+          backgroundColor: c.surfaceContainerHigh,
+          borderRadius: theme.m3.shape.full,
           paddingHorizontal: theme.spacing.md,
-          height: 42,
+          height: theme.m3.size.searchBar,
         }}>
-        <Ionicons name="search-outline" size={16} color={theme.colors.muted} />
+        <Ionicons name="search" size={22} color={c.onSurfaceVariant} />
         <TextInput
           value={search}
           onChangeText={setSearch}
           placeholder="Search settings & tools"
-          placeholderTextColor={theme.colors.muted}
+          placeholderTextColor={c.onSurfaceVariant}
           autoCorrect={false}
-          style={{ flex: 1, color: theme.colors.text, fontFamily: theme.typography.body.fontFamily, fontSize: 15, paddingVertical: 0 }}
+          style={{ flex: 1, color: c.onSurface, fontFamily: theme.typography.bodyLarge.fontFamily, fontSize: theme.typography.bodyLarge.fontSize, paddingVertical: 0 }}
         />
         {search ? (
           <Pressable onPress={() => setSearch('')} hitSlop={8}>
-            <Ionicons name="close-circle" size={16} color={theme.colors.muted} />
+            <Ionicons name="close-circle" size={20} color={c.onSurfaceVariant} />
           </Pressable>
         ) : null}
       </View>
@@ -273,10 +273,10 @@ export function DrawerMenu({
         {groups.map((group) => (
           <View key={group.title} style={{ marginBottom: theme.spacing.md }}>
             <AppText
-              variant="label"
+              variant="titleSmall"
               tone="muted"
               style={{ marginLeft: theme.spacing.md, marginTop: theme.spacing.sm, marginBottom: theme.spacing.xs }}>
-              {group.title.toUpperCase()}
+              {group.title}
             </AppText>
             {group.items.map((destination) => (
               <DrawerRow
@@ -292,18 +292,18 @@ export function DrawerMenu({
 
         {groups.length === 0 ? (
           <View style={{ alignItems: 'center', padding: theme.spacing.xxl, gap: 6 }}>
-            <Ionicons name="search-outline" size={20} color={theme.colors.muted} />
-            <AppText variant="caption" tone="muted">
+            <Ionicons name="search" size={20} color={c.onSurfaceVariant} />
+            <AppText variant="bodyMedium" tone="muted">
               Nothing matches “{search}”.
             </AppText>
           </View>
         ) : null}
 
         <View style={{ alignItems: 'center', gap: 2, paddingTop: theme.spacing.md }}>
-          <AppText variant="caption" tone="muted">
+          <AppText variant="labelSmall" tone="muted">
             Wallnut · v1.0
           </AppText>
-          <AppText variant="caption" tone="muted" style={{ opacity: 0.7 }}>
+          <AppText variant="labelSmall" tone="muted" style={{ opacity: 0.7 }}>
             Your data never leaves this device.
           </AppText>
         </View>
@@ -312,10 +312,18 @@ export function DrawerMenu({
   );
 }
 
-/** Native drawer content — registered in `(app)/_layout.tsx`. */
+/** Routes that live inside the drawer shell (not pushed on the root stack). */
+const DRAWER_SHELL_ROUTES = new Set(['/', '/transactions', '/budgets', '/analytics']);
+
 export function WallnutDrawerContent(props: DrawerContentComponentProps) {
   const status = useDrawerStatus();
+  const pathname = usePathname();
   const { navigate, closeDrawer } = props.navigation;
+
+  useEffect(() => {
+    useUiStore.getState().setNativeDrawerOpen(status === 'open');
+    return () => useUiStore.getState().setNativeDrawerOpen(false);
+  }, [status]);
 
   const go = useCallback(
     (destination: DrawerDestination) => {
@@ -324,14 +332,20 @@ export function WallnutDrawerContent(props: DrawerContentComponentProps) {
         closeDrawer();
         return;
       }
-      if (destination.href) {
-        // Navigate in the same tick as the close. The old 160 ms delay made a
-        // drawer tap feel unresponsive; the drawer can close over the new screen.
-        closeDrawer();
+      if (!destination.href) return;
+      closeDrawer();
+      if (pathname === destination.href) return;
+      if (DRAWER_SHELL_ROUTES.has(destination.href)) {
+        // Switch the tab and drop any pushed screens above the shell.
         router.dismissTo(destination.href as never);
+        return;
       }
+      // Pushed page (Settings, Accounts, …). `navigate` reuses an existing
+      // instance instead of stacking duplicates; crucially it does NOT replace
+      // the dashboard, so Android back always has somewhere to return to.
+      router.navigate(destination.href as never);
     },
-    [navigate, closeDrawer],
+    [navigate, closeDrawer, pathname],
   );
 
   return <DrawerMenu active={status === 'open'} onNavigate={go} />;
@@ -352,7 +366,8 @@ const DrawerRow = React.memo(function DrawerRow({
   theme: Theme;
   onPress: (destination: DrawerDestination) => void;
 }) {
-  const tint = focused ? theme.colors.accent.base : theme.colors.textSecondary;
+  const c = theme.m3.color;
+  const tint = focused ? c.onSecondaryContainer : c.onSurfaceVariant;
   return (
     <Pressable
       onPress={() => onPress(destination)}
@@ -364,33 +379,33 @@ const DrawerRow = React.memo(function DrawerRow({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 14,
-        paddingVertical: 11,
-        paddingHorizontal: 12,
-        borderRadius: theme.radius.md,
-        backgroundColor: focused ? theme.colors.accent.soft : pressed ? theme.colors.pressed : 'transparent',
+        minHeight: 56,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: theme.m3.shape.full,
+        backgroundColor: focused ? c.secondaryContainer : pressed ? theme.colors.pressed : 'transparent',
       })}>
       <View
         style={{
-          width: 34,
-          height: 34,
-          borderRadius: theme.radius.md,
+          width: 32,
+          height: 32,
+          borderRadius: theme.m3.shape.full,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: focused ? `${theme.colors.accent.base}26` : theme.colors.neutralSoft,
+          backgroundColor: focused ? 'transparent' : c.surfaceContainerHigh,
         }}>
-        <Ionicons name={destination.icon} size={18} color={tint} />
+        <Ionicons name={destination.icon} size={22} color={tint} />
       </View>
       <View style={{ flex: 1, gap: 1 }}>
-        <AppText variant="bodyMedium" tone={focused ? 'accent' : 'primary'} numberOfLines={1}>
+        <AppText variant="titleSmall" style={{ color: focused ? c.onSecondaryContainer : c.onSurface }} numberOfLines={1}>
           {destination.label}
         </AppText>
         {destination.detail ? (
-          <AppText variant="caption" tone="muted" numberOfLines={1}>
+          <AppText variant="bodyMedium" style={{ color: focused ? c.onSecondaryContainer : c.onSurfaceVariant, opacity: focused ? 0.8 : 1 }} numberOfLines={1}>
             {destination.detail}
           </AppText>
         ) : null}
       </View>
-      {focused ? <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: theme.colors.accent.base }} /> : null}
     </Pressable>
   );
 });
