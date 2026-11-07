@@ -38,7 +38,7 @@ export function ColorField({
 
   return (
     <View style={{ gap: theme.spacing.sm }}>
-      <AppText variant="captionMedium" tone="secondary">
+      <AppText variant="labelMedium" tone="secondary">
         {label}
       </AppText>
       <Row gap="sm" wrap>
@@ -51,10 +51,10 @@ export function ColorField({
             style={{
               width: 32,
               height: 32,
-              borderRadius: 16,
+              borderRadius: theme.m3.shape.full,
               backgroundColor: choice,
               borderWidth: value === choice ? 3 : 0,
-              borderColor: theme.colors.text,
+              borderColor: theme.m3.color.onSurface,
             }}
           />
         ))}

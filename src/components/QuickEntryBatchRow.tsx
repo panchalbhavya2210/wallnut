@@ -59,10 +59,10 @@ export function BatchRow({
   return (
     <View
       style={{
-        backgroundColor: theme.colors.surface,
-        borderRadius: theme.radius.lg,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: issue ? `${theme.colors.warning}66` : theme.colors.border,
+        backgroundColor: theme.m3.color.surfaceContainerLow,
+        borderRadius: theme.m3.shape.large,
+        borderWidth: issue ? 1 : 0,
+        borderColor: issue ? theme.m3.color.warning : 'transparent',
         padding: theme.spacing.md,
         gap: theme.spacing.sm,
       }}>
@@ -70,14 +70,14 @@ export function BatchRow({
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
         <View
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 18,
+            width: 40,
+            height: 40,
+            borderRadius: theme.m3.shape.full,
             backgroundColor: `${iconColor}1F`,
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-          <Ionicons name={icon} size={18} color={iconColor} />
+          <Ionicons name={icon} size={20} color={iconColor} />
         </View>
 
         <Pressable
