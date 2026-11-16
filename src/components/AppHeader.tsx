@@ -1,9 +1,9 @@
 import React from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
+import { useUiStore } from '@/stores/ui.store';
 import { AppText } from './ui/text';
 import { HeaderMenuButton } from './HeaderMenuButton';
 
@@ -105,10 +105,10 @@ export function HeaderBell({ count = 0 }: { count?: number }) {
   const c = theme.m3.color;
   return (
     <Pressable
-      onPress={() => router.push('/review' as never)}
+      onPress={() => useUiStore.getState().openNotifications()}
       hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel={count > 0 ? `${count} transactions to review` : 'Notifications'}
+      accessibilityLabel={count > 0 ? `${count} notifications need attention` : 'Notifications'}
       android_ripple={{ color: theme.colors.ripple, borderless: true }}
       style={({ pressed }) => ({
         width: 48,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useNavigation, usePathname } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/theme/theme';
@@ -9,6 +9,7 @@ import { AppText } from './ui/text';
 import { PressableBounce } from './ui/bounce';
 import { QuickAddFab } from './QuickAdd';
 import { useUiStore } from '@/stores/ui.store';
+import { isPrimaryRoute } from '@/utils/routes';
 import type { IconName } from './ui/layout';
 
 /**
@@ -24,19 +25,15 @@ export function BottomNav() {
   const pathname = usePathname();
   const nativeDrawerOpen = useUiStore((state) => state.nativeDrawerOpen);
   const overlayDrawerOpen = useUiStore((state) => state.drawerOpen);
-  const navigation = useNavigation() as unknown as { openDrawer?: () => void };
 
   const openMore = () => {
-    if (typeof navigation.openDrawer === 'function') {
-      navigation.openDrawer();
-      return;
-    }
-    useUiStore.getState().openDrawer();
+    // Same root overlay as the header menu — one drawer, one state machine.
+    const ui = useUiStore.getState();
+    if (ui.drawerOpen) ui.closeDrawer();
+    else ui.openDrawer();
   };
 
-  const inShell =
-    pathname === '/' ||
-    pathname[0] === '/' && ['/transactions', '/budgets', '/analytics'].some((route) => pathname.startsWith(route));
+  const inShell = isPrimaryRoute(pathname);
   const goTab = (href: string) => {
     if (inShell) router.navigate(href as never);
     else router.dismissTo(href as never);

@@ -1,7 +1,8 @@
 import React from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { Button as PaperButton, Switch as PaperSwitch } from 'react-native-paper';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { useTheme } from '@/theme/theme';
 import { AppText } from './text';
@@ -40,51 +41,50 @@ export function Button({
   accessibilityLabel,
 }: ButtonProps) {
   const theme = useTheme();
-  const { background, foreground, border } = buttonColors(variant, theme);
+  const { background, foreground } = buttonColors(variant, theme);
 
   // M3 Expressive button heights: small 40, medium 56 is the spec default, but
   // app forms are denser; our md stays 40 and lg 48 while keeping the M3 shape,
-  // label and color roles.
+  // label and color roles. Paper supplies the Material state layer + ripple;
+  // the geometry stays ours so existing screens do not reflow.
   const heights: Record<ButtonSize, number> = { sm: 32, md: 40, lg: 48 };
   const padding: Record<ButtonSize, number> = { sm: theme.spacing.md, md: theme.spacing.xl, lg: theme.spacing.xxl };
-  const textVariant = 'labelLarge';
 
   return (
-    <PressableBounce
+    <PaperButton
+      mode={variant === 'ghost' ? 'text' : 'contained'}
       onPress={onPress}
       disabled={disabled || loading}
-      accessibilityRole="button"
+      loading={loading}
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled: Boolean(disabled || loading) }}
-      scaleTo={size === 'sm' ? 0.97 : 0.98}
+      accessibilityRole="button"
+      icon={
+        icon
+          ? ({ size }) => <Ionicons name={icon} size={size === 18 ? 16 : 20} color={foreground} />
+          : undefined
+      }
+      buttonColor={variant === 'ghost' ? undefined : background}
+      textColor={foreground}
+      compact={size === 'sm'}
       style={[
-        {
-          backgroundColor: background,
-          borderColor: border,
-          borderWidth: border ? 1 : 0,
-          height: heights[size],
-          paddingHorizontal: padding[size],
-          borderRadius: theme.m3.shape.full,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: theme.spacing.sm,
-          opacity: disabled ? 0.38 : 1,
-        },
-        // No forced alignment: column parents stretch it (full-width CTAs),
-        // row/centered parents keep it intrinsic instead of hugging the left.
+        { borderRadius: theme.m3.shape.full },
         fullWidth ? { alignSelf: 'stretch' } : null,
         style,
-      ]}>
-      {loading ? (
-        <ActivityIndicator size="small" color={foreground} />
-      ) : icon ? (
-        <Ionicons name={icon} size={size === 'sm' ? 16 : 20} color={foreground} />
-      ) : null}
-      <AppText variant={textVariant} style={{ color: foreground }} numberOfLines={1}>
-        {label}
-      </AppText>
-    </PressableBounce>
+      ]}
+      contentStyle={{
+        height: heights[size],
+        paddingHorizontal: padding[size],
+      }}
+      labelStyle={{
+        fontFamily: theme.typography.labelLarge.fontFamily,
+        fontSize: theme.typography.labelLarge.fontSize,
+        lineHeight: theme.typography.labelLarge.lineHeight,
+        letterSpacing: theme.typography.labelLarge.letterSpacing,
+        marginVertical: 0,
+        marginHorizontal: 0,
+      }}>
+      {label}
+    </PaperButton>
   );
 }
 
@@ -375,57 +375,18 @@ export function M3Switch({
 }) {
   const theme = useTheme();
   const c = theme.m3.color;
-  const progress = useSharedValue(value ? 1 : 0);
 
-  React.useEffect(() => {
-    progress.value = theme.motion.reduceMotion
-      ? value
-        ? 1
-        : 0
-      : withSpring(value ? 1 : 0, theme.motion.spring.effectsFast);
-  }, [value, progress, theme.motion.reduceMotion, theme.motion.spring.effectsFast]);
-
-  const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.value * 20 }, { scale: 0.667 + progress.value * 0.333 }],
-  }));
-
+  // Paper's switch carries the Material track/thumb roles and works on
+  // react-native-web, unlike RN's raw Switch (which fell back to browser teal).
   return (
-    <Pressable
-      onPress={() => {
-        if (!disabled) onValueChange(!value);
-      }}
+    <PaperSwitch
+      value={value}
+      onValueChange={onValueChange}
       disabled={disabled}
-      accessibilityRole="switch"
+      color={c.primary}
       accessibilityLabel={value ? 'On' : 'Off'}
       accessibilityState={{ checked: value, disabled: Boolean(disabled) }}
-      hitSlop={6}
-      style={{ width: 52, height: 48, justifyContent: 'center', opacity: disabled ? 0.38 : 1 }}>
-      <View
-        style={{
-          width: 52,
-          height: 32,
-          borderRadius: 16,
-          justifyContent: 'center',
-          backgroundColor: value ? c.primary : c.surfaceContainerHighest,
-          borderWidth: value ? 0 : 2,
-          borderColor: c.outline,
-        }}>
-        <Animated.View
-          style={[
-            {
-              position: 'absolute',
-              left: 4,
-              top: 4,
-              width: 24,
-              height: 24,
-              borderRadius: 12,
-              backgroundColor: value ? c.onPrimary : c.outline,
-            },
-            thumbStyle,
-          ]}
-        />
-      </View>
-    </Pressable>
+    />
   );
 }
 

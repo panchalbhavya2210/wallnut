@@ -127,7 +127,7 @@ const navVisible = await page.evaluate(() => {
     return rect.width > 0 && rect.height > 0 && rect.top > window.innerHeight - 140 && rect.bottom <= window.innerHeight + 1;
   });
 });
-check('bottom navigation stays visible on pushed screens', navVisible);
+check('bottom navigation is hidden on pushed screens', !navVisible);
 await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => undefined);
 const backHome = await waitForText('Net worth', 8000);
 check('back from Settings returns to Home', backHome);

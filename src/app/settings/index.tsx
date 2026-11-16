@@ -14,6 +14,7 @@ export default function SettingsScreen() {
   const general = useSettingsStore((state) => state.general);
   const appearance = useSettingsStore((state) => state.appearance);
   const dashboard = useSettingsStore((state) => state.dashboard);
+  const charts = useSettingsStore((state) => state.charts);
   const ai = useSettingsStore((state) => state.ai);
   const widgets = useSettingsStore((state) => state.widgets);
 
@@ -32,6 +33,14 @@ export default function SettingsScreen() {
             icon="color-palette-outline"
             value={`${appearance.theme === 'system' ? 'System' : appearance.theme === 'dark' ? 'Dark' : 'Light'}`}
             onPress={() => router.push('/settings/appearance')}
+            chevron
+          />
+          <ListRow
+            title="Charts"
+            subtitle="Style, colours, grid, averages, animation and point budget"
+            icon="stats-chart-outline"
+            value={`${charts.trendStyle === 'bar' ? 'Bars' : charts.trendStyle === 'area' ? 'Area' : 'Line'} · ${charts.colorSource === 'category' ? 'Category' : 'Theme'}`}
+            onPress={() => router.push('/settings/charts' as never)}
             chevron
           />
           <ListRow

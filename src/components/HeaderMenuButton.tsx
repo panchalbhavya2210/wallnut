@@ -1,7 +1,6 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
 import { useSettingsStore } from '@/stores/settings.store';
@@ -18,19 +17,18 @@ import { toast, useUiStore } from '@/stores/ui.store';
 export function HeaderMenuButton({ size = 20, compact }: { size?: number; compact?: boolean }) {
   const theme = useTheme();
   const c = theme.m3.color;
-  const navigation = useNavigation() as unknown as {
-    openDrawer?: () => void;
-    dispatch?: (action: { type: string }) => void;
-  };
   const hideAmounts = useSettingsStore((state) => state.security.hideAmounts);
   const updateSettings = useSettingsStore((state) => state.update);
 
   const open = () => {
-    if (typeof navigation.openDrawer === 'function') {
-      navigation.openDrawer();
-      return;
-    }
-    useUiStore.getState().openDrawer();
+    // One drawer implementation everywhere: the root overlay. The native
+    // drawer's open/close state was the source of the "closed it and it
+    // reopened" bug, and it behaved differently from the overlay on pushed
+    // screens. The overlay animates, closes on backdrop/X/back, and resets on
+    // route changes.
+    const ui = useUiStore.getState();
+    if (ui.drawerOpen) ui.closeDrawer();
+    else ui.openDrawer();
   };
 
   return (

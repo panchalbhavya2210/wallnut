@@ -385,27 +385,6 @@ export default function AppearanceSettings() {
                 ? 'Springy, physical motion for key interactions (M3 Expressive).'
                 : 'Minimal bounce for a calmer, utilitarian feel.'}
             </AppText>
-
-            <AppText variant="captionMedium" tone="secondary">
-              Charts
-            </AppText>
-            <Row gap="sm">
-              <Chip
-                label="Follow theme"
-                selected={appearance.chartColors === 'theme'}
-                onPress={() => updateAppearance('appearance', { chartColors: 'theme' })}
-              />
-              <Chip
-                label="Category colours"
-                selected={appearance.chartColors === 'category'}
-                onPress={() => updateAppearance('appearance', { chartColors: 'category' })}
-              />
-            </Row>
-            <AppText variant="caption" tone="muted">
-              {appearance.chartColors === 'theme'
-                ? 'Charts use the accent palette, so changing the accent restyles every graph.'
-                : 'Charts keep each category’s own colour so you can recognise them at a glance.'}
-            </AppText>
           </View>
         </ListGroup>
 

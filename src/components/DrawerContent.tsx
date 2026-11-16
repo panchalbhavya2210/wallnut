@@ -153,9 +153,12 @@ function useDrawerSummary(active: boolean): DrawerSummary | null {
 export function DrawerMenu({
   active,
   onNavigate,
+  onClose,
 }: {
   active: boolean;
   onNavigate: (destination: DrawerDestination) => void;
+  /** Present when the menu is the root overlay, where an explicit close is needed. */
+  onClose?: () => void;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -198,17 +201,37 @@ export function DrawerMenu({
               </AppText>
             </View>
           </View>
-          <View
-            style={{
-              paddingHorizontal: 10,
-              paddingVertical: 4,
-              borderRadius: theme.m3.shape.full,
-              borderWidth: 1,
-              borderColor: c.outlineVariant,
-            }}>
-            <AppText variant="labelSmall" tone="muted">
-              V1.0
-            </AppText>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: theme.m3.shape.full,
+                borderWidth: 1,
+                borderColor: c.outlineVariant,
+              }}>
+              <AppText variant="labelSmall" tone="muted">
+                V1.0
+              </AppText>
+            </View>
+            {onClose ? (
+              <Pressable
+                onPress={onClose}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Close menu"
+                android_ripple={{ color: theme.colors.ripple, borderless: true }}
+                style={({ pressed }) => ({
+                  width: 40,
+                  height: 40,
+                  borderRadius: theme.m3.shape.full,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: pressed ? theme.colors.pressed : 'transparent',
+                })}>
+                <Ionicons name="close" size={22} color={c.onSurfaceVariant} />
+              </Pressable>
+            ) : null}
           </View>
         </View>
 

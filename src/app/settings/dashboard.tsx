@@ -21,6 +21,7 @@ import { createId } from '@/utils/id';
 import { notifyDbChanged } from '@/stores/db.store';
 import type { PeriodPreset } from '@/utils/date';
 import { PeriodChips } from '@/components/PeriodPicker';
+import { useChartSettings } from '@/hooks/useChartSettings';
 
 /**
  * Customise dashboard — drag to reorder, toggle visibility, size each widget,
@@ -449,6 +450,7 @@ function WidgetConfigSheet({
 }) {
   const theme = useTheme();
   const defaultPeriod = useSettingsStore((state) => state.dashboard.defaultPeriod);
+  const chartDefaults = useChartSettings();
   const [config, setConfig] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
@@ -537,19 +539,43 @@ function WidgetConfigSheet({
           </AppText>
         </View>
 
-        {widget.type === 'spending_trend' ? (
+        {widget.type === 'spending_trend' || widget.type === 'net_worth_trend' ? (
           <View style={{ gap: theme.spacing.sm }}>
             <AppText variant="captionMedium" tone="secondary">
               Chart
             </AppText>
-            <Row gap="sm">
-              <Chip label="Line" selected={(config.chart ?? 'line') === 'line'} onPress={() => updateConfig({ chart: 'line' })} />
+            <Row gap="sm" wrap>
+              <Chip
+                label="Global default"
+                selected={config.chart === undefined}
+                onPress={() => updateConfig({ chart: undefined })}
+              />
+              <Chip label="Line" selected={config.chart === 'line'} onPress={() => updateConfig({ chart: 'line' })} />
+              <Chip label="Area" selected={config.chart === 'area'} onPress={() => updateConfig({ chart: 'area' })} />
               <Chip label="Bars" selected={config.chart === 'bar'} onPress={() => updateConfig({ chart: 'bar' })} />
             </Row>
+            <AppText variant="caption" tone="muted">
+              Global default is {chartDefaults.trendStyle === 'bar' ? 'bars' : chartDefaults.trendStyle === 'area' ? 'area' : 'line'}.
+              {' '}A widget choice only affects this card.
+            </AppText>
             <Chip
-              label="Show average line"
-              selected={config.showAverage !== false}
-              onPress={() => updateConfig({ showAverage: config.showAverage === false })}
+              label="Average line"
+              selected={config.showAverage === undefined ? chartDefaults.showAverage : config.showAverage === true}
+              onPress={() =>
+                updateConfig({
+                  showAverage:
+                    (config.showAverage === undefined ? chartDefaults.showAverage : config.showAverage === true) ? false : true,
+                })
+              }
+            />
+            <Chip
+              label="Grid lines"
+              selected={config.showGrid === undefined ? chartDefaults.showGrid : config.showGrid === true}
+              onPress={() =>
+                updateConfig({
+                  showGrid: (config.showGrid === undefined ? chartDefaults.showGrid : config.showGrid === true) ? false : true,
+                })
+              }
             />
           </View>
         ) : null}

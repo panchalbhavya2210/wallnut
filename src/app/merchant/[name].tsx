@@ -9,13 +9,13 @@ import { AppText, MoneyText } from '@/components/ui/text';
 import { Button, ProgressBar } from '@/components/ui/controls';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/feedback';
 import { LineChart } from '@/components/charts';
-import { PeriodChips } from '@/components/PeriodPicker';
+import { PeriodChips, CustomRangeSheet } from '@/components/PeriodPicker';
 import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
 import { useSettingsStore } from '@/stores/settings.store';
 import { getMerchantDetail } from '@/services/analytics.service';
 import { listTransactions } from '@/services/transactions.service';
-import { formatDayMonth, getPeriodRange, toISODate, type PeriodPreset } from '@/utils/date';
+import { formatDayMonth, fromISODate, getPeriodRange, toISODate, type DateRange, type PeriodPreset } from '@/utils/date';
 import { formatPercent } from '@/utils/money';
 
 /**
@@ -28,12 +28,24 @@ import { formatPercent } from '@/utils/money';
 export default function MerchantDetailScreen() {
   const theme = useTheme();
   const money = useMoney();
-  const { name } = useLocalSearchParams<{ name: string }>();
+  const { name, from, to } = useLocalSearchParams<{ name: string; from?: string; to?: string }>();
   const merchantName = name ? decodeURIComponent(name) : '';
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
-  const [period, setPeriod] = useState<PeriodPreset>('thisMonth');
+  const incomingRange = useMemo<DateRange | null>(() => {
+    if (!from || !to) return null;
+    const start = fromISODate(String(from));
+    const end = fromISODate(String(to));
+    if (!start || !end || start > end) return null;
+    return { start, end, label: 'Custom' };
+  }, [from, to]);
+  const [period, setPeriod] = useState<PeriodPreset>(incomingRange ? 'custom' : 'thisMonth');
+  const [customRange, setCustomRange] = useState<DateRange | null>(incomingRange);
+  const [customOpen, setCustomOpen] = useState(false);
 
-  const range = useMemo(() => getPeriodRange(period, { monthStartDay }), [period, monthStartDay]);
+  const range = useMemo(
+    () => (period === 'custom' && customRange ? customRange : getPeriodRange(period, { monthStartDay })),
+    [period, customRange, monthStartDay],
+  );
 
   const query = useQuery(async () => {
     if (!merchantName) return null;
@@ -108,10 +120,25 @@ export default function MerchantDetailScreen() {
 
       <PeriodChips
         value={period}
-        onChange={setPeriod}
-        options={['thisMonth', 'lastMonth', '30d', '3m', '6m', '1y', 'all']}
+        onChange={(next) => {
+          if (next === 'custom') {
+            setCustomOpen(true);
+            return;
+          }
+          setPeriod(next);
+        }}
+        options={['thisMonth', 'lastMonth', '30d', '3m', '6m', '1y', 'all', 'custom']}
         style={{ marginBottom: theme.spacing.lg }}
       />
+      {period === 'custom' && customRange ? (
+        <Pressable
+          onPress={() => setCustomOpen(true)}
+          style={{ marginTop: -theme.spacing.sm, marginBottom: theme.spacing.md, alignSelf: 'flex-start' }}>
+          <AppText variant="captionMedium" tone="accent">
+            {formatDayMonth(customRange.start)} → {formatDayMonth(customRange.end)} · edit
+          </AppText>
+        </Pressable>
+      ) : null}
 
       <View style={{ gap: theme.spacing.lg }}>
         <Card>
@@ -215,7 +242,7 @@ export default function MerchantDetailScreen() {
         <View>
           <SectionHeader title={`Transactions (${transactions.length})`} actionLabel="Open ledger" onAction={() =>
             router.push(
-              `/transactions?merchantCanonical=${encodeURIComponent(detail.name)}&merchantName=${encodeURIComponent(detail.name)}` as never,
+              `/transactions?merchantCanonical=${encodeURIComponent(detail.name)}&merchantName=${encodeURIComponent(detail.name)}&from=${toISODate(range.start)}&to=${toISODate(range.end)}` as never,
             )
           } />
           {transactions.length === 0 ? (
@@ -277,11 +304,21 @@ export default function MerchantDetailScreen() {
           fullWidth
           onPress={() =>
             router.push(
-              `/transactions?merchantCanonical=${encodeURIComponent(detail.name)}&merchantName=${encodeURIComponent(detail.name)}` as never,
+              `/transactions?merchantCanonical=${encodeURIComponent(detail.name)}&merchantName=${encodeURIComponent(detail.name)}&from=${toISODate(range.start)}&to=${toISODate(range.end)}` as never,
             )
           }
         />
       </View>
+
+      <CustomRangeSheet
+        visible={customOpen}
+        onClose={() => setCustomOpen(false)}
+        value={customRange}
+        onApply={(next) => {
+          setCustomRange(next);
+          setPeriod('custom');
+        }}
+      />
     </ScrollScreen>
   );
 }

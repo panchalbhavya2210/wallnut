@@ -4,6 +4,7 @@ import { FlexWidget, TextWidget } from 'react-native-android-widget';
 import { format, parseISO } from 'date-fns';
 
 import { accents, darkColors, lightColors, type AccentName } from '@/theme/colors';
+import { generateMaterialPalette } from '@/theme/material';
 
 import type { WidgetSnapshot } from './snapshot';
 import type { ColorProp } from 'react-native-android-widget';
@@ -45,28 +46,29 @@ interface WidgetTokens {
   onAccent: ColorProp;
 }
 
-function tokensFor(accentName: string, mode: WidgetThemeMode): WidgetTokens {
+function tokensFor(accentName: string, mode: WidgetThemeMode, palette = 'material', seedHex?: string): WidgetTokens {
   const base = mode === 'dark' ? darkColors : lightColors;
   const name = (Object.keys(accents) as AccentName[]).includes(accentName as AccentName)
     ? (accentName as AccentName)
-    : 'magenta';
+    : 'indigo';
   const accent = mode === 'dark' ? accents[name].dark : accents[name].light;
+  const material = palette === 'material' ? generateMaterialPalette(seedHex ?? accent.base, mode) : null;
   return {
-    background: base.surface as ColorProp,
-    text: base.text as ColorProp,
-    muted: base.muted as ColorProp,
-    border: base.border as ColorProp,
+    background: (material?.surface ?? base.surface) as ColorProp,
+    text: (material?.onSurface ?? base.text) as ColorProp,
+    muted: (material?.onSurfaceVariant ?? base.muted) as ColorProp,
+    border: (material?.outlineVariant ?? base.border) as ColorProp,
     positive: base.positive as ColorProp,
     negative: base.negative as ColorProp,
-    accent: accent.base as ColorProp,
-    accentSoft: accent.soft as ColorProp,
-    neutralSoft: base.neutralSoft as ColorProp,
-    onAccent: accent.on as ColorProp,
+    accent: (material?.primary ?? accent.base) as ColorProp,
+    accentSoft: (material?.primaryContainer ?? accent.soft) as ColorProp,
+    neutralSoft: (material?.surfaceContainerHigh ?? base.neutralSoft) as ColorProp,
+    onAccent: (material?.onPrimary ?? accent.on) as ColorProp,
   };
 }
 
 function widgetTheme(snapshot: WidgetSnapshot, mode: WidgetThemeMode): WidgetTokens {
-  return tokensFor(snapshot.accent, mode);
+  return tokensFor(snapshot.accent, mode, snapshot.palette, snapshot.accentHex);
 }
 
 /** Primary amounts collapse to a single honest call to action when masked. */
@@ -141,7 +143,7 @@ function Root({
 
 /** Rendered when the user turned widgets off, or when data cannot be read. */
 export function WallnutFallbackWidget({ mode, message }: { mode: WidgetThemeMode; message: string }) {
-  const tokens = tokensFor('magenta', mode);
+  const tokens = tokensFor('indigo', mode, 'material');
   return (
     <Root tokens={tokens} uri={WIDGET_DEEP_LINKS.home} padding={18}>
       <Header tokens={tokens} />

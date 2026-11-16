@@ -1,5 +1,5 @@
 import React, { useId, useMemo, useRef, useState } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Defs, G, LinearGradient, Line, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
@@ -8,6 +8,7 @@ import { useTheme } from '@/theme/theme';
 import { useUiStore } from '@/stores/ui.store';
 import { AppText } from './ui/text';
 import { useMoney } from '@/hooks/useMoney';
+import { useChartSettings } from '@/hooks/useChartSettings';
 
 /* --------------------------------- shared ---------------------------------- */
 
@@ -41,6 +42,37 @@ function niceMax(value: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Keeps a series inside the configured point budget. The first and last points
+ * always survive, so the trend's endpoints never lie; intermediate points are
+ * evenly sampled. Returns the index map so taps can open the original point.
+ */
+function limitPoints<T extends Point>(points: T[], maxPoints: number): { points: T[]; indices: number[] } {
+  if (points.length <= maxPoints || maxPoints < 3) {
+    return { points, indices: points.map((_, index) => index) };
+  }
+  const indices: number[] = [0];
+  const step = (points.length - 1) / (maxPoints - 1);
+  for (let i = 1; i < maxPoints - 1; i++) indices.push(Math.round(i * step));
+  indices.push(points.length - 1);
+  const unique = Array.from(new Set(indices));
+  return { points: unique.map((index) => points[index]!), indices: unique };
+}
+
+/** Filled pie slice path, used when Settings → Charts chooses "Pie". */
+function pieSlicePath(cx: number, cy: number, radius: number, startAngle: number, endAngle: number): string {
+  const start = {
+    x: cx + radius * Math.cos(startAngle),
+    y: cy + radius * Math.sin(startAngle),
+  };
+  const end = {
+    x: cx + radius * Math.cos(endAngle),
+    y: cy + radius * Math.sin(endAngle),
+  };
+  const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+  return `M ${cx} ${cy} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} 1 ${end.x} ${end.y} Z`;
 }
 
 /**
@@ -183,6 +215,14 @@ export interface LineChartProps {
   yTicks?: number;
   /** Renders grid, labels and markers for a dark hero surface. */
   onDark?: boolean;
+  /** Point dots. Defaults to Settings → Charts. */
+  showMarkers?: boolean;
+  /** Horizontal guide lines. Defaults to Settings → Charts. */
+  showGrid?: boolean;
+  /** Tap/scrub tooltip. Defaults to Settings → Charts. */
+  showTooltips?: boolean;
+  /** Reveal animation. Defaults to Settings → Charts (reduce-motion wins). */
+  animate?: boolean;
 }
 
 export const LineChart = React.memo(function LineChart({
@@ -197,9 +237,27 @@ export const LineChart = React.memo(function LineChart({
   style,
   yTicks = 3,
   onDark,
+  showMarkers,
+  showGrid,
+  showTooltips,
+  animate,
 }: LineChartProps) {
   const theme = useTheme();
   const money = useMoney();
+  const chartSettings = useChartSettings();
+  const { points: displayPoints, indices } = useMemo(
+    () => limitPoints(points, chartSettings.maxPoints),
+    [points, chartSettings.maxPoints],
+  );
+  const displayComparison = useMemo(
+    () => (comparison ? limitPoints(comparison, chartSettings.maxPoints).points : undefined),
+    [comparison, chartSettings.maxPoints],
+  );
+  const resolvedShowAverage = showAverage ?? chartSettings.showAverage;
+  const resolvedShowMarkers = showMarkers ?? chartSettings.showMarkers;
+  const resolvedShowGrid = showGrid ?? chartSettings.showGrid;
+  const resolvedShowTooltips = showTooltips ?? chartSettings.showTooltips;
+  const resolvedAnimate = animate ?? chartSettings.animate;
   const gradientId = useId().replace(/[^a-zA-Z0-9]/g, '');
   const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -207,8 +265,13 @@ export const LineChart = React.memo(function LineChart({
   const reveal = useSharedValue(0);
 
   React.useEffect(() => {
-    reveal.value = theme.motion.reduceMotion ? 1 : withTiming(1, { duration: 420 });
-  }, [reveal, theme.motion.reduceMotion]);
+    if (resolvedAnimate) {
+      reveal.value = 0;
+      reveal.value = withTiming(1, { duration: 420 });
+    } else {
+      reveal.value = 1;
+    }
+  }, [reveal, resolvedAnimate]);
 
   const revealStyle = useAnimatedStyle(() => ({ opacity: reveal.value }));
 
@@ -217,7 +280,7 @@ export const LineChart = React.memo(function LineChart({
   const innerHeight = Math.max(0, height - padding.top - padding.bottom);
 
   const scale = useMemo(() => {
-    const values = [...points.map((point) => point.value), ...(comparison ?? []).map((point) => point.value)];
+    const values = [...displayPoints.map((point) => point.value), ...(displayComparison ?? []).map((point) => point.value)];
     if (baseline === 'auto' && values.length > 0) {
       const dataMin = Math.min(...values);
       const dataMax = Math.max(...values);
@@ -229,7 +292,7 @@ export const LineChart = React.memo(function LineChart({
     const min = Math.min(0, ...values);
     const max = niceMax(Math.max(1, ...values));
     return { min, max, range: max - min || 1 };
-  }, [points, comparison, baseline]);
+  }, [displayPoints, displayComparison, baseline]);
 
   const yFor = React.useCallback(
     (value: number) => padding.top + innerHeight - ((value - scale.min) / scale.range) * innerHeight,
@@ -237,18 +300,19 @@ export const LineChart = React.memo(function LineChart({
   );
 
   const coords = useMemo(() => {
-    if (points.length === 0 || innerWidth <= 0) return [];
-    const step = points.length > 1 ? innerWidth / (points.length - 1) : 0;
-    return points.map((point, index) => ({ x: padding.left + index * step, y: yFor(point.value) }));
-  }, [points, innerWidth, yFor, padding.left]);
+    if (displayPoints.length === 0 || innerWidth <= 0) return [];
+    const step = displayPoints.length > 1 ? innerWidth / (displayPoints.length - 1) : 0;
+    return displayPoints.map((point, index) => ({ x: padding.left + index * step, y: yFor(point.value) }));
+  }, [displayPoints, innerWidth, yFor, padding.left]);
 
   const comparisonCoords = useMemo(() => {
-    if (!comparison || comparison.length === 0 || innerWidth <= 0) return [];
-    const step = comparison.length > 1 ? innerWidth / (comparison.length - 1) : 0;
-    return comparison.map((point, index) => ({ x: padding.left + index * step, y: yFor(point.value) }));
-  }, [comparison, innerWidth, yFor, padding.left]);
+    if (!displayComparison || displayComparison.length === 0 || innerWidth <= 0) return [];
+    const step = displayComparison.length > 1 ? innerWidth / (displayComparison.length - 1) : 0;
+    return displayComparison.map((point, index) => ({ x: padding.left + index * step, y: yFor(point.value) }));
+  }, [displayComparison, innerWidth, yFor, padding.left]);
 
-  const average = points.length > 0 ? points.reduce((sum, point) => sum + point.value, 0) / points.length : 0;
+  const average =
+    displayPoints.length > 0 ? displayPoints.reduce((sum, point) => sum + point.value, 0) / displayPoints.length : 0;
   const averageY = yFor(average);
   const strokeColor = color ?? theme.chart.series[0] ?? theme.m3.color.primary;
   const gridColor = onDark ? 'rgba(255, 255, 255, 0.16)' : theme.m3.color.outlineVariant;
@@ -265,21 +329,22 @@ export const LineChart = React.memo(function LineChart({
 
   const handleTap = React.useCallback(
     (index: number) => {
-      if (onPointPress && points[index]) onPointPress(points[index]!, index);
+      const original = indices[index];
+      if (onPointPress && original !== undefined && points[original]) onPointPress(points[original]!, original);
     },
-    [onPointPress, points],
+    [onPointPress, points, indices],
   );
 
   const gesture = useChartScrub({
-    count: points.length,
+    count: displayPoints.length,
     paddingLeft: padding.left,
     innerWidth,
     onSelect: handleSelect,
     onTap: onPointPress ? handleTap : undefined,
   });
 
-  const labelStep = Math.max(1, Math.ceil(points.length / 5));
-  const selectedPoint = selected !== null ? points[selected] : null;
+  const labelStep = Math.max(1, Math.ceil(displayPoints.length / 5));
+  const selectedPoint = selected !== null ? displayPoints[selected] : null;
   const selectedCoord = selected !== null ? coords[selected] : null;
 
   return (
@@ -296,21 +361,23 @@ export const LineChart = React.memo(function LineChart({
                   </LinearGradient>
                 </Defs>
 
-                {Array.from({ length: yTicks + 1 }, (_, index) => {
-                  const y = padding.top + (innerHeight / yTicks) * index;
-                  return (
-                    <Line
-                      key={`grid-${index}`}
-                      x1={padding.left}
-                      y1={y}
-                      x2={width - padding.right}
-                      y2={y}
-                      stroke={gridColor}
-                      strokeWidth={StyleSheet.hairlineWidth}
-                      strokeDasharray={index === yTicks ? undefined : '3 5'}
-                    />
-                  );
-                })}
+                {resolvedShowGrid
+                  ? Array.from({ length: yTicks + 1 }, (_, index) => {
+                      const y = padding.top + (innerHeight / yTicks) * index;
+                      return (
+                        <Line
+                          key={`grid-${index}`}
+                          x1={padding.left}
+                          y1={y}
+                          x2={width - padding.right}
+                          y2={y}
+                          stroke={gridColor}
+                          strokeWidth={StyleSheet.hairlineWidth}
+                          strokeDasharray={index === yTicks ? undefined : '3 5'}
+                        />
+                      );
+                    })
+                  : null}
 
                 {showArea && coords.length > 1 ? (
                   <Path
@@ -332,7 +399,7 @@ export const LineChart = React.memo(function LineChart({
 
                 <Path d={buildSmoothPath(coords)} fill="none" stroke={strokeColor} strokeWidth={2.4} strokeLinecap="round" />
 
-                {showAverage && average > 0 ? (
+                {resolvedShowAverage && average > 0 ? (
                   <Line
                     x1={padding.left}
                     y1={averageY}
@@ -345,7 +412,7 @@ export const LineChart = React.memo(function LineChart({
                   />
                 ) : null}
 
-                {last && selected === null ? (
+                {last && selected === null && resolvedShowMarkers ? (
                   <G>
                     <Circle cx={last.x} cy={last.y} r={6} fill={`${strokeColor}22`} />
                     <Circle cx={last.x} cy={last.y} r={3} fill={strokeColor} />
@@ -374,15 +441,15 @@ export const LineChart = React.memo(function LineChart({
                   </G>
                 ) : null}
 
-                {points.map((point, index) =>
-                  index % labelStep === 0 || index === points.length - 1 ? (
+                {displayPoints.map((point, index) =>
+                  index % labelStep === 0 || index === displayPoints.length - 1 ? (
                     <SvgText
                       key={`label-${point.key}`}
                       x={coords[index]?.x ?? 0}
                       y={height - 6}
                       fill={labelColor}
                       fontSize={10}
-                      textAnchor={index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle'}>
+                      textAnchor={index === 0 ? 'start' : index === displayPoints.length - 1 ? 'end' : 'middle'}>
                       {point.label}
                     </SvgText>
                   ) : null,
@@ -392,13 +459,15 @@ export const LineChart = React.memo(function LineChart({
                   {money.format(scale.max, { compact: true })}
                 </SvgText>
               </Svg>
-              <ChartTooltip
-                x={selectedCoord?.x ?? 0}
-                width={width}
-                label={selectedPoint?.fullLabel ?? selectedPoint?.label ?? ''}
-                value={selectedPoint ? money.format(selectedPoint.value, { compact: false }) : ''}
-                visible={Boolean(selectedCoord && selectedPoint)}
-              />
+              {resolvedShowTooltips ? (
+                <ChartTooltip
+                  x={selectedCoord?.x ?? 0}
+                  width={width}
+                  label={selectedPoint?.fullLabel ?? selectedPoint?.label ?? ''}
+                  value={selectedPoint ? money.format(selectedPoint.value, { compact: false }) : ''}
+                  visible={Boolean(selectedCoord && selectedPoint)}
+                />
+              ) : null}
             </View>
           </GestureDetector>
         ) : (
@@ -420,6 +489,12 @@ export interface BarChartProps {
   onBarPress?: (point: Point, index: number) => void;
   style?: StyleProp<ViewStyle>;
   compactLabels?: boolean;
+  /** Horizontal guide lines. Defaults to Settings → Charts. */
+  showGrid?: boolean;
+  /** Tap/scrub tooltip. Defaults to Settings → Charts. */
+  showTooltips?: boolean;
+  /** Reveal animation. Defaults to Settings → Charts (reduce-motion wins). */
+  animate?: boolean;
 }
 
 export const BarChart = React.memo(function BarChart({
@@ -431,9 +506,25 @@ export const BarChart = React.memo(function BarChart({
   onBarPress,
   style,
   compactLabels,
+  showGrid,
+  showTooltips,
+  animate,
 }: BarChartProps) {
   const theme = useTheme();
   const money = useMoney();
+  const chartSettings = useChartSettings();
+  const { points: displayPoints, indices } = useMemo(
+    () => limitPoints(points, chartSettings.maxPoints),
+    [points, chartSettings.maxPoints],
+  );
+  const displaySecondary = useMemo(() => {
+    if (!secondary) return undefined;
+    if (secondary.length === points.length) return indices.map((index) => secondary[index]!).filter(Boolean);
+    return limitPoints(secondary, chartSettings.maxPoints).points;
+  }, [secondary, points.length, indices, chartSettings.maxPoints]);
+  const resolvedShowGrid = showGrid ?? chartSettings.showGrid;
+  const resolvedShowTooltips = showTooltips ?? chartSettings.showTooltips;
+  const resolvedAnimate = animate ?? chartSettings.animate;
   const gradientId = useId().replace(/[^a-zA-Z0-9]/g, '');
   const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -443,20 +534,25 @@ export const BarChart = React.memo(function BarChart({
   const innerHeight = Math.max(0, height - padding.top - padding.bottom);
 
   const scale = useMemo(() => {
-    const values = [...points.map((point) => point.value), ...(secondary ?? []).map((point) => point.value)];
+    const values = [...displayPoints.map((point) => point.value), ...(displaySecondary ?? []).map((point) => point.value)];
     const min = Math.min(0, ...values);
     const max = niceMax(Math.max(1, ...values));
     return { min, max, range: max - min || 1 };
-  }, [points, secondary]);
+  }, [displayPoints, displaySecondary]);
 
-  const slotWidth = points.length > 0 ? innerWidth / points.length : 0;
-  const barWidth = Math.max(4, Math.min(20, slotWidth * (secondary ? 0.34 : 0.52)));
+  const slotWidth = displayPoints.length > 0 ? innerWidth / displayPoints.length : 0;
+  const barWidth = Math.max(4, Math.min(20, slotWidth * (displaySecondary ? 0.34 : 0.52)));
   const reveal = useSharedValue(0);
   React.useEffect(() => {
-    reveal.value = theme.motion.reduceMotion ? 1 : withTiming(1, { duration: 380 });
-  }, [reveal, theme.motion.reduceMotion]);
+    if (resolvedAnimate) {
+      reveal.value = 0;
+      reveal.value = withTiming(1, { duration: 380 });
+    } else {
+      reveal.value = 1;
+    }
+  }, [reveal, resolvedAnimate]);
   const revealStyle = useAnimatedStyle(() => ({ opacity: reveal.value }));
-  const labelStep = Math.max(1, Math.ceil(points.length / (compactLabels ? 4 : 6)));
+  const labelStep = Math.max(1, Math.ceil(displayPoints.length / (compactLabels ? 4 : 6)));
   const primary = color ?? theme.chart.series[0] ?? theme.m3.color.primary;
   const secondaryFill = secondaryColor ?? theme.colors.positive;
 
@@ -471,20 +567,21 @@ export const BarChart = React.memo(function BarChart({
 
   const handleTap = React.useCallback(
     (index: number) => {
-      if (onBarPress && points[index]) onBarPress(points[index]!, index);
+      const original = indices[index];
+      if (onBarPress && original !== undefined && points[original]) onBarPress(points[original]!, original);
     },
-    [onBarPress, points],
+    [onBarPress, points, indices],
   );
 
   const gesture = useChartScrub({
-    count: points.length,
+    count: displayPoints.length,
     paddingLeft: padding.left,
     innerWidth,
     onSelect: handleSelect,
     onTap: onBarPress ? handleTap : undefined,
   });
 
-  const selectedPoint = selected !== null ? points[selected] : null;
+  const selectedPoint = selected !== null ? displayPoints[selected] : null;
   const selectedCenter = selected !== null ? padding.left + slotWidth * selected + slotWidth / 2 : 0;
 
   return (
@@ -504,26 +601,28 @@ export const BarChart = React.memo(function BarChart({
                     <Stop offset="1" stopColor={secondaryFill} stopOpacity="0.45" />
                   </LinearGradient>
                 </Defs>
-                {[0, 0.5, 1].map((ratio) => {
-                  const y = padding.top + innerHeight * ratio;
-                  return (
-                    <Line
-                      key={ratio}
-                      x1={padding.left}
-                      y1={y}
-                      x2={width - padding.right}
-                      y2={y}
-                      stroke={theme.m3.color.outlineVariant}
-                      strokeWidth={StyleSheet.hairlineWidth}
-                      strokeDasharray={ratio === 1 ? undefined : '3 5'}
-                    />
-                  );
-                })}
-                {points.map((point, index) => {
+                {resolvedShowGrid
+                  ? [0, 0.5, 1].map((ratio) => {
+                      const y = padding.top + innerHeight * ratio;
+                      return (
+                        <Line
+                          key={ratio}
+                          x1={padding.left}
+                          y1={y}
+                          x2={width - padding.right}
+                          y2={y}
+                          stroke={theme.m3.color.outlineVariant}
+                          strokeWidth={StyleSheet.hairlineWidth}
+                          strokeDasharray={ratio === 1 ? undefined : '3 5'}
+                        />
+                      );
+                    })
+                  : null}
+                {displayPoints.map((point, index) => {
                   const slotCenter = padding.left + slotWidth * index + slotWidth / 2;
                   const primaryHeight = barHeight(point.value);
-                  const primaryX = secondary ? slotCenter - barWidth - 1 : slotCenter - barWidth / 2;
-                  const secondaryHeight = secondary ? barHeight(secondary[index]?.value ?? 0) : 0;
+                  const primaryX = displaySecondary ? slotCenter - barWidth - 1 : slotCenter - barWidth / 2;
+                  const secondaryHeight = displaySecondary ? barHeight(displaySecondary[index]?.value ?? 0) : 0;
                   const isSelected = selected === index;
                   const dim = selected !== null && !isSelected;
                   return (
@@ -537,7 +636,7 @@ export const BarChart = React.memo(function BarChart({
                         fill={`url(#bar-p-${gradientId})`}
                         opacity={dim ? 0.45 : isSelected ? 1 : 0.94}
                       />
-                      {secondary ? (
+                      {displaySecondary ? (
                         <Rect
                           x={slotCenter + 1}
                           y={padding.top + innerHeight - secondaryHeight}
@@ -548,7 +647,7 @@ export const BarChart = React.memo(function BarChart({
                           opacity={dim ? 0.4 : 0.9}
                         />
                       ) : null}
-                      {index % labelStep === 0 || index === points.length - 1 ? (
+                      {index % labelStep === 0 || index === displayPoints.length - 1 ? (
                         <SvgText
                           x={slotCenter}
                           y={height - 5}
@@ -566,13 +665,15 @@ export const BarChart = React.memo(function BarChart({
                   {money.format(scale.max, { compact: true })}
                 </SvgText>
               </Svg>
-              <ChartTooltip
-                x={selectedCenter}
-                width={width}
-                label={selectedPoint?.fullLabel ?? selectedPoint?.label ?? ''}
-                value={selectedPoint ? money.format(selectedPoint.value, { compact: false }) : ''}
-                visible={Boolean(selectedPoint)}
-              />
+              {resolvedShowTooltips ? (
+                <ChartTooltip
+                  x={selectedCenter}
+                  width={width}
+                  label={selectedPoint?.fullLabel ?? selectedPoint?.label ?? ''}
+                  value={selectedPoint ? money.format(selectedPoint.value, { compact: false }) : ''}
+                  visible={Boolean(selectedPoint)}
+                />
+              ) : null}
             </View>
           </GestureDetector>
         ) : (
@@ -599,6 +700,8 @@ export const DonutChart = React.memo(function DonutChart({
   centerTop,
   centerBottom,
   onSlicePress,
+  variant,
+  showCentre,
 }: {
   slices: DonutSlice[];
   size?: number;
@@ -606,63 +709,96 @@ export const DonutChart = React.memo(function DonutChart({
   centerTop?: string;
   centerBottom?: string;
   onSlicePress?: (slice: DonutSlice) => void;
+  /** Donut (default) or filled pie. Defaults to Settings → Charts. */
+  variant?: 'donut' | 'pie';
+  /** Centre label. Defaults to Settings → Charts. */
+  showCentre?: boolean;
 }) {
   const theme = useTheme();
+  const chartSettings = useChartSettings();
+  const resolvedVariant = variant ?? chartSettings.breakdownStyle;
+  const resolvedShowCentre = showCentre ?? chartSettings.showCentreTotal;
   const total = slices.reduce((sum, slice) => sum + Math.max(0, slice.value), 0);
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
+  let angle = -Math.PI / 2;
 
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center', width: size, height: size }}>
       <Svg width={size} height={size}>
         {/* `rotation`/`origin` become invalid DOM attributes on web; an SVG
             transform string works on every platform. */}
-        <G transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={theme.m3.color.surfaceContainerHighest}
-            strokeWidth={thickness}
-            fill="none"
-          />
-          {total > 0
-            ? slices.map((slice) => {
-                const fraction = Math.max(0, slice.value) / total;
-                const dash = fraction * circumference;
-                // A small gap plus round caps reads as separate "petals" even
-                // when two slices are adjacent; tiny slices still render a cap.
-                const gap = Math.min(6, dash * 0.35);
-                const element = (
-                  <Circle
-                    key={slice.id}
-                    cx={size / 2}
-                    cy={size / 2}
-                    r={radius}
-                    stroke={slice.color}
-                    strokeWidth={thickness}
-                    strokeDasharray={`${Math.max(0.5, dash - gap)} ${circumference}`}
-                    strokeDashoffset={-offset}
-                    strokeLinecap="round"
-                    fill="none"
-                    onPress={onSlicePress ? () => onSlicePress(slice) : undefined}
-                  />
-                );
-                offset += dash;
-                return element;
-              })
-            : null}
-        </G>
+        {resolvedVariant === 'donut' ? (
+          <G transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke={theme.m3.color.surfaceContainerHighest}
+              strokeWidth={thickness}
+              fill="none"
+            />
+            {total > 0
+              ? slices.map((slice) => {
+                  const fraction = Math.max(0, slice.value) / total;
+                  const dash = fraction * circumference;
+                  // A small gap plus round caps reads as separate "petals" even
+                  // when two slices are adjacent; tiny slices still render a cap.
+                  const gap = Math.min(6, dash * 0.35);
+                  const element = (
+                    <Circle
+                      key={slice.id}
+                      cx={size / 2}
+                      cy={size / 2}
+                      r={radius}
+                      stroke={slice.color}
+                      strokeWidth={thickness}
+                      strokeDasharray={`${Math.max(0.5, dash - gap)} ${circumference}`}
+                      strokeDashoffset={-offset}
+                      strokeLinecap="round"
+                      fill="none"
+                      onPress={onSlicePress ? () => onSlicePress(slice) : undefined}
+                    />
+                  );
+                  offset += dash;
+                  return element;
+                })
+              : null}
+          </G>
+        ) : (
+          <G>
+            <Circle cx={size / 2} cy={size / 2} r={size / 2} fill={theme.m3.color.surfaceContainerHighest} />
+            {total > 0
+              ? slices.map((slice) => {
+                  const fraction = Math.max(0, slice.value) / total;
+                  const sweep = fraction * Math.PI * 2;
+                  const gap = Math.min(0.035, sweep * 0.16);
+                  const element = (
+                    <Path
+                      key={slice.id}
+                      d={pieSlicePath(size / 2, size / 2, size / 2, angle + gap / 2, angle + sweep - gap / 2)}
+                      fill={slice.color}
+                      onPress={onSlicePress ? () => onSlicePress(slice) : undefined}
+                    />
+                  );
+                  angle += sweep;
+                  return element;
+                })
+              : null}
+          </G>
+        )}
       </Svg>
-      <View style={{ position: 'absolute', alignItems: 'center', gap: 2 }}>
-        {centerTop ? (
-          <AppText variant="caption" tone="muted">
-            {centerTop}
-          </AppText>
-        ) : null}
-        {centerBottom ? <AppText variant="numericMedium">{centerBottom}</AppText> : null}
-      </View>
+      {resolvedShowCentre && resolvedVariant === 'donut' ? (
+        <View style={{ position: 'absolute', alignItems: 'center', gap: 2 }}>
+          {centerTop ? (
+            <AppText variant="caption" tone="muted">
+              {centerTop}
+            </AppText>
+          ) : null}
+          {centerBottom ? <AppText variant="numericMedium">{centerBottom}</AppText> : null}
+        </View>
+      ) : null}
     </View>
   );
 });
@@ -699,7 +835,234 @@ export const Sparkline = React.memo(function Sparkline({
   );
 });
 
-/* ------------------------------ Flow bars ----------------------------------- */
+/* ------------------------------- Mini line --------------------------------- */
+
+/**
+ * Tiny trend line for hero cards and stat tiles: no axes, no labels, one
+ * gradient area. Same token/colour rules as the full LineChart.
+ */
+export const MiniLineChart = React.memo(function MiniLineChart({
+  points,
+  height = 64,
+  color,
+  onDark,
+  style,
+  animate,
+}: {
+  points: Point[];
+  height?: number;
+  color?: string;
+  onDark?: boolean;
+  style?: StyleProp<ViewStyle>;
+  animate?: boolean;
+}) {
+  const theme = useTheme();
+  const chartSettings = useChartSettings();
+  const resolvedAnimate = animate ?? chartSettings.animate;
+  const gradientId = useId().replace(/[^a-zA-Z0-9]/g, '');
+  const [width, setWidth] = useState(0);
+  const reveal = useSharedValue(0);
+
+  React.useEffect(() => {
+    if (resolvedAnimate) {
+      reveal.value = 0;
+      reveal.value = withTiming(1, { duration: 420 });
+    } else {
+      reveal.value = 1;
+    }
+  }, [reveal, resolvedAnimate]);
+  const revealStyle = useAnimatedStyle(() => ({ opacity: reveal.value }));
+
+  const { points: displayPoints } = useMemo(
+    () => limitPoints(points, chartSettings.maxPoints),
+    [points, chartSettings.maxPoints],
+  );
+  const stroke = color ?? theme.chart.series[0] ?? theme.m3.color.primary;
+  const padding = 3;
+  const innerWidth = Math.max(0, width - padding * 2);
+  const innerHeight = Math.max(0, height - padding * 2);
+  const values = displayPoints.map((point) => point.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || Math.abs(max) * 0.2 || 1;
+  const coords = displayPoints.map((point, index) => ({
+    x: padding + (displayPoints.length > 1 ? (innerWidth / (displayPoints.length - 1)) * index : innerWidth / 2),
+    y: padding + innerHeight - ((point.value - min) / span) * innerHeight,
+  }));
+  const path = buildSmoothPath(coords);
+
+  return (
+    <Animated.View style={[style, revealStyle]}>
+      <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)} style={{ width: '100%' }}>
+        {width > 0 && coords.length > 1 ? (
+          <Svg width={width} height={height}>
+            <Defs>
+              <LinearGradient id={`mini-${gradientId}`} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={stroke} stopOpacity={onDark ? '0.34' : '0.26'} />
+                <Stop offset="1" stopColor={stroke} stopOpacity="0" />
+              </LinearGradient>
+            </Defs>
+            <Path
+              d={`${path} L ${coords[coords.length - 1]!.x} ${height - padding} L ${coords[0]!.x} ${height - padding} Z`}
+              fill={`url(#mini-${gradientId})`}
+            />
+            <Path d={path} fill="none" stroke={stroke} strokeWidth={2} strokeLinecap="round" />
+            <Circle cx={coords[coords.length - 1]!.x} cy={coords[coords.length - 1]!.y} r={3} fill={stroke} />
+          </Svg>
+        ) : (
+          <View style={{ height }} />
+        )}
+      </View>
+    </Animated.View>
+  );
+});
+
+/* -------------------------------- Mini bars -------------------------------- */
+
+/** Compact categorical bars (weekday spending, small scoreboards). */
+export const MiniBars = React.memo(function MiniBars({
+  points,
+  height = 52,
+  color,
+  style,
+}: {
+  points: Point[];
+  height?: number;
+  color?: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const theme = useTheme();
+  const [width, setWidth] = useState(0);
+  const fill = color ?? theme.chart.series[0] ?? theme.m3.color.primary;
+  const max = Math.max(1, ...points.map((point) => point.value));
+  const slot = points.length > 0 ? width / points.length : 0;
+  const barWidth = Math.max(4, slot * 0.55);
+
+  return (
+    <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)} style={[{ width: '100%' }, style]}>
+      {width > 0 ? (
+        <Svg width={width} height={height}>
+          {points.map((point, index) => {
+            const barHeight = Math.max(3, (point.value / max) * (height - 14));
+            const x = slot * index + (slot - barWidth) / 2;
+            const isMax = point.value === max && max > 1;
+            return (
+              <G key={point.key}>
+                <Rect
+                  x={x}
+                  y={height - 14 - barHeight}
+                  width={barWidth}
+                  height={barHeight}
+                  rx={Math.min(4, barWidth / 2)}
+                  fill={fill}
+                  opacity={isMax ? 1 : 0.35}
+                />
+                <SvgText x={x + barWidth / 2} y={height - 2} fill={theme.m3.color.onSurfaceVariant} fontSize={9} textAnchor="middle">
+                  {point.label}
+                </SvgText>
+              </G>
+            );
+          })}
+        </Svg>
+      ) : (
+        <View style={{ height }} />
+      )}
+    </View>
+  );
+});
+
+/* -------------------------------- Bar list --------------------------------- */
+
+export interface BarListItem {
+  id: string;
+  label: string;
+  value: number;
+  color?: string;
+  onPress?: () => void;
+}
+
+/** Shared horizontal share bars used by categories, merchants and accounts. */
+export const BarList = React.memo(function BarList({
+  items,
+  total,
+  max,
+  style,
+}: {
+  items: BarListItem[];
+  total?: number;
+  max?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const theme = useTheme();
+  const money = useMoney();
+  const denominator = Math.max(1, max ?? total ?? Math.max(...items.map((item) => item.value), 1));
+  return (
+    <View style={[{ gap: theme.spacing.md }, style]}>
+      {items.map((item) => {
+        const ratio = Math.min(1, item.value / denominator);
+        return (
+          <Pressable
+            key={item.id}
+            onPress={item.onPress}
+            disabled={!item.onPress}
+            style={{ gap: 5 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, flex: 1, minWidth: 0 }}>
+                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: item.color ?? theme.chart.series[0] }} />
+                <AppText variant="bodySmall" numberOfLines={1} style={{ flex: 1 }}>
+                  {item.label}
+                </AppText>
+              </View>
+              <AppText variant="numericCaption" tone="secondary">
+                {money.format(item.value, { compact: true })}
+              </AppText>
+            </View>
+            <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.m3.color.surfaceContainerHighest, overflow: 'hidden' }}>
+              <View
+                style={{
+                  width: `${Math.max(2, ratio * 100)}%`,
+                  height: '100%',
+                  borderRadius: 3,
+                  backgroundColor: item.color ?? theme.chart.series[0],
+                }}
+              />
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+});
+
+/* -------------------------------- Legend ---------------------------------- */
+
+export function ChartLegend({
+  items,
+  style,
+}: {
+  items: { label: string; color: string; dashed?: boolean; dot?: boolean }[];
+  style?: StyleProp<ViewStyle>;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={[{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: theme.spacing.md }, style]}>
+      {items.map((item) => (
+        <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          {item.dot ? (
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: item.color }} />
+          ) : (
+            <View style={{ width: 16, height: 2, borderRadius: 1, backgroundColor: item.color, opacity: item.dashed ? 0.7 : 1 }} />
+          )}
+          <AppText variant="caption" tone="muted">
+            {item.label}
+          </AppText>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+
 
 export interface FlowItem {
   id: string;

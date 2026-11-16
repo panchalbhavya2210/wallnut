@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, BackHandler, Easing, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 
 import { useTheme } from '@/theme/theme';
 import { useUiStore } from '@/stores/ui.store';
@@ -24,6 +24,8 @@ export function GlobalDrawer() {
   const { width } = useWindowDimensions();
   const open = useUiStore((state) => state.drawerOpen);
   const closeDrawer = useUiStore((state) => state.closeDrawer);
+  const pathname = usePathname();
+  const lastPathname = useRef(pathname);
   const [progress] = useState(() => new Animated.Value(0));
   const closing = useRef(false);
   const panelWidth = Math.min(width * 0.88, 344);
@@ -59,6 +61,18 @@ export function GlobalDrawer() {
     // `progress` and `closeDrawer` are stable for the overlay's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [duration, closeDrawer]);
+
+  // Route changes always win: if anything navigates while the overlay is open
+  // (a deep link, a programmatic push, a modal), stale `drawerOpen` state used
+  // to make the next tap reopen or swallow the drawer. Reset in the same tick.
+  useEffect(() => {
+    if (lastPathname.current === pathname) return;
+    lastPathname.current = pathname;
+    // A destination tap calls close() first (closing.current = true); let that
+    // animation finish. Any other navigation closes immediately so stale state
+    // can never survive a route change.
+    if (open && !closing.current) closeDrawer();
+  }, [pathname, open, closeDrawer]);
 
   const go = useCallback(
     (destination: DrawerDestination) => {
@@ -112,7 +126,7 @@ export function GlobalDrawer() {
           borderRightColor: theme.colors.border,
           ...theme.shadow('lg'),
         }}>
-        <DrawerMenu active onNavigate={go} />
+        <DrawerMenu active onNavigate={go} onClose={close} />
       </Animated.View>
     </View>
   );

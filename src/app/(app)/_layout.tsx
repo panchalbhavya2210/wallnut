@@ -62,8 +62,10 @@ export default function AppLayout() {
     () => ({
       headerShown: false,
       drawerType: 'front' as const,
-      swipeEnabled: true,
-      swipeEdgeWidth: 56,
+      // The header/More buttons open the single root overlay. Edge-swipe on the
+      // native drawer competed with the Insights pager and produced a second
+      // open/close state machine, so it is deliberately off.
+      swipeEnabled: false,
       freezeOnBlur: true,
       overlayColor: theme.mode === 'dark' ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.42)',
       drawerStyle: { width: 316, backgroundColor: theme.colors.surface },

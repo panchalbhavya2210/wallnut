@@ -13,7 +13,9 @@ import { useSettingsStore } from '@/stores/settings.store';
  */
 export function useChartColors() {
   const theme = useTheme();
-  const preference = useSettingsStore((state) => state.appearance.chartColors);
+  const charts = useSettingsStore((state) => state.charts);
+  const legacy = useSettingsStore((state) => state.appearance.chartColors);
+  const preference = charts?.colorSource ?? legacy;
 
   return {
     preference,

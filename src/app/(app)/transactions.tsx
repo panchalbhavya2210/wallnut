@@ -77,6 +77,8 @@ export default function TransactionsScreen() {
     merchantCanonical?: string;
     merchantName?: string;
     uncategorised?: string;
+    from?: string;
+    to?: string;
   }>();
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
   const confirmDeletion = useSettingsStore((state) => state.transactions.confirmDeletion);
@@ -102,6 +104,8 @@ export default function TransactionsScreen() {
     categoryIds: params.categoryId ? [String(params.categoryId)] : undefined,
     merchantCanonical: params.merchantCanonical ? String(params.merchantCanonical) : undefined,
     uncategorisedOnly: params.uncategorised === '1' ? true : undefined,
+    from: params.from ? String(params.from) : undefined,
+    to: params.to ? String(params.to) : undefined,
   }));
   const [page, setPage] = useState(1);
   const [searchOpen, setSearchOpen] = useState(params.search === '1');
@@ -112,8 +116,8 @@ export default function TransactionsScreen() {
   const appliedScope = useRef('');
   useFocusEffect(
     useCallback(() => {
-      if (!params.categoryId && !params.merchantCanonical && params.uncategorised !== '1') return;
-      const key = `${params.categoryId ?? ''}|${params.merchantCanonical ?? ''}|${params.uncategorised ?? ''}`;
+      if (!params.categoryId && !params.merchantCanonical && params.uncategorised !== '1' && !params.from && !params.to) return;
+      const key = `${params.categoryId ?? ''}|${params.merchantCanonical ?? ''}|${params.uncategorised ?? ''}|${params.from ?? ''}|${params.to ?? ''}`;
       if (appliedScope.current === key) return;
       appliedScope.current = key;
       setFilters((current) => ({
@@ -121,9 +125,11 @@ export default function TransactionsScreen() {
         categoryIds: params.categoryId ? [String(params.categoryId)] : current.categoryIds,
         merchantCanonical: params.merchantCanonical ? String(params.merchantCanonical) : current.merchantCanonical,
         uncategorisedOnly: params.uncategorised === '1' ? true : current.uncategorisedOnly,
+        from: params.from ? String(params.from) : current.from,
+        to: params.to ? String(params.to) : current.to,
       }));
       setPage(1);
-    }, [params.categoryId, params.merchantCanonical, params.uncategorised]),
+    }, [params.categoryId, params.merchantCanonical, params.uncategorised, params.from, params.to]),
   );
 
   const scopeLabel = filters.uncategorisedOnly
@@ -282,7 +288,18 @@ export default function TransactionsScreen() {
             justifyContent: 'space-between',
             paddingBottom: theme.spacing.md,
           }}>
-          <PeriodPill value={period} monthStartDay={monthStartDay} onRequestOpen={() => setShowPeriod(true)} />
+          <View style={{ gap: 3 }}>
+            <PeriodPill
+              value={customRange ? 'custom' : period}
+              monthStartDay={monthStartDay}
+              onRequestOpen={() => setShowPeriod(true)}
+            />
+            {customRange ? (
+              <AppText variant="caption" tone="muted" style={{ fontSize: 11 }}>
+                {filters.from ?? '…'} → {filters.to ?? '…'}
+              </AppText>
+            ) : null}
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
             <View style={{ alignItems: 'flex-end' }}>
               <AppText variant="caption" tone="muted" style={{ fontSize: 11 }}>

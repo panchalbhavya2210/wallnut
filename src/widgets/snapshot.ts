@@ -7,6 +7,7 @@ import { getUpcoming } from '@/services/recurring.service';
 import { getSafeToSpend } from '@/services/safe-to-spend.service';
 import { getLedgerTotals } from '@/services/transactions.service';
 import { DEFAULT_SETTINGS, loadAllSettings } from '@/services/settings.service';
+import { accents, type AccentName } from '@/theme/colors';
 import { toISODate } from '@/utils/date';
 import { formatMoney } from '@/utils/money';
 
@@ -41,6 +42,10 @@ export interface WidgetSnapshot {
   showAmounts: boolean;
   /** Active accent name, so widgets follow the app's palette. */
   accent: string;
+  /** Accent seed hex — used to derive the M3 tonal roles for the widget. */
+  accentHex: string;
+  /** `material` or `wallnut`; matches the app's Settings → Appearance choice. */
+  palette: string;
   safeToSpend: number;
   safePerDay: number;
   netWorth: number;
@@ -102,6 +107,10 @@ export async function buildWidgetSnapshot(): Promise<WidgetSnapshot> {
     })),
   };
 
+  const accentName = (Object.keys(accents) as AccentName[]).includes(appearance.accent as AccentName)
+    ? (appearance.accent as AccentName)
+    : 'indigo';
+
   return {
     generatedAt: Date.now(),
     updatedAt: new Date().toISOString(),
@@ -110,6 +119,8 @@ export async function buildWidgetSnapshot(): Promise<WidgetSnapshot> {
     enabled: widgets.enabled,
     showAmounts: widgets.showAmounts,
     accent: appearance.accent,
+    accentHex: accents[accentName].light.base,
+    palette: appearance.palette,
     safeToSpend: safe.safe,
     safePerDay: safe.perDay,
     netWorth: netWorth.netWorth,

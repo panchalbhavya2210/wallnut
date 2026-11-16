@@ -10,7 +10,8 @@ import { ProgressBar, SegmentedControl } from '@/components/ui/controls';
 import { EmptyState, LoadingBlock } from '@/components/ui/feedback';
 import { AppHeader, TopTabs } from '@/components/AppHeader';
 import { GradientBlobs } from '@/components/ui/backdrop';
-import { BarChart, DonutChart, LineChart } from '@/components/charts';
+import { SwipePager } from '@/components/ui/SwipePager';
+import { BarChart, ChartLegend, DonutChart, LineChart, MiniBars } from '@/components/charts';
 import { CustomRangeSheet, PeriodPill, shortPeriodLabel } from '@/components/PeriodPicker';
 import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
@@ -38,6 +39,7 @@ import {
   getPeriodRange,
   pickTrendGranularity,
   previousRange,
+  toISODate,
   type DateRange,
   type PeriodPreset,
 } from '@/utils/date';
@@ -58,6 +60,13 @@ import { formatPercent, percentageChange } from '@/utils/money';
 type InsightTab = 'overview' | 'categories' | 'trends' | 'merchants';
 type CategoryKind = 'expense' | 'income';
 
+const INSIGHT_TABS: { value: InsightTab; label: string }[] = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'categories', label: 'Categories' },
+  { value: 'trends', label: 'Trends' },
+  { value: 'merchants', label: 'Merchants' },
+];
+
 const INSIGHT_PERIODS: PeriodPreset[] = ['thisWeek', 'thisMonth', 'lastMonth', '3m', '6m', '1y', 'custom'];
 
 export default function InsightsScreen() {
@@ -65,6 +74,7 @@ export default function InsightsScreen() {
   const money = useMoney();
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
   const [tab, setTab] = useState<InsightTab>('overview');
+  const tabIndex = INSIGHT_TABS.findIndex((entry) => entry.value === tab);
   const [period, setPeriod] = useState<PeriodPreset>('thisMonth');
   const [customRange, setCustomRange] = useState<DateRange | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
@@ -185,12 +195,7 @@ export default function InsightsScreen() {
             onSearch={() => router.push('/transactions?search=1' as never)}
           />
           <TopTabs
-            tabs={[
-              { value: 'overview', label: 'Overview' },
-              { value: 'categories', label: 'Categories' },
-              { value: 'trends', label: 'Trends' },
-              { value: 'merchants', label: 'Merchants' },
-            ]}
+            tabs={INSIGHT_TABS}
             value={tab}
             onChange={setTab}
           />
@@ -236,7 +241,11 @@ export default function InsightsScreen() {
           onAction={() => router.push('/transaction/new' as never)}
         />
       ) : (
-        <View style={{ gap: theme.spacing.xl }}>
+        <SwipePager
+          index={tabIndex < 0 ? 0 : tabIndex}
+          count={INSIGHT_TABS.length}
+          onIndexChange={(next) => setTab(INSIGHT_TABS[next]?.value ?? 'overview')}>
+          <View style={{ gap: theme.spacing.xl }}>
           {tab === 'overview' ? (
             <>
               <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
@@ -511,7 +520,7 @@ export default function InsightsScreen() {
                           {[...top, ...(otherTotal > 0 ? [{ categoryId: null, name: 'Others', color: theme.colors.muted, icon: 'ellipsis-horizontal', total: otherTotal, share: breakdown.total > 0 ? (otherTotal / breakdown.total) * 100 : 0, count: 0, gross: otherTotal, refunds: 0, previousTotal: 0, change: null, children: [] } as CategoryBreakdownRow] : [])].map((row) => (
                             <Pressable
                               key={row.categoryId ?? row.name}
-                              onPress={() => openCategory(row, categoryKind)}
+                              onPress={() => openCategory(row, categoryKind, range)}
                               style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: row.color }} />
                               <AppText variant="caption" numberOfLines={1} style={{ flex: 1 }}>
@@ -532,7 +541,7 @@ export default function InsightsScreen() {
                         return (
                           <Pressable
                             key={row.categoryId ?? 'uncategorised'}
-                            onPress={() => openCategory(row, categoryKind)}
+                            onPress={() => openCategory(row, categoryKind, range)}
                             android_ripple={{ color: theme.colors.ripple }}
                             accessibilityRole="button"
                             accessibilityLabel={`${row.name}, ${money.format(row.total)}, ${formatPercent(row.share, 0)} of total`}
@@ -623,10 +632,13 @@ export default function InsightsScreen() {
                         showAverage
                       />
                     </View>
-                    <Row gap="lg" style={{ marginTop: theme.spacing.sm }}>
-                      <Legend color={theme.colors.accent.base} label="This period" />
-                      <Legend color={theme.colors.muted} label="Previous period" dashed />
-                    </Row>
+                    <ChartLegend
+                      style={{ marginTop: theme.spacing.sm }}
+                      items={[
+                        { color: theme.colors.accent.base, label: 'This period' },
+                        { color: theme.colors.muted, label: 'Previous period', dashed: true },
+                      ]}
+                    />
                   </>
                 ) : (
                   <EmptyState compact icon="analytics-outline" title="No trend yet" message="There is no spending in either this period or the previous one." />
@@ -646,7 +658,7 @@ export default function InsightsScreen() {
                         .map((row) => (
                           <Pressable
                             key={row.categoryId ?? row.name}
-                            onPress={() => openCategory(row, 'expense')}
+                            onPress={() => openCategory(row, 'expense', range)}
                             style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
                             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: row.color }} />
                             <AppText variant="bodySmall" numberOfLines={1} style={{ flex: 1 }}>
@@ -792,7 +804,7 @@ export default function InsightsScreen() {
               ) : (
                 <Card padded={false}>
                   {visibleMerchants.map((merchant, index) => (
-                    <MerchantListRow key={merchant.name} merchant={merchant} rank={index + 1} />
+                    <MerchantListRow key={merchant.name} merchant={merchant} rank={index + 1} range={range} />
                   ))}
                 </Card>
               )}
@@ -822,6 +834,7 @@ export default function InsightsScreen() {
             </>
           ) : null}
         </View>
+        </SwipePager>
       )}
 
       <CustomRangeSheet
@@ -839,18 +852,19 @@ export default function InsightsScreen() {
 
 /* ------------------------------- Components -------------------------------- */
 
-function openCategory(row: CategoryBreakdownRow, kind: CategoryKind) {
+function openCategory(row: CategoryBreakdownRow, kind: CategoryKind, range: DateRange) {
+  const rangeQuery = `period=custom&from=${toISODate(range.start)}&to=${toISODate(range.end)}`;
   if (!row.categoryId) {
-    router.push('/transactions?uncategorised=1' as never);
+    router.push(`/transactions?uncategorised=1&${rangeQuery}` as never);
     return;
   }
   if (kind === 'income') {
     router.push(
-      `/transactions?categoryId=${encodeURIComponent(row.categoryId)}&categoryName=${encodeURIComponent(row.name)}` as never,
+      `/transactions?categoryId=${encodeURIComponent(row.categoryId)}&categoryName=${encodeURIComponent(row.name)}&${rangeQuery}` as never,
     );
     return;
   }
-  router.push(`/category/${row.categoryId}` as never);
+  router.push(`/category/${row.categoryId}?${rangeQuery}` as never);
 }
 
 function Section({ title, children, onPress, actionLabel }: { title: string; children: React.ReactNode; onPress?: () => void; actionLabel?: string }) {
@@ -922,49 +936,36 @@ function ChangePill({ change, invert = false, compact }: { change: number | null
   );
 }
 
-function Legend({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
-  const theme = useTheme();
-  return (
-    <Row gap="xs" align="center">
-      <View style={{ width: 18, height: 2, borderRadius: 1, backgroundColor: color, opacity: dashed ? 0.7 : 1 }} />
-      <AppText variant="caption" tone="muted">
-        {label}
-      </AppText>
-      <View style={{ width: StyleSheet.hairlineWidth, height: 1, backgroundColor: theme.colors.border }} />
-    </Row>
-  );
-}
-
 function WeekdayBars({ weekday }: { weekday: { weekday: number; total: number }[] }) {
   const theme = useTheme();
   const labels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-  const max = Math.max(1, ...weekday.map((day) => day.total));
-  const money = useMoney();
   return (
     <View style={{ gap: theme.spacing.sm }}>
       <AppText variant="caption" tone="muted">
         Day of week
       </AppText>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 58 }}>
-        {weekday.map((day, index) => (
-          <View key={day.weekday} style={{ flex: 1, alignItems: 'center', gap: 4 }} accessibilityLabel={`${labels[index]}: ${money.format(day.total)}`}>
-            <View style={{ width: '100%', height: Math.max(3, (day.total / max) * 40), borderRadius: 4, backgroundColor: day.total === max && max > 1 ? theme.colors.accent.base : theme.colors.accent.soft }} />
-            <AppText variant="caption" tone="muted" style={{ fontSize: 10 }}>
-              {labels[index]}
-            </AppText>
-          </View>
-        ))}
-      </View>
+      <MiniBars
+        height={58}
+        points={weekday.map((day, index) => ({
+          key: String(day.weekday),
+          label: labels[index] ?? '',
+          value: day.total,
+        }))}
+      />
     </View>
   );
 }
 
-function MerchantListRow({ merchant, rank }: { merchant: MerchantRow; rank: number }) {
+function MerchantListRow({ merchant, rank, range }: { merchant: MerchantRow; rank: number; range: DateRange }) {
   const theme = useTheme();
   const money = useMoney();
   return (
     <Pressable
-      onPress={() => router.push(`/merchant/${encodeURIComponent(merchant.name)}` as never)}
+      onPress={() =>
+        router.push(
+          `/merchant/${encodeURIComponent(merchant.name)}?period=custom&from=${toISODate(range.start)}&to=${toISODate(range.end)}` as never,
+        )
+      }
       android_ripple={{ color: theme.colors.ripple }}
       accessibilityRole="button"
       accessibilityLabel={`${merchant.name}, ${money.format(merchant.total)}, ${merchant.count} transactions`}

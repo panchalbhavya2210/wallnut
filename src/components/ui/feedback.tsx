@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { usePathname } from 'expo-router';
 import Animated, {
   Easing,
   FadeIn,
   FadeOut,
-  SlideInDown,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -13,6 +13,7 @@ import Animated, {
 
 import { useTheme } from '@/theme/theme';
 import { useUiStore, type ToastMessage } from '@/stores/ui.store';
+import { isPrimaryRoute } from '@/utils/routes';
 import { AppText } from './text';
 import { Button } from './controls';
 import type { IconName } from './layout';
@@ -177,21 +178,28 @@ export function InfoBanner({
  */
 export function ToastHost() {
   const theme = useTheme();
+  const pathname = usePathname();
   const toasts = useUiStore((state) => state.toasts);
   const dismissToast = useUiStore((state) => state.dismissToast);
+  // Material snackbars show one message at a time. Stacking several cards made
+  // every new toast push the previous one upward mid-spring — the "jumping
+  // alerts" bug. The newest message wins; it still auto-dismisses.
+  const current = toasts[toasts.length - 1];
 
-  if (toasts.length === 0) return null;
+  if (!current) return null;
 
   return (
     <View
       pointerEvents="box-none"
       style={[
         StyleSheet.absoluteFill,
-        { justifyContent: 'flex-end', paddingHorizontal: theme.spacing.lg, paddingBottom: 156, gap: theme.spacing.sm },
+        {
+          justifyContent: 'flex-end',
+          paddingHorizontal: theme.spacing.lg,
+          paddingBottom: isPrimaryRoute(pathname) ? 156 : theme.spacing.xl,
+        },
       ]}>
-      {toasts.map((toast) => (
-        <ToastCard key={toast.id} toast={toast} onDismiss={() => dismissToast(toast.id)} />
-      ))}
+      <ToastCard key={current.id} toast={current} onDismiss={() => dismissToast(current.id)} />
     </View>
   );
 }
@@ -216,8 +224,8 @@ function ToastCard({ toast, onDismiss }: { toast: ToastMessage; onDismiss: () =>
 
   return (
     <Animated.View
-      entering={reduceMotion ? undefined : SlideInDown.springify().damping(19).stiffness(230)}
-      exiting={FadeOut.duration(150)}>
+      entering={reduceMotion ? undefined : FadeIn.duration(160)}
+      exiting={FadeOut.duration(140)}>
       <Pressable
         onPress={onDismiss}
         accessibilityRole="alert"

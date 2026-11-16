@@ -23,7 +23,7 @@ import {
 import { listTransactions } from '@/services/transactions.service';
 import { getCategory } from '@/services/categories.service';
 import { getBudgetProgressList } from '@/services/budgets.service';
-import { addMonths, formatDayMonth, formatMonthYear, getPeriodRange, toISODate, type DateRange, type PeriodPreset } from '@/utils/date';
+import { addMonths, formatDayMonth, formatMonthYear, fromISODate, getPeriodRange, toISODate, type DateRange, type PeriodPreset } from '@/utils/date';
 import { MonthCyclePicker } from '@/components/MonthCyclePicker';
 import { formatPercent } from '@/utils/money';
 
@@ -35,10 +35,17 @@ import { formatPercent } from '@/utils/money';
 export default function CategoryDetailScreen() {
   const theme = useTheme();
   const money = useMoney();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from, to } = useLocalSearchParams<{ id: string; from?: string; to?: string }>();
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
-  const [period, setPeriod] = useState<PeriodPreset>('thisMonth');
-  const [customRange, setCustomRange] = useState<DateRange | null>(null);
+  const incomingRange = useMemo<DateRange | null>(() => {
+    if (!from || !to) return null;
+    const start = fromISODate(String(from));
+    const end = fromISODate(String(to));
+    if (!start || !end || start > end) return null;
+    return { start, end, label: 'Custom' };
+  }, [from, to]);
+  const [period, setPeriod] = useState<PeriodPreset>(incomingRange ? 'custom' : 'thisMonth');
+  const [customRange, setCustomRange] = useState<DateRange | null>(incomingRange);
   const [customOpen, setCustomOpen] = useState(false);
   // 0 = the current cycle; >0 anchors the month-on-month card on a past cycle.
   const [cycleOffset, setCycleOffset] = useState(0);
@@ -378,7 +385,7 @@ export default function CategoryDetailScreen() {
           <Pressable
             onPress={() =>
               router.push(
-                `/transactions?categoryId=${encodeURIComponent(id ?? '')}&categoryName=${encodeURIComponent(category.name)}` as never,
+                `/transactions?categoryId=${encodeURIComponent(id ?? '')}&categoryName=${encodeURIComponent(category.name)}&from=${toISODate(range.start)}&to=${toISODate(range.end)}` as never,
               )
             }
             accessibilityRole="button"

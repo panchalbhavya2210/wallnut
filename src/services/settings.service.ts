@@ -37,14 +37,41 @@ export interface AppearanceSettings {
   /** Pure-black canvas for OLED screens (dark mode only). */
   amoled: boolean;
   /**
-   * `theme` → charts use the palette derived from the accent (recommended);
-   * `category` → charts use each category's own colour.
+   * Legacy chart colour preference. New installs read `charts.colorSource`;
+   * this stays for one migration so existing choices are preserved.
    */
   chartColors: 'theme' | 'category';
   reduceMotion: boolean;
   fontScale: 'default' | 'large' | 'xlarge';
   /** Beta palette migration marker — see loadAllSettings. */
   themeVersion?: number;
+}
+
+/**
+ * Chart presentation preferences. These are defaults: a chart can still pass an
+ * explicit prop (or a dashboard widget its own override) and win.
+ */
+export interface ChartsSettings {
+  /** Default time-series mark. */
+  trendStyle: 'line' | 'area' | 'bar';
+  /** Accent-derived palette or each category's own colour. */
+  colorSource: 'theme' | 'category';
+  /** Horizontal guide lines behind the marks. */
+  showGrid: boolean;
+  /** Dashed average line where an average is meaningful. */
+  showAverage: boolean;
+  /** Point markers on line charts. */
+  showMarkers: boolean;
+  /** Value tooltip on tap/scrub. */
+  showTooltips: boolean;
+  /** Reveal animation (reduce-motion always wins). */
+  animate: boolean;
+  /** Category breakdown visual. */
+  breakdownStyle: 'donut' | 'pie';
+  /** Total in the centre of a donut. */
+  showCentreTotal: boolean;
+  /** Point budget before a series is aggregated for display. */
+  maxPoints: 60 | 120 | 240;
 }
 
 export interface DashboardSettings {
@@ -162,6 +189,7 @@ export interface WidgetSettings {
 export interface SettingsGroups {
   general: GeneralSettings;
   appearance: AppearanceSettings;
+  charts: ChartsSettings;
   dashboard: DashboardSettings;
   finance: FinanceSettings;
   transactions: TransactionSettings;
@@ -198,6 +226,18 @@ export const DEFAULT_SETTINGS: SettingsGroups = {
     reduceMotion: false,
     fontScale: 'default',
     themeVersion: 6,
+  },
+  charts: {
+    trendStyle: 'area',
+    colorSource: 'theme',
+    showGrid: true,
+    showAverage: false,
+    showMarkers: true,
+    showTooltips: true,
+    animate: true,
+    breakdownStyle: 'donut',
+    showCentreTotal: true,
+    maxPoints: 120,
   },
   dashboard: {
     defaultPeriod: 'thisMonth',
@@ -332,6 +372,17 @@ export async function loadAllSettings(): Promise<Partial<SettingsGroups>> {
       // Ignore malformed rows; defaults win.
     }
   }
+
+  // Chart settings split out of Appearance. Installs that explicitly chose
+  // category colours before the dedicated page existed keep that choice once;
+  // after this, `charts.colorSource` is the only source of truth.
+  const storedCharts = result.charts as Partial<ChartsSettings> | undefined;
+  const charts: ChartsSettings = { ...DEFAULT_SETTINGS.charts, ...(storedCharts ?? {}) };
+  if (!storedCharts && result.appearance?.chartColors === 'category') {
+    charts.colorSource = 'category';
+  }
+  result.charts = charts;
+
   return result;
 }
 

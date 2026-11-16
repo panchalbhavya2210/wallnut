@@ -43,6 +43,8 @@ interface UiState {
   accountScopeId: string | null;
   /** Root-level drawer overlay, used on screens outside the drawer shell. */
   drawerOpen: boolean;
+  /** Root-level notification panel (one instance, behind the header bell). */
+  notificationsOpen: boolean;
   /** Native drawer state, mirrored here so the root back handler can defer. */
   nativeDrawerOpen: boolean;
 
@@ -56,6 +58,8 @@ interface UiState {
   setAccountScope: (accountId: string | null) => void;
   openDrawer: () => void;
   closeDrawer: () => void;
+  openNotifications: () => void;
+  closeNotifications: () => void;
   setNativeDrawerOpen: (open: boolean) => void;
   showToast: (toast: Omit<ToastMessage, 'id' | 'durationMs'> & { durationMs?: number }) => void;
   dismissToast: (id: number) => void;
@@ -72,6 +76,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   chartScrubbing: false,
   accountScopeId: null,
   drawerOpen: false,
+  notificationsOpen: false,
   nativeDrawerOpen: false,
 
   setSelectionMode: (enabled) =>
@@ -92,6 +97,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   setAccountScope: (accountId) => set({ accountScopeId: accountId }),
   openDrawer: () => set({ drawerOpen: true }),
   closeDrawer: () => set({ drawerOpen: false }),
+  openNotifications: () => set({ notificationsOpen: true }),
+  closeNotifications: () => set({ notificationsOpen: false }),
   setNativeDrawerOpen: (open) => {
     if (get().nativeDrawerOpen !== open) set({ nativeDrawerOpen: open });
   },

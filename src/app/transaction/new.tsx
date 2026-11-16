@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -18,7 +18,7 @@ import { useMoney } from '@/hooks/useMoney';
 import { useSettingsStore } from '@/stores/settings.store';
 import { toast } from '@/stores/ui.store';
 import { ACCOUNT_TYPE_LABELS, listAccounts, listSelectableAccounts } from '@/services/accounts.service';
-import { buildCategoryTree, listCategories } from '@/services/categories.service';
+import { listCategories } from '@/services/categories.service';
 import { listTags } from '@/services/tags.service';
 import {
   createTransaction,
@@ -31,6 +31,7 @@ import {
 import { addAttachment } from '@/services/attachments.service';
 import { aiFeatureStatus, aiStatusMessage } from '@/ai/client';
 import { suggestCategory, type CategorySuggestion } from '@/ai/features';
+import { analyzeQuickEntry } from '@/ai/commands';
 import { fromISODate, toISODate } from '@/utils/date';
 import { currencyInfo } from '@/utils/money';
 import { formatCalculatorAmount } from '@/utils/calculator';
@@ -77,6 +78,8 @@ export default function TransactionComposer() {
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<CategorySuggestion | null>(null);
   const [aiSuggesting, setAiSuggesting] = useState(false);
+  const [aiFillText, setAiFillText] = useState('');
+  const [aiFilling, setAiFilling] = useState(false);
   const [loaded, setLoaded] = useState(!editingId);
 
   const categoriesQuery = useQuery(() => listCategories(), []);
@@ -201,6 +204,58 @@ export default function TransactionComposer() {
       toast.error('Could not ask DeepSeek for a category');
     } finally {
       setAiSuggesting(false);
+    }
+  };
+
+  const fillFromSentence = async () => {
+    const sentence = aiFillText.trim();
+    if (!sentence || aiFilling) return;
+    const status = aiFeatureStatus('quickEntry');
+    if (status) {
+      toast.show(aiStatusMessage(status));
+      router.push('/settings/ai' as never);
+      return;
+    }
+    setAiFilling(true);
+    try {
+      const result = await analyzeQuickEntry(sentence, {
+        typeHint: type === 'transfer' ? 'transfer' : type === 'income' ? 'income' : 'expense',
+      });
+      if (!result.ok) {
+        toast.error(aiStatusMessage(result.error));
+        return;
+      }
+      const analysis = result.data;
+      const { command, resolved, amountMinor, questions } = analysis;
+      const plain =
+        command.intent === 'CREATE_TRANSACTION' ||
+        command.intent === 'CREATE_INCOME' ||
+        command.intent === 'CREATE_TRANSFER';
+      // Anything with a different shape (shared bill, loan, recurring) keeps
+      // its dedicated verification screen; a partial composer would be lying.
+      if (!plain || amountMinor === null || !resolved.account) {
+        router.push({ pathname: '/quick-entry', params: { q: sentence } } as never);
+        return;
+      }
+
+      setType(command.intent === 'CREATE_TRANSFER' ? 'transfer' : command.intent === 'CREATE_INCOME' ? 'income' : 'expense');
+      setAmountText(String(command.amount ?? amountMinor / 100));
+      setAccountId(resolved.account.id);
+      if (resolved.toAccount) setTransferAccountId(resolved.toAccount.id);
+      if (resolved.category) setCategoryId(resolved.category.id);
+      if (command.merchant) setMerchant(command.merchant);
+      if (command.date) setDate(fromISODate(command.date) ?? new Date());
+      if (command.notes) setNotes(command.notes);
+      setAiFillText('');
+      const pending = questions.length > 0;
+      toast.success('Review the fields, then save', {
+        title: pending ? 'AI filled what it could' : 'AI filled the form',
+        durationMs: 4200,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not read that sentence');
+    } finally {
+      setAiFilling(false);
     }
   };
 
@@ -343,6 +398,68 @@ export default function TransactionComposer() {
         contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.colossal * 2 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
+        {/* Natural-language fill. AI only populates the form; the normal Save
+            button is still the only write path. */}
+        {!editingId && settings.ai.enabled && settings.ai.quickEntry && settings.ai.apiKey.trim() ? (
+          <View style={{ gap: 6, marginTop: theme.spacing.sm }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                minHeight: 48,
+                paddingLeft: theme.spacing.md,
+                paddingRight: 6,
+                borderRadius: theme.m3.shape.full,
+                backgroundColor: theme.m3.color.surfaceContainerHigh,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.m3.color.outlineVariant,
+              }}>
+              <Ionicons name="sparkles-outline" size={18} color={theme.m3.color.primary} />
+              <TextInput
+                value={aiFillText}
+                onChangeText={setAiFillText}
+                placeholder="Describe it — “450 zomato yesterday”"
+                placeholderTextColor={theme.m3.color.onSurfaceVariant}
+                editable={!aiFilling}
+                returnKeyType="go"
+                onSubmitEditing={() => void fillFromSentence()}
+                style={{
+                  flex: 1,
+                  color: theme.m3.color.onSurface,
+                  fontFamily: theme.typography.body.fontFamily,
+                  fontSize: theme.typography.body.fontSize,
+                  paddingVertical: 0,
+                }}
+              />
+              <Pressable
+                onPress={() => void fillFromSentence()}
+                disabled={!aiFillText.trim() || aiFilling}
+                accessibilityRole="button"
+                accessibilityLabel="Fill the form from this sentence"
+                android_ripple={{ color: theme.colors.ripple, borderless: true }}
+                style={({ pressed }) => ({
+                  width: 38,
+                  height: 38,
+                  borderRadius: theme.m3.shape.full,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: aiFillText.trim() ? theme.m3.color.primary : 'transparent',
+                  opacity: pressed || aiFilling ? 0.6 : 1,
+                })}>
+                <Ionicons
+                  name={aiFilling ? 'hourglass-outline' : 'arrow-up'}
+                  size={18}
+                  color={aiFillText.trim() ? theme.m3.color.onPrimary : theme.m3.color.onSurfaceVariant}
+                />
+              </Pressable>
+            </View>
+            <AppText variant="caption" tone="muted" style={{ paddingHorizontal: theme.spacing.sm }}>
+              Wallnut fills the amount, merchant, category and account. Nothing is saved until you tap Save.
+            </AppText>
+          </View>
+        ) : null}
+
         {/* Amount */}
         <View style={{ alignItems: 'center', paddingVertical: theme.spacing.lg, gap: theme.spacing.sm }}>
           <AmountDisplay
@@ -448,7 +565,6 @@ export default function TransactionComposer() {
         {settings.ai.enabled &&
         settings.ai.categorization &&
         settings.ai.apiKey.trim().length > 0 &&
-        settings.ai.privacy !== 'none' &&
         type !== 'transfer' &&
         !categoryId &&
         merchant.trim().length >= 2 ? (

@@ -8,10 +8,11 @@ import { AppText, MoneyText } from './ui/text';
 import { Card, IconName, Row } from './ui/layout';
 import { ProgressBar } from './ui/controls';
 import { EmptyState, LoadingBlock } from './ui/feedback';
-import { FlowBars, LineChart, BarChart } from './charts';
+import { BarChart, FlowBars, LineChart, MiniLineChart } from './charts';
 import { AnimatedMoney, Gauge } from './Gauge';
 import { PeriodPill } from './PeriodPicker';
 import { useChartColors } from '@/hooks/useChartColors';
+import { useChartSettings } from '@/hooks/useChartSettings';
 import { useQuery } from '@/hooks/useQuery';
 import { useMoney } from '@/hooks/useMoney';
 import { useSettingsStore } from '@/stores/settings.store';
@@ -55,7 +56,8 @@ export interface WidgetConfig {
   accountIds?: string[];
   categoryIds?: string[];
   showAverage?: boolean;
-  chart?: 'line' | 'bar';
+  showGrid?: boolean;
+  chart?: 'line' | 'bar' | 'area';
   compactNumbers?: boolean;
 }
 
@@ -294,8 +296,24 @@ const NetWorthWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
           </AppText>
         </View>
 
-        {/* The reference home keeps the hero to a number + change. The full
-            trend lives in Insights, so the dashboard stays calm and fast. */}
+        {/* The hero keeps its trend: a quiet line anchored to the same period as
+            the number above. It is one small SVG, not a full chart card. */}
+        {trend.length > 1 ? (
+          <View style={{ marginTop: theme.spacing.sm, marginHorizontal: -2 }} accessible accessibilityLabel="Balance trend for the selected period">
+            <MiniLineChart
+              points={trend.map((point) => ({
+                key: point.key,
+                label: point.label,
+                fullLabel: point.fullLabel,
+                value: point.value,
+              }))}
+              height={62}
+              color="#FFFFFF"
+              onDark
+            />
+          </View>
+        ) : null}
+
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.spacing.sm }}>
           {scoped ? (
             <>
@@ -687,6 +705,8 @@ const SpendingPaceWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
 
 const SpendingTrendWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
   const money = useMoney();
+  const chartSettings = useChartSettings();
+  const chartStyle = config.chart ?? chartSettings.trendStyle;
   const range = useRange(config);
   const { data, loading } = useQuery(
     () => getTrend({ range, accountIds: config.accountIds }, undefined, ['expense']),
@@ -703,13 +723,19 @@ const SpendingTrendWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
   }
   return (
     <WidgetCard title="Spending trend" subtitle={`Average ${money.format(data.average)}`} onPress={() => onNavigate('/analytics')}>
-      {config.chart === 'bar' ? (
-        <BarChart points={data.points.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.net }))} height={150} />
+      {chartStyle === 'bar' ? (
+        <BarChart
+          points={data.points.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.net }))}
+          height={150}
+          showGrid={config.showGrid}
+        />
       ) : (
         <LineChart
           points={data.points.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.net }))}
           height={150}
-          showAverage={config.showAverage !== false}
+          showArea={chartStyle !== 'line'}
+          showAverage={typeof config.showAverage === 'boolean' ? config.showAverage : undefined}
+          showGrid={config.showGrid}
         />
       )}
     </WidgetCard>
@@ -1045,8 +1071,10 @@ const AccountBalancesWidget: React.FC<WidgetProps> = ({ config, onNavigate }) =>
 
 const NetWorthTrendWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
   const money = useMoney();
+  const chartSettings = useChartSettings();
   const monthStartDay = useSettingsStore((state) => state.general.monthStartDay);
   const period = config.period ?? '1y';
+  const chartStyle = config.chart ?? chartSettings.trendStyle;
   const scopeAccountId = config.accountIds?.[0] ?? null;
   const { data, loading } = useQuery(async () => {
     if (scopeAccountId) return getAccountBalanceTrend(scopeAccountId, getPeriodRange(period, { monthStartDay }), 'month');
@@ -1068,11 +1096,22 @@ const NetWorthTrendWidget: React.FC<WidgetProps> = ({ config, onNavigate }) => {
       title={scopeAccountId ? 'Balance trend' : 'Net worth trend'}
       subtitle={change === null ? undefined : `${change >= 0 ? '+' : '−'}${formatPercent(Math.abs(change), 1)} over the period`}
       onPress={() => onNavigate(scopeAccountId ? `/account/${scopeAccountId}` : '/reports/health')}>
-      <LineChart
-        points={data.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.value }))}
-        height={150}
-        baseline="auto"
-      />
+      {chartStyle === 'bar' ? (
+        <BarChart
+          points={data.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.value }))}
+          height={150}
+          compactLabels
+          showGrid={config.showGrid}
+        />
+      ) : (
+        <LineChart
+          points={data.map((point) => ({ key: point.key, label: point.label, fullLabel: point.fullLabel, value: point.value }))}
+          height={150}
+          baseline="auto"
+          showArea={chartStyle !== 'line'}
+          showGrid={config.showGrid}
+        />
+      )}
     </WidgetCard>
   );
 };
